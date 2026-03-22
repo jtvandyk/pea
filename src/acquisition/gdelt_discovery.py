@@ -42,6 +42,7 @@ PROTEST_THEMES = [
 COUNTRY_LABELS = {
     "ZA": "South Africa",
     "NG": "Nigeria",
+    "DZ": "Algeria",
     "IN": "India",
     "BR": "Brazil",
     "PK": "Pakistan",
@@ -104,12 +105,18 @@ def build_gdelt_query(query: str, countries: list[str], days: int) -> dict:
         "sort": "DateDesc",
     }
 
-    # Add source country filter if provided
-    # GDELT sourcecountry uses its own codes — we pass them as a separate filter
-    # For best recall, we don't restrict here but filter post-fetch
-    if countries:
-        # GDELT sourcecountry filter (comma-separated ISO2)
-        params["sourcecountry"] = ",".join(countries)
+    # Note: GDELT's sourcecountry parameter accepts a single code only.
+    # When multiple countries are requested, we skip this filter and instead
+    # append country names to the keyword query for recall, then filter post-fetch.
+    if len(countries) == 1:
+        params["sourcecountry"] = countries[0]
+    elif countries:
+        # Append country names to the query for signal without API restriction
+        country_name_query = " OR ".join(
+            f'"{COUNTRY_LABELS[c]}"' for c in countries if c in COUNTRY_LABELS
+        )
+        if country_name_query:
+            params["query"] = f"({keyword_query}) ({country_name_query})"
 
     return params
 
@@ -127,7 +134,10 @@ def fetch_gdelt_articles(params: dict, retries: int = 3) -> list[dict]:
         except requests.exceptions.HTTPError as e:
             log.warning(f"GDELT HTTP error (attempt {attempt+1}): {e}")
             if attempt < retries - 1:
-                time.sleep(2 ** attempt)
+                # GDELT rate limit: 1 req / 5s. Back off generously on 429.
+                wait = 30 * (attempt + 1) if "429" in str(e) else 2 ** attempt
+                log.info(f"Waiting {wait}s before retry...")
+                time.sleep(wait)
         except requests.exceptions.RequestException as e:
             log.warning(f"GDELT request error (attempt {attempt+1}): {e}")
             if attempt < retries - 1:
@@ -211,6 +221,7 @@ def discover_articles(
     if not raw_articles:
         # Fallback: try without country filter (GDELT sourcecountry filter is sometimes unreliable)
         log.info("Retrying without country filter for broader results...")
+        time.sleep(5)  # brief pause before fallback to avoid rate limits
         fallback_params = {k: v for k, v in params.items() if k != "sourcecountry"}
         raw_articles = fetch_gdelt_articles(fallback_params)
         log.info(f"Fallback returned {len(raw_articles)} articles")

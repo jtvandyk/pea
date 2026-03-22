@@ -128,35 +128,46 @@ def _call_ollama(
         return None
 
 
-def _parse_events(raw: str) -> list[dict]:
-    """Extract a JSON array from the LLM response string."""
-    text = raw.strip()
-
-    # Strip markdown code fences if present
-    if text.startswith("```"):
+def _clean_json(text: str) -> str:
+    """Remove common LLM JSON formatting issues."""
+    import re
+    # Strip markdown code fences
+    if "```" in text:
         parts = text.split("```")
-        # Take the part after the opening fence
         text = parts[1] if len(parts) > 1 else text
         if text.startswith("json"):
             text = text[4:]
-        text = text.strip()
+    # Remove trailing commas before ] or } (invalid JSON that llama2 often emits)
+    text = re.sub(r",\s*([\]}])", r"\1", text)
+    return text.strip()
+
+
+def _parse_events(raw: str) -> list[dict]:
+    """Extract a JSON array of events from the LLM response string."""
+    text = _clean_json(raw)
 
     # Try direct parse
     try:
         result = json.loads(text)
         if isinstance(result, list):
             return result
-        log.warning(f"LLM returned non-list JSON: {type(result)}")
+        if isinstance(result, dict):
+            # Model wrapped the array: {"events": [...]} or {"data": [...]}
+            for val in result.values():
+                if isinstance(val, list):
+                    return val
+        log.warning(f"LLM returned unexpected JSON structure: {type(result)}")
         return []
     except json.JSONDecodeError:
         pass
 
-    # Find first [...] block
+    # Find the outermost [...] block
     start = text.find("[")
     end = text.rfind("]")
     if start != -1 and end != -1 and end > start:
         try:
-            return json.loads(text[start:end + 1])
+            cleaned = _clean_json(text[start:end + 1])
+            return json.loads(cleaned)
         except json.JSONDecodeError:
             pass
 

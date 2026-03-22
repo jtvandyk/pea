@@ -13,7 +13,7 @@ Stages:
 
 Usage (from repo root):
     python -m src.acquisition.pipeline
-    python -m src.acquisition.pipeline --query "protest strike" --countries ZA,NG,IN --days 7
+    python -m src.acquisition.pipeline --query "protest strike" --countries NG,ZA,UG,DZ --days 7
     python -m src.acquisition.pipeline --help
 """
 
@@ -114,7 +114,7 @@ def main():
         help="Keywords to search in GDELT (space-separated)"
     )
     parser.add_argument(
-        "--countries", default="ZA,NG,IN,BR,PK,EG,ID,PH,MX,CO",
+        "--countries", default="NG,ZA,UG,DZ",
         help="Comma-separated ISO2 country codes"
     )
     parser.add_argument("--days", type=int, default=7,

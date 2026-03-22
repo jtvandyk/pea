@@ -1,12 +1,19 @@
 # LLM Protest Event Classification - Complete Requirements
 # Python 3.9+
 
-# LLM APIs and Orchestration
-langchain==0.2.11
-langchain-openai==0.1.8
-langchain-anthropic==0.1.15
-openai==1.12.0
-anthropic==0.21.0
+# Local LLM (primary — no API key required)
+ollama>=0.2.0
+
+# Text Acquisition Pipeline
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+newspaper4k>=0.9.0        # maintained newspaper3k fork
+langdetect>=1.0.9
+deep-translator>=1.11.0
+
+# LLM APIs (optional — cloud fallback)
+# anthropic>=0.20.0
+# openai>=1.12.0
 
 # HuggingFace Integration
 transformers==4.40.0
