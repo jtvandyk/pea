@@ -98,7 +98,7 @@ def _call_ollama(
     user: str,
     model: str,
     base_url: str,
-    timeout: int = 120,
+    timeout: int = 180,
 ) -> Optional[str]:
     """
     Call local Ollama chat endpoint with system + user messages.
@@ -186,6 +186,19 @@ def extract_from_article(
     Returns list of extracted event dicts.
     """
     text = article.get("text_en") or article.get("text") or ""
+    lang = article.get("text_lang", "unknown")
+
+    # Skip articles in languages llama2 cannot reliably process.
+    # These are articles where translation failed and the language isn't
+    # in the set that llama2 handles natively — sending them causes timeouts.
+    PROCESSABLE = {
+        "en", "es", "fr", "pt", "ar", "de", "it", "ru",
+        "hi", "id", "ms", "tr", "unknown",
+    }
+    if lang not in PROCESSABLE:
+        log.info(f"  Skipping untranslatable article (lang={lang}): {article.get('url','')[:60]}")
+        return []
+
     if not text or len(text) < 100:
         log.debug(f"Skipping article with insufficient text: {article.get('url', '')[:60]}")
         return []
