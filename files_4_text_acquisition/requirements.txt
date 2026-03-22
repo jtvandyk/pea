@@ -1,0 +1,23 @@
+# Protest Event Analysis Pipeline — Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core HTTP & scraping
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0           # faster HTML parser for BeautifulSoup
+
+# Article text extraction (primary scraper)
+newspaper3k>=0.2.8
+# OR the maintained fork: pip install newspaper4k
+
+# Language detection
+langdetect>=1.0.9
+
+# Translation (uses Google Translate free tier under the hood)
+deep-translator>=1.11.0
+
+# Anthropic SDK for LLM extraction
+anthropic>=0.20.0
+
+# Utilities
+python-dotenv>=1.0.0  # for loading ANTHROPIC_API_KEY from .env file

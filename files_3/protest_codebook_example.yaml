@@ -1,0 +1,303 @@
+# Example Protest Event Codebook for LLM Classification
+# Aligned with Meta Codebook & Halterman & Keith (2025)
+# Author: Your Name
+# Created: March 2026
+# Version: 1.0
+
+metadata:
+  title: "Comprehensive Protest Event Codebook for LLM Classification"
+  description: "Type III Stipulative definitions for zero-shot and few-shot event classification"
+  temporal_scope: "Any time period"
+  geographic_scope: "Global (English-language sources)"
+  source_datasets: ["ACLED", "PolDem", "FARPE", "Meta Codebook"]
+  unit_of_analysis: "Individual protest event"
+  minimum_participants: 2
+
+# ============================================================================
+# CORE EVENT TYPES
+# ============================================================================
+
+event_types:
+
+  demonstration_march:
+    name: "Demonstration or March"
+    definition: |
+      A public gathering where ≥2 people intentionally assemble in physical space
+      for a concentrated time period (typically 1-8 hours) to express political demands,
+      grievances, or support for a cause. Participants engage in PEACEFUL actions
+      such as chanting, holding signs, speeches, or walking together (no violence).
+      Must have explicit political motivation or public purpose.
+    
+    positive_examples:
+      - "500 workers gathered outside factory demanding wage increases and better benefits"
+      - "Climate activists held a 3-hour march through downtown with signs reading 'Save Our Planet'"
+      - "Labor union organized peaceful rally outside city hall to protest pension cuts"
+      - "2,000 people demonstrated in streets supporting voting rights for undocumented immigrants"
+    
+    negative_examples:
+      - "Individual person standing alone with sign (lacks ≥2 people threshold)"
+      - "Spontaneous bar brawl that happens to involve political workers (violence + no stated political goal)"
+      - "Online petition or social media discussion about a cause (not physical assembly)"
+      - "News report ABOUT a protest (the article itself is not the protest event)"
+      - "Church service attended by activists (not explicitly political assembly)"
+    
+    decision_rules:
+      - "IF participants are ≥2 AND physically assembled AND expressing political demands AND non-violent → classify as DEMONSTRATION"
+      - "IF peaceful demonstration escalates to violence during the same time period → classify as RIOT (escalation takes priority)"
+      - "IF demonstration is part of larger strike (e.g., striking workers march) → classify as STRIKE (more specific category)"
+      - "IF duration < 15 minutes AND no specific political claim → consider CONFRONTATION instead"
+      - "IF ≥5,000 people AND event described as 'unruly' or 'massive turnout' → still DEMONSTRATION if non-violent"
+    
+    confidence_threshold: 0.70
+    codebook_equivalents:
+      acled: "Protests"
+      poldem: "Demonstration, protest march (code 3 or 6)"
+      farpe: "Public assembly, March/demonstration"
+      capt: "Rally, March"
+    
+    temporal_markers:
+      - "gathered", "assembled", "marched", "demonstrated", "protested", "rally", "march"
+    actor_typically:
+      - "Labor unions", "Civil rights groups", "Environmental organizations", "Community groups", "Political parties", "Spontaneous protesters"
+
+  strike_boycott:
+    name: "Strike or Boycott"
+    definition: |
+      Organized refusal to work (strike) or organized refusal to consume/use a product,
+      service, or institution (boycott) as a form of collective protest. Action must be
+      INTENTIONAL and ORGANIZED (not individual choice). Participants halt production,
+      refuse to work shifts, or organize coordinated non-consumption to pressure targets
+      into policy change or wage/benefit improvements.
+    
+    positive_examples:
+      - "Union members refused to work, shutting down production at automotive factory"
+      - "Organized consumer boycott of company products to protest labor practices"
+      - "Teachers' union called members out to strike, closing schools across district"
+      - "Bus drivers coordinated week-long strike demanding pension improvements"
+    
+    negative_examples:
+      - "Individual worker decided not to go to work (personal choice, not organized)"
+      - "Shoppers choosing not to buy a brand because they prefer competitor (market choice)"
+      - "Mass sick day that wasn't organized by group (spontaneous, not collective action)"
+    
+    decision_rules:
+      - "KEY: Must be ORGANIZED (e.g., union call, group coordination, announced publicly)"
+      - "Individual refusal without organization → NOT a strike/boycott"
+      - "IF work stoppage explicitly tied to demands → STRIKE"
+      - "IF refusal to consume tied to political goal → BOYCOTT"
+    
+    confidence_threshold: 0.75
+    codebook_equivalents:
+      acled: "Protests (specific to strikes)"
+      poldem: "Strike (code 1), Boycott (code 11)"
+      capt: "Strike"
+    
+    temporal_markers:
+      - "strike", "boycott", "refused to work", "shutdown", "coordinated refusal", "organized non-consumption"
+
+  riot:
+    name: "Riot or Violent Protest"
+    definition: |
+      Unorganized or loosely organized violent collective action where ≥2 participants
+      destroy property and/or attack persons. May BEGIN as peaceful protest but ESCALATE
+      to violence, OR may be violent from start. Key characteristic: participants are
+      clearly identified as engaging in VIOLENCE (not police response to peaceful protest).
+      Violence must be initiated by protesters, not reaction to state repression.
+    
+    positive_examples:
+      - "During protest march, group of youths broke shop windows and clashed with police"
+      - "Rioters set fires to vehicles and fought with security forces"
+      - "Violent confrontation resulted in 15 injured and 30 arrests"
+      - "Looters and arsonists took over downtown streets for several hours"
+    
+    negative_examples:
+      - "Police used tear gas against peaceful protesters (police action, not riot)"
+      - "Peaceful march where police initiated violence (still classify as DEMONSTRATION)"
+      - "Property damage from weather/accident, not collective violence"
+      - "Verbal fight between individuals on political topic (not collective action)"
+    
+    decision_rules:
+      - "CRITICAL: Violence must be initiated by PROTESTERS, not police response"
+      - "IF peaceful protest → police use force → classify as DEMONSTRATION (not riot)"
+      - "IF some violence during event, ask: was it majority participant action or minority action?"
+      - "IF minority broke off to riot while main group stayed peaceful → code as TWO EVENTS"
+      - "When in doubt: favor peaceful classification (assume force was provoked by police)"
+    
+    confidence_threshold: 0.80
+    codebook_equivalents:
+      acled: "Riots"
+      poldem: "Protest violently or riot (code 34-35)"
+      capt: "Riot"
+    
+    temporal_markers:
+      - "riot", "violent clash", "violent protest", "looting", "arson", "burning", "fighting", "clashed with"
+
+  occupation_seizure:
+    name: "Occupation or Building Seizure"
+    definition: |
+      Occupation of physical space (building, plaza, street, land) by ≥2 protesters
+      for extended period (≥2 hours typically, can range from hours to weeks) to
+      express demands or exert pressure through physical presence. Action is usually
+      non-violent but represents direct action seizing control of space. Examples:
+      sit-ins, encampments, takeovers of buildings/offices.
+    
+    positive_examples:
+      - "Activists occupied plaza for 3 weeks, setting up camp to protest austerity measures"
+      - "Students sat in at university administration building demanding policy change"
+      - "Protesters blocked entry to government office for 24 hours"
+      - "Movement established autonomous zone with barriers and tents in downtown area"
+    
+    negative_examples:
+      - "Brief blockade lasting <15 minutes (better classified as CONFRONTATION)"
+      - "Occupying own private property for reasons unrelated to protest"
+    
+    decision_rules:
+      - "KEY: Duration and intentional occupation of space critical"
+      - "IF just blocking passage without occupying space → CONFRONTATION"
+      - "IF occupies space for hours+ → OCCUPATION"
+    
+    confidence_threshold: 0.75
+
+  confrontation:
+    name: "Confrontation (Direct Action, Non-Violent)"
+    definition: |
+      Intentional, direct engagement with authorities, institutions, or counter-protesters
+      through non-violent confrontational actions (not violence, not peaceful demonstration).
+      Examples: blocking roads/pathways, surrounding buildings, surrounding individuals,
+      picketing, disrupting events, entering restricted areas. Purpose is to obstruct,
+      interrupt, or directly challenge through physical presence rather than walking/standing.
+    
+    positive_examples:
+      - "Activists blocked entrance to government building, preventing workers from entering"
+      - "Group surrounded police vehicle and prevented it from leaving"
+      - "Protesters disrupted political rally by interrupting speakers"
+      - "Activists picketed outside corporate headquarters"
+    
+    negative_examples:
+      - "People simply standing in crowd (classification: DEMONSTRATION)"
+      - "Violence or property destruction (classification: RIOT)"
+      - "Organized work stoppage (classification: STRIKE)"
+    
+    decision_rules:
+      - "Distinguish from DEMONSTRATION: Confrontation involves direct obstruction/interruption"
+      - "Distinguish from RIOT: Confrontation is intentional but non-violent"
+    
+    confidence_threshold: 0.70
+
+  petition_signature:
+    name: "Petition, Letter Campaign, Signature Collection"
+    definition: |
+      Organized collection of signatures on petitions, letter-writing campaigns, or
+      formal written demands. Must involve ACTIVE collection/organization (e.g., public
+      petition table, coordinated email campaign), not just individuals signing.
+      Excludes online petitions or social media unless explicitly part of organized campaign.
+    
+    positive_examples:
+      - "Group set up table to collect signatures for petition demanding park preservation"
+      - "Union coordinated letter-writing campaign to legislators demanding wage increase"
+      - "Environmental organization organized online petition with 100,000+ signers as campaign"
+    
+    negative_examples:
+      - "Individual posts petition online without organizing others"
+      - "Person signs petition they found (signing alone, not organizing)"
+    
+    confidence_threshold: 0.65
+
+# ============================================================================
+# EDGE CASES & DISAMBIGUATION
+# ============================================================================
+
+edge_cases:
+  
+  multi_event_same_day:
+    description: "Multiple different protests in same city on same day"
+    rule: "Code as SEPARATE events IF different location, actors, or goals. Code as ONE if same location/actors/goals, different times."
+    example: "Morning protest at city hall, evening march at courthouse → TWO EVENTS"
+  
+  escalation_during_event:
+    description: "Peaceful protest that escalates to violence"
+    rule: "If most participants remain peaceful → DEMONSTRATION. If majority escalates → RIOT. If small group breaks off → TWO EVENTS"
+    example: "March stays peaceful, 50 people break off and loot → Code march as DEMONSTRATION, looting as separate RIOT event"
+  
+  ongoing_occupation:
+    description: "Multi-day occupation"
+    rule: "Code as ONE OCCUPATION event if continuous. If broken up then resumed elsewhere, may be TWO events"
+  
+  counter_protest:
+    description: "Opposing groups protesting same topic or location"
+    rule: "If separated spatially/temporally → TWO EVENTS. If directly confronting → ONE CONFRONTATION event or TWO DEMONSTRATIONS with note about counter-protest"
+
+# ============================================================================
+# NON-EVENTS (Explicit Exclusions)
+# ============================================================================
+
+non_events:
+  - description: "Political violence not targeting institutions"
+    example: "Individuals attack each other due to political disagreements, not protest"
+    reason: "Lacks collective public nature"
+  
+  - description: "Armed rebellion, terrorism, insurgency"
+    example: "Armed group attacks government targets"
+    reason: "Beyond scope of protest event analysis (see conflict datasets)"
+  
+  - description: "Sports/entertainment event with political participants"
+    example: "Political group goes to sports game"
+    reason: "No explicit protest element"
+  
+  - description: "Internal organizational meetings"
+    example: "Party meeting to plan campaign"
+    reason: "Not public protest action"
+
+# ============================================================================
+# CONFIDENCE THRESHOLDS EXPLAINED
+# ============================================================================
+
+confidence_guidance:
+  high_confidence_0_85_plus:
+    meaning: "Clear case, unambiguous match to definition"
+    action: "Use for analysis without hesitation"
+    examples:
+      - "Text explicitly states 'the protest march' with thousands of people"
+      - "News headline 'workers strike demands wage increase'"
+  
+  medium_confidence_0_65_to_0_84:
+    meaning: "Reasonably clear but some ambiguity remains"
+    action: "Use for analysis but flag in sensitivity analyses"
+    examples:
+      - "Report of 'gathering' that sounds political but not explicit"
+      - "Implied organization but stated individually"
+  
+  low_confidence_below_0_65:
+    meaning: "Significant ambiguity, could be multiple types"
+    action: "Exclude from main analysis OR code as 'uncertain' and analyze separately"
+    examples:
+      - "Brief mention with little context"
+      - "Text could describe protest or other gathering"
+
+# ============================================================================
+# QUALITY CONTROL QUESTIONS
+# ============================================================================
+
+qc_checklist:
+  - "Does the text explicitly mention the action (verb)? (e.g., 'marched', 'protested')"
+  - "Does the text indicate political motivation? (e.g., demands, grievances, claims)"
+  - "Can I identify minimum participants threshold? (≥2 for most types)"
+  - "Does the text specify location AND date?"
+  - "Is there any ambiguity that would lower confidence?"
+  - "Does this match NEGATIVE examples instead of POSITIVE examples?"
+  - "Would an expert protest scholar agree with this classification?"
+
+# ============================================================================
+# CODING RULES SUMMARY
+# ============================================================================
+
+general_rules:
+  1_primary_type: "Assign ONE primary event type per event"
+  2_confidence: "Provide confidence score reflecting certainty"
+  3_text_only: "Use only information in provided text; don't assume context"
+  4_political: "All classifications require explicit or very clear political motivation"
+  5_peace_bias: "When uncertain, bias toward peaceful classification"
+  6_organization: "Protests require ≥2 people; distinction between organized vs. spontaneous matters"
+  7_location_temporal: "All events must have identifiable location and date"
+  8_ambiguous_types: "If genuinely ambiguous between 2 types, choose more restrictive one"
+
