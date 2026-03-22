@@ -232,6 +232,8 @@ def extract_from_article(
         events = _parse_events(raw)
 
         if events is not None:  # empty list is valid (no events in article)
+            # Discard any non-dict items (llama2 occasionally returns strings)
+            events = [e for e in events if isinstance(e, dict)]
             # Backfill metadata fields the LLM may have omitted
             for event in events:
                 event.setdefault("article_url", article.get("url", ""))
