@@ -1,17 +1,18 @@
-# Example Protest Event Codebook for LLM Classification
+# Protest Event Codebook for LLM Classification
 # Aligned with Meta Codebook & Halterman & Keith (2025)
 # Author: Your Name
 # Created: March 2026
-# Version: 1.0
+# Version: 2.1
 
 metadata:
   title: "Comprehensive Protest Event Codebook for LLM Classification"
-  description: "Type III Stipulative definitions for zero-shot and few-shot event classification"
+  description: "Type III Stipulative definitions for zero-shot and few-shot event classification. v2.1 adds vigil and hunger_strike event types, and introduces turmoil_level as a derived output field."
   temporal_scope: "Any time period"
   geographic_scope: "Global (English-language sources)"
   source_datasets: ["ACLED", "PolDem", "FARPE", "Meta Codebook"]
   unit_of_analysis: "Individual protest event"
   minimum_participants: 2
+  llm_backend: "Claude (Anthropic API)"
 
 # ============================================================================
 # CORE EVENT TYPES
@@ -27,34 +28,34 @@ event_types:
       grievances, or support for a cause. Participants engage in PEACEFUL actions
       such as chanting, holding signs, speeches, or walking together (no violence).
       Must have explicit political motivation or public purpose.
-    
+
     positive_examples:
       - "500 workers gathered outside factory demanding wage increases and better benefits"
       - "Climate activists held a 3-hour march through downtown with signs reading 'Save Our Planet'"
       - "Labor union organized peaceful rally outside city hall to protest pension cuts"
       - "2,000 people demonstrated in streets supporting voting rights for undocumented immigrants"
-    
+
     negative_examples:
       - "Individual person standing alone with sign (lacks ≥2 people threshold)"
       - "Spontaneous bar brawl that happens to involve political workers (violence + no stated political goal)"
       - "Online petition or social media discussion about a cause (not physical assembly)"
       - "News report ABOUT a protest (the article itself is not the protest event)"
       - "Church service attended by activists (not explicitly political assembly)"
-    
+
     decision_rules:
       - "IF participants are ≥2 AND physically assembled AND expressing political demands AND non-violent → classify as DEMONSTRATION"
       - "IF peaceful demonstration escalates to violence during the same time period → classify as RIOT (escalation takes priority)"
       - "IF demonstration is part of larger strike (e.g., striking workers march) → classify as STRIKE (more specific category)"
       - "IF duration < 15 minutes AND no specific political claim → consider CONFRONTATION instead"
       - "IF ≥5,000 people AND event described as 'unruly' or 'massive turnout' → still DEMONSTRATION if non-violent"
-    
+
     confidence_threshold: 0.70
     codebook_equivalents:
       acled: "Protests"
       poldem: "Demonstration, protest march (code 3 or 6)"
       farpe: "Public assembly, March/demonstration"
       capt: "Rally, March"
-    
+
     temporal_markers:
       - "gathered"
       - "assembled"
@@ -79,30 +80,30 @@ event_types:
       INTENTIONAL and ORGANIZED (not individual choice). Participants halt production,
       refuse to work shifts, or organize coordinated non-consumption to pressure targets
       into policy change or wage/benefit improvements.
-    
+
     positive_examples:
       - "Union members refused to work, shutting down production at automotive factory"
       - "Organized consumer boycott of company products to protest labor practices"
       - "Teachers' union called members out to strike, closing schools across district"
       - "Bus drivers coordinated week-long strike demanding pension improvements"
-    
+
     negative_examples:
       - "Individual worker decided not to go to work (personal choice, not organized)"
       - "Shoppers choosing not to buy a brand because they prefer competitor (market choice)"
       - "Mass sick day that wasn't organized by group (spontaneous, not collective action)"
-    
+
     decision_rules:
       - "KEY: Must be ORGANIZED (e.g., union call, group coordination, announced publicly)"
       - "Individual refusal without organization → NOT a strike/boycott"
       - "IF work stoppage explicitly tied to demands → STRIKE"
       - "IF refusal to consume tied to political goal → BOYCOTT"
-    
+
     confidence_threshold: 0.75
     codebook_equivalents:
       acled: "Protests (specific to strikes)"
       poldem: "Strike (code 1), Boycott (code 11)"
       capt: "Strike"
-    
+
     temporal_markers:
       - "strike"
       - "boycott"
@@ -119,32 +120,32 @@ event_types:
       to violence, OR may be violent from start. Key characteristic: participants are
       clearly identified as engaging in VIOLENCE (not police response to peaceful protest).
       Violence must be initiated by protesters, not reaction to state repression.
-    
+
     positive_examples:
       - "During protest march, group of youths broke shop windows and clashed with police"
       - "Rioters set fires to vehicles and fought with security forces"
       - "Violent confrontation resulted in 15 injured and 30 arrests"
       - "Looters and arsonists took over downtown streets for several hours"
-    
+
     negative_examples:
       - "Police used tear gas against peaceful protesters (police action, not riot)"
       - "Peaceful march where police initiated violence (still classify as DEMONSTRATION)"
       - "Property damage from weather/accident, not collective violence"
       - "Verbal fight between individuals on political topic (not collective action)"
-    
+
     decision_rules:
       - "CRITICAL: Violence must be initiated by PROTESTERS, not police response"
       - "IF peaceful protest → police use force → classify as DEMONSTRATION (not riot)"
       - "IF some violence during event, ask: was it majority participant action or minority action?"
       - "IF minority broke off to riot while main group stayed peaceful → code as TWO EVENTS"
       - "When in doubt: favor peaceful classification (assume force was provoked by police)"
-    
+
     confidence_threshold: 0.80
     codebook_equivalents:
       acled: "Riots"
       poldem: "Protest violently or riot (code 34-35)"
       capt: "Riot"
-    
+
     temporal_markers:
       - "riot"
       - "violent clash"
@@ -163,22 +164,22 @@ event_types:
       express demands or exert pressure through physical presence. Action is usually
       non-violent but represents direct action seizing control of space. Examples:
       sit-ins, encampments, takeovers of buildings/offices.
-    
+
     positive_examples:
       - "Activists occupied plaza for 3 weeks, setting up camp to protest austerity measures"
       - "Students sat in at university administration building demanding policy change"
       - "Protesters blocked entry to government office for 24 hours"
       - "Movement established autonomous zone with barriers and tents in downtown area"
-    
+
     negative_examples:
       - "Brief blockade lasting <15 minutes (better classified as CONFRONTATION)"
       - "Occupying own private property for reasons unrelated to protest"
-    
+
     decision_rules:
       - "KEY: Duration and intentional occupation of space critical"
       - "IF just blocking passage without occupying space → CONFRONTATION"
       - "IF occupies space for hours+ → OCCUPATION"
-    
+
     confidence_threshold: 0.75
 
   confrontation:
@@ -189,22 +190,22 @@ event_types:
       Examples: blocking roads/pathways, surrounding buildings, surrounding individuals,
       picketing, disrupting events, entering restricted areas. Purpose is to obstruct,
       interrupt, or directly challenge through physical presence rather than walking/standing.
-    
+
     positive_examples:
       - "Activists blocked entrance to government building, preventing workers from entering"
       - "Group surrounded police vehicle and prevented it from leaving"
       - "Protesters disrupted political rally by interrupting speakers"
       - "Activists picketed outside corporate headquarters"
-    
+
     negative_examples:
       - "People simply standing in crowd (classification: DEMONSTRATION)"
       - "Violence or property destruction (classification: RIOT)"
       - "Organized work stoppage (classification: STRIKE)"
-    
+
     decision_rules:
       - "Distinguish from DEMONSTRATION: Confrontation involves direct obstruction/interruption"
       - "Distinguish from RIOT: Confrontation is intentional but non-violent"
-    
+
     confidence_threshold: 0.70
 
   petition_signature:
@@ -214,41 +215,179 @@ event_types:
       formal written demands. Must involve ACTIVE collection/organization (e.g., public
       petition table, coordinated email campaign), not just individuals signing.
       Excludes online petitions or social media unless explicitly part of organized campaign.
-    
+
     positive_examples:
       - "Group set up table to collect signatures for petition demanding park preservation"
       - "Union coordinated letter-writing campaign to legislators demanding wage increase"
       - "Environmental organization organized online petition with 100,000+ signers as campaign"
-    
+
     negative_examples:
       - "Individual posts petition online without organizing others"
       - "Person signs petition they found (signing alone, not organizing)"
-    
+
     confidence_threshold: 0.65
+
+  vigil:
+    name: "Vigil or Commemorative Assembly"
+    definition: |
+      A solemn, typically silent or quiet gathering of ≥2 people to mourn, remember,
+      or bear witness — often in response to a tragedy, death, or injustice. May be
+      explicitly political (e.g., demanding justice, policy change) or primarily
+      commemorative. Candles, flowers, and silence are characteristic markers.
+      Duration is typically 30 minutes to several hours.
+
+    positive_examples:
+      - "Hundreds gathered by candlelight outside parliament to mourn victims of police shooting"
+      - "Community held silent vigil demanding justice after teenager killed by officers"
+      - "Activists organized overnight vigil outside prison the night before an execution"
+      - "Mourners held memorial rally calling for gun reform after school shooting"
+
+    negative_examples:
+      - "Private funeral or memorial service not open to public"
+      - "Religious service that makes no political demands"
+      - "Spontaneous crowd gathering at accident scene (no political intention)"
+
+    decision_rules:
+      - "IF vigil explicitly demands policy change or accountability → classify as VIGIL (not DEMONSTRATION)"
+      - "IF vigil turns into march or active protest → recode primary type as DEMONSTRATION"
+      - "Solemn atmosphere and symbolic acts (candles, flowers, silence) are key markers"
+
+    confidence_threshold: 0.70
+    codebook_equivalents:
+      acled: "Protests"
+      capt: "Vigil"
+
+    temporal_markers:
+      - "vigil"
+      - "candlelight"
+      - "mourners"
+      - "silent protest"
+      - "remembrance"
+      - "memorial rally"
+      - "bear witness"
+
+  hunger_strike:
+    name: "Hunger Strike or Self-Harm Protest"
+    definition: |
+      Individual or collective act of refusing food (or other self-deprivation) as a
+      form of protest to pressure authorities or draw attention to demands. Must be
+      publicly declared and politically motivated. Can be individual (one person) or
+      collective (multiple participants, often simultaneously). Duration is typically
+      days to weeks.
+
+    positive_examples:
+      - "Political prisoner announced hunger strike demanding release and fair trial"
+      - "Detained migrants began collective hunger strike to protest detention conditions"
+      - "Activist went on indefinite hunger strike outside government ministry demanding land rights"
+      - "Six prisoners simultaneously refused food to demand reform of solitary confinement"
+
+    negative_examples:
+      - "Person skips meals due to poverty (not a declared protest act)"
+      - "Private fast for religious reasons (no political claim)"
+      - "Person threatens hunger strike but does not begin one"
+
+    decision_rules:
+      - "Must be PUBLICLY DECLARED (announced to media, authorities, or public)"
+      - "Must have EXPLICIT POLITICAL DEMAND or grievance"
+      - "Can be a single individual (minimum participants rule does not apply)"
+      - "IF hunger strike combined with occupation → code as HUNGER_STRIKE (more specific)"
+
+    confidence_threshold: 0.75
+    codebook_equivalents:
+      acled: "Protests"
+      poldem: "Hunger strike (code 12)"
+
+    temporal_markers:
+      - "hunger strike"
+      - "refused food"
+      - "fasting in protest"
+      - "starvation protest"
+      - "went without food"
+
+# ============================================================================
+# DERIVED OUTPUT FIELD: TURMOIL LEVEL
+# ============================================================================
+
+turmoil_level:
+  description: |
+    A derived summary field indicating the overall intensity or turmoil of a
+    protest event, combining information about state response, violence, arrests,
+    fatalities, and injuries. Computed automatically from extracted fields —
+    NOT extracted directly from the article text.
+
+  values:
+    high:
+      label: "High turmoil"
+      criteria:
+        - "Fatalities reported (fatalities > 0)"
+        - "State response includes live_ammunition or rubber_bullets"
+        - "Outcome is 'escalated'"
+        - "Injuries reported AND arrests made simultaneously"
+      examples:
+        - "Police opened fire on crowd, killing 2 and injuring 15"
+        - "Security forces fired live rounds as riot escalated; 30 arrested"
+
+    medium:
+      label: "Medium turmoil"
+      criteria:
+        - "State response includes teargas, water_cannon, or dispersal"
+        - "Injuries reported (but no fatalities)"
+        - "Arrests made"
+        - "Outcome is 'arrested' or 'dispersed' with force"
+      examples:
+        - "Police dispersed protesters with tear gas; 10 arrested"
+        - "Three protesters injured in clashes with security forces"
+
+    low:
+      label: "Low turmoil"
+      criteria:
+        - "No state response OR state response is 'monitoring' only"
+        - "No injuries or fatalities"
+        - "Outcome is 'ongoing', 'demands_met', or 'partial_concession'"
+        - "Peaceful event with no escalation reported"
+      examples:
+        - "Peaceful march concluded without incident"
+        - "Protesters delivered petition; officials agreed to meet"
+
+  derivation_logic: |
+    Evaluate in order:
+    1. IF fatalities > 0 OR state_response IN [live_ammunition, rubber_bullets]
+       OR outcome == escalated → turmoil_level = high
+    2. ELSE IF state_response IN [teargas, water_cannon, dispersal, arrests]
+       OR injuries is not null/zero → turmoil_level = medium
+    3. ELSE → turmoil_level = low
 
 # ============================================================================
 # EDGE CASES & DISAMBIGUATION
 # ============================================================================
 
 edge_cases:
-  
+
   multi_event_same_day:
     description: "Multiple different protests in same city on same day"
     rule: "Code as SEPARATE events IF different location, actors, or goals. Code as ONE if same location/actors/goals, different times."
     example: "Morning protest at city hall, evening march at courthouse → TWO EVENTS"
-  
+
   escalation_during_event:
     description: "Peaceful protest that escalates to violence"
     rule: "If most participants remain peaceful → DEMONSTRATION. If majority escalates → RIOT. If small group breaks off → TWO EVENTS"
     example: "March stays peaceful, 50 people break off and loot → Code march as DEMONSTRATION, looting as separate RIOT event"
-  
+
   ongoing_occupation:
     description: "Multi-day occupation"
     rule: "Code as ONE OCCUPATION event if continuous. If broken up then resumed elsewhere, may be TWO events"
-  
+
   counter_protest:
     description: "Opposing groups protesting same topic or location"
     rule: "If separated spatially/temporally → TWO EVENTS. If directly confronting → ONE CONFRONTATION event or TWO DEMONSTRATIONS with note about counter-protest"
+
+  vigil_to_demonstration:
+    description: "Vigil that transitions into an active march or demonstration"
+    rule: "If vigil transitions into active march or chanting → recode as DEMONSTRATION. If it remains solemn throughout → VIGIL"
+
+  hunger_strike_in_prison:
+    description: "Hunger strike by prisoners or detainees"
+    rule: "Count as HUNGER_STRIKE regardless of participant count (even 1). Must be publicly declared."
 
 # ============================================================================
 # NON-EVENTS (Explicit Exclusions)
@@ -258,18 +397,22 @@ non_events:
   - description: "Political violence not targeting institutions"
     example: "Individuals attack each other due to political disagreements, not protest"
     reason: "Lacks collective public nature"
-  
+
   - description: "Armed rebellion, terrorism, insurgency"
     example: "Armed group attacks government targets"
     reason: "Beyond scope of protest event analysis (see conflict datasets)"
-  
+
   - description: "Sports/entertainment event with political participants"
     example: "Political group goes to sports game"
     reason: "No explicit protest element"
-  
+
   - description: "Internal organizational meetings"
     example: "Party meeting to plan campaign"
     reason: "Not public protest action"
+
+  - description: "Private mourning with no political claim"
+    example: "Family funeral for a political figure"
+    reason: "No collective public protest element"
 
 # ============================================================================
 # CONFIDENCE THRESHOLDS EXPLAINED
@@ -282,14 +425,14 @@ confidence_guidance:
     examples:
       - "Text explicitly states 'the protest march' with thousands of people"
       - "News headline 'workers strike demands wage increase'"
-  
+
   medium_confidence_0_65_to_0_84:
     meaning: "Reasonably clear but some ambiguity remains"
     action: "Use for analysis but flag in sensitivity analyses"
     examples:
       - "Report of 'gathering' that sounds political but not explicit"
       - "Implied organization but stated individually"
-  
+
   low_confidence_below_0_65:
     meaning: "Significant ambiguity, could be multiple types"
     action: "Exclude from main analysis OR code as 'uncertain' and analyze separately"
@@ -304,11 +447,12 @@ confidence_guidance:
 qc_checklist:
   - "Does the text explicitly mention the action (verb)? (e.g., 'marched', 'protested')"
   - "Does the text indicate political motivation? (e.g., demands, grievances, claims)"
-  - "Can I identify minimum participants threshold? (≥2 for most types)"
+  - "Can I identify minimum participants threshold? (≥2 for most types; hunger strike can be 1)"
   - "Does the text specify location AND date?"
   - "Is there any ambiguity that would lower confidence?"
   - "Does this match NEGATIVE examples instead of POSITIVE examples?"
   - "Would an expert protest scholar agree with this classification?"
+  - "Have I correctly derived turmoil_level from the extracted fields?"
 
 # ============================================================================
 # CODING RULES SUMMARY
@@ -320,7 +464,7 @@ general_rules:
   3_text_only: "Use only information in provided text; don't assume context"
   4_political: "All classifications require explicit or very clear political motivation"
   5_peace_bias: "When uncertain, bias toward peaceful classification"
-  6_organization: "Protests require ≥2 people; distinction between organized vs. spontaneous matters"
+  6_organization: "Protests require ≥2 people (exception: hunger_strike can be 1); distinction between organized vs. spontaneous matters"
   7_location_temporal: "All events must have identifiable location and date"
   8_ambiguous_types: "If genuinely ambiguous between 2 types, choose more restrictive one"
-
+  9_turmoil_level: "Always derive turmoil_level from extracted fields using the defined derivation logic"

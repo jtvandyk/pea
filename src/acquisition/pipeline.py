@@ -8,17 +8,23 @@ Stages:
   1. DISCOVERY   — query GDELT DOC API for candidate article URLs
   2. SCRAPING    — fetch full article text from source URLs
   3. TRANSLATION — detect and translate non-English text (optional)
-  4. EXTRACTION  — local Llama (via Ollama) extracts structured protest event fields
+  4. EXTRACTION  — Claude (Anthropic API) extracts structured protest event fields
   5. STORAGE     — save results to data/raw/ as JSONL + CSV
+
+Codebook version: 2.1
 
 Usage (from repo root):
     python -m src.acquisition.pipeline
     python -m src.acquisition.pipeline --query "protest strike" --countries NG,ZA,UG,DZ --days 7
     python -m src.acquisition.pipeline --help
+
+Requires:
+    ANTHROPIC_API_KEY environment variable (or pass --claude-api-key)
 """
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 from datetime import datetime
@@ -47,12 +53,12 @@ def run_pipeline(
     output_dir: Path,
     max_articles: int = 100,
     translate: bool = True,
-    ollama_model: str = "llama2",
-    ollama_base_url: str = "http://localhost:11434",
+    claude_model: str = "claude-sonnet-4-6",
+    claude_api_key: str | None = None,
 ):
-    log.info("=== Protest Event Analysis Pipeline ===")
+    log.info("=== Protest Event Analysis Pipeline (codebook v2.1) ===")
     log.info(f"Query: '{query}' | Countries: {countries} | Days back: {days}")
-    log.info(f"LLM: {ollama_model} @ {ollama_base_url}")
+    log.info(f"LLM: {claude_model} (Anthropic Claude API)")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     run_id = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
@@ -87,12 +93,12 @@ def run_pipeline(
             a["text_en"] = a.get("text")
             a["text_lang"] = "unknown"
 
-    # Stage 4: LLM Extraction
-    log.info("--- Stage 4: LLM Event Extraction (local Llama via Ollama) ---")
+    # Stage 4: LLM Extraction via Claude
+    log.info("--- Stage 4: LLM Event Extraction (Claude API) ---")
     events = extract_events(
         scraped,
-        model=ollama_model,
-        base_url=ollama_base_url,
+        model=claude_model,
+        api_key=claude_api_key,
     )
     log.info(f"Extracted {len(events)} protest events")
 
@@ -107,7 +113,7 @@ def run_pipeline(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Protest Event Analysis Pipeline — Global South focus"
+        description="Protest Event Analysis Pipeline — Global South focus (codebook v2.1)"
     )
     parser.add_argument(
         "--query", default="protest demonstration strike rally march",
@@ -125,10 +131,10 @@ def main():
                         help="Directory to write results (default: data/raw/)")
     parser.add_argument("--no-translate", action="store_true",
                         help="Skip translation step")
-    parser.add_argument("--ollama-model", default="llama2",
-                        help="Ollama model name (default: llama2)")
-    parser.add_argument("--ollama-url", default="http://localhost:11434",
-                        help="Ollama server base URL")
+    parser.add_argument("--claude-model", default="claude-sonnet-4-6",
+                        help="Claude model ID (default: claude-sonnet-4-6)")
+    parser.add_argument("--claude-api-key", default=None,
+                        help="Anthropic API key (defaults to ANTHROPIC_API_KEY env var)")
     args = parser.parse_args()
 
     run_pipeline(
@@ -138,8 +144,8 @@ def main():
         output_dir=Path(args.output_dir),
         max_articles=args.max_articles,
         translate=not args.no_translate,
-        ollama_model=args.ollama_model,
-        ollama_base_url=args.ollama_url,
+        claude_model=args.claude_model,
+        claude_api_key=args.claude_api_key,
     )
 
 
