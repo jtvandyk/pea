@@ -1,0 +1,23 @@
+# Core pipeline dependencies only (used by Dockerfile)
+# GPU/ML packages (vllm, torch, transformers, etc.) are in requirements.txt
+
+# Text Acquisition Pipeline
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+newspaper4k>=0.9.0
+langdetect>=1.0.9
+deep-translator>=1.11.0
+
+# LLM APIs
+anthropic>=0.49.0
+
+# Data Processing
+pydantic==2.6.0
+pandas==2.1.0
+numpy==1.24.0
+
+# Utilities
+python-dotenv==1.0.0
+pyyaml==6.0
+tqdm==4.66.0
+requests==2.31.0
