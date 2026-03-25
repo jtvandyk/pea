@@ -2,14 +2,17 @@
 LLM Event Extraction Module
 =============================
 Extracts structured protest event fields from news article text
-using a local Llama model via Ollama (no API key required).
+using the Claude API (Anthropic).
 
-The extractor follows the meta-codebook schema, extracting:
+Codebook version: 2.2
+Follows the meta-codebook schema, extracting:
   - Event identification (date, location, country)
   - Actor information (who organised/participated)
-  - Event type (protest, strike, riot, etc.)
+  - Event type (demonstration_march, strike_boycott, riot, occupation_seizure,
+    confrontation, petition_signature, vigil, hunger_strike)
   - Claims/grievances (what protesters demanded)
   - Size / participation estimate
+  - Duration
   - State response (police, military, arrests)
   - Outcome / escalation
   - Fatalities / injuries
@@ -21,16 +24,18 @@ The LLM is instructed to return a JSON array of event objects.
 
 import json
 import logging
+import os
+import re
 import time
 from typing import Optional
 
-log = logging.getLogger(__name__)
+import anthropic
 
-# Ollama chat endpoint supports system + user roles
-OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
+log = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are an expert coder for a protest event analysis (PEA) dataset,
 specialising in the Global South and African contexts.
+You follow codebook version 2.2, aligned with Halterman & Keith (2025).
 
 Your task is to read a news article and extract structured information about
 each distinct protest event described.
@@ -52,7 +57,7 @@ Return an empty array [] immediately if the article is primarily about ANY of:
 == STEP 2: APPLY MINIMUM CRITERIA ==
 
 An article ONLY qualifies if ALL of the following are true:
-1. ≥2 people act together
+1. ≥2 people act together (exception: hunger_strike can be 1 person)
 2. In a public setting
 3. With explicit political motivation, demand, or grievance
 4. Outside normal institutional channels
@@ -64,21 +69,27 @@ For qualifying articles, extract each distinct protest event. Follow these rules
 1. Extract ONLY information explicitly stated — do not infer or hallucinate.
 2. If a field is not mentioned, use null.
 3. One article may describe multiple distinct events — return all of them.
-4. For event_type, use EXACTLY one of these keys:
+4. For location, prefer the most specific level available (city > region > country).
+5. For actor names, use the full organisation/group name as given in the article.
+6. For event_type, use EXACTLY one of these keys:
    - demonstration_march  (peaceful public gathering, rally, march)
    - strike_boycott       (organized work stoppage or consumer boycott)
    - riot                 (violent collective action initiated by protesters)
    - occupation_seizure   (sit-in, encampment, building takeover)
    - confrontation        (non-violent direct action: blocking, picketing, disrupting)
    - petition_signature   (organized petition or letter campaign)
-5. For state_response, choose from: none, monitoring, dispersal, teargas, water_cannon,
+   - vigil                (solemn/commemorative gathering, candlelight assembly)
+   - hunger_strike        (publicly declared food refusal as political protest)
+7. For state_response, choose from: none, monitoring, dispersal, teargas, water_cannon,
    rubber_bullets, live_ammunition, arrests, ban, curfew, unknown.
-6. For outcome, choose from: ongoing, dispersed, arrested, demands_met, partial_concession,
+8. For outcome, choose from: ongoing, dispersed, arrested, demands_met, partial_concession,
    escalated, unknown.
-7. crowd_size: numeric estimate if given, or "hundreds" / "thousands" / "tens of thousands".
-8. claims: brief list of main demands or grievances stated in the article.
-9. confidence: "high" (clear, unambiguous protest), "medium" (some ambiguity), "low" (borderline).
-   Do NOT use "unknown" — always choose high, medium, or low.
+9. crowd_size: numeric estimate if given, or "hundreds" / "thousands" / "tens of thousands".
+10. claims: brief list of main demands or grievances stated in the article.
+11. duration: how long the event lasted if stated (e.g. "3 hours", "2 days").
+12. state_actors: list specific police units, military branches, or security forces named.
+13. confidence: "high" (clear, unambiguous protest), "medium" (some ambiguity), "low" (borderline).
+    Do NOT use "unknown" — always choose high, medium, or low.
 
 Return ONLY a valid JSON array. No preamble, no explanation, no markdown fences.
 If the article contains no qualifying protest events, return: []
@@ -90,7 +101,7 @@ JSON schema for each event:
   "city": "city or town name",
   "region": "state/province/region",
   "location_notes": "any additional location context",
-  "event_type": "demonstration_march | strike_boycott | riot | occupation_seizure | confrontation | petition_signature",
+  "event_type": "one of the 8 allowed keys above",
   "organizer": "organisation or group that called the event",
   "participant_groups": ["list of groups/demographics who participated"],
   "claims": ["list of demands or grievances"],
@@ -123,51 +134,43 @@ Article text:
 Extract all protest events from this article and return a JSON array."""
 
 
-def _call_ollama(
+def _call_claude(
     system: str,
     user: str,
     model: str,
-    base_url: str,
+    api_key: str,
     timeout: int = 180,
 ) -> Optional[str]:
     """
-    Call local Ollama chat endpoint with system + user messages.
+    Call the Claude API with system + user messages.
     Returns the assistant response text, or None on failure.
     """
-    import requests
-
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        "stream": False,
-        "options": {"temperature": 0.1},
-    }
     try:
-        resp = requests.post(
-            f"{base_url}/api/chat",
-            json=payload,
-            timeout=timeout,
+        client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
+        message = client.messages.create(
+            model=model,
+            max_tokens=4096,
+            system=system,
+            messages=[{"role": "user", "content": user}],
         )
-        resp.raise_for_status()
-        return resp.json()["message"]["content"]
+        return message.content[0].text
+    except anthropic.APIStatusError as e:
+        log.warning(f"Claude API error {e.status_code}: {e.message}")
+        return None
     except Exception as e:
-        log.warning(f"Ollama call failed: {e}")
+        log.warning(f"Claude call failed: {e}")
         return None
 
 
 def _clean_json(text: str) -> str:
     """Remove common LLM JSON formatting issues."""
-    import re
     # Strip markdown code fences
     if "```" in text:
         parts = text.split("```")
         text = parts[1] if len(parts) > 1 else text
         if text.startswith("json"):
             text = text[4:]
-    # Remove trailing commas before ] or } (invalid JSON that llama2 often emits)
+    # Remove trailing commas before ] or } (invalid JSON)
     text = re.sub(r",\s*([\]}])", r"\1", text)
     return text.strip()
 
@@ -208,7 +211,7 @@ def _parse_events(raw: str) -> list[dict]:
 def extract_from_article(
     article: dict,
     model: str,
-    base_url: str,
+    api_key: str,
     max_retries: int = 2,
 ) -> list[dict]:
     """
@@ -216,25 +219,13 @@ def extract_from_article(
     Returns list of extracted event dicts.
     """
     text = article.get("text_en") or article.get("text") or ""
-    lang = article.get("text_lang", "unknown")
-
-    # Skip articles in languages llama2 cannot reliably process.
-    # These are articles where translation failed and the language isn't
-    # in the set that llama2 handles natively — sending them causes timeouts.
-    PROCESSABLE = {
-        "en", "es", "fr", "pt", "ar", "de", "it", "ru",
-        "hi", "id", "ms", "tr", "unknown",
-    }
-    if lang not in PROCESSABLE:
-        log.info(f"  Skipping untranslatable article (lang={lang}): {article.get('url','')[:60]}")
-        return []
 
     if not text or len(text) < 100:
         log.debug(f"Skipping article with insufficient text: {article.get('url', '')[:60]}")
         return []
 
-    # Truncate to avoid context limits on smaller models
-    truncated_text = text[:6000]
+    # Claude handles a wide range of languages; truncate generously
+    truncated_text = text[:12000]
 
     prompt = USER_PROMPT_TEMPLATE.format(
         title=article.get("title", "Unknown"),
@@ -246,15 +237,15 @@ def extract_from_article(
     )
 
     for attempt in range(max_retries + 1):
-        raw = _call_ollama(
+        raw = _call_claude(
             system=SYSTEM_PROMPT,
             user=prompt,
             model=model,
-            base_url=base_url,
+            api_key=api_key,
         )
 
         if raw is None:
-            log.warning(f"Ollama returned nothing (attempt {attempt + 1})")
+            log.warning(f"Claude returned nothing (attempt {attempt + 1})")
             if attempt < max_retries:
                 time.sleep(2 ** attempt)
             continue
@@ -262,7 +253,7 @@ def extract_from_article(
         events = _parse_events(raw)
 
         if events is not None:  # empty list is valid (no events in article)
-            # Discard any non-dict items (llama2 occasionally returns strings)
+            # Discard any non-dict items
             events = [e for e in events if isinstance(e, dict)]
             # Backfill metadata fields the LLM may have omitted
             for event in events:
@@ -282,22 +273,28 @@ def extract_from_article(
 
 def extract_events(
     articles: list[dict],
-    model: str = "llama2",
-    base_url: str = "http://localhost:11434",
+    model: str = "claude-sonnet-4-6",
+    api_key: Optional[str] = None,
     rate_limit_delay: float = 0.5,
 ) -> list[dict]:
     """
-    Run LLM extraction across all scraped articles.
+    Run LLM extraction across all scraped articles using Claude.
 
     Args:
         articles: list of article dicts with 'text_en' field
-        model: Ollama model name (default: llama2)
-        base_url: Ollama server base URL
+        model: Claude model ID (default: claude-sonnet-4-6)
+        api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
         rate_limit_delay: seconds between requests (polite pacing)
 
     Returns:
         flat list of all extracted event dicts
     """
+    resolved_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not resolved_key:
+        raise ValueError(
+            "No Anthropic API key provided. Set ANTHROPIC_API_KEY or pass api_key=."
+        )
+
     all_events = []
     processed = 0
     skipped = 0
@@ -306,7 +303,7 @@ def extract_events(
         url = article.get("url", "")[:70]
         log.info(f"[{i+1}/{len(articles)}] Extracting from: {url}...")
 
-        events = extract_from_article(article, model=model, base_url=base_url)
+        events = extract_from_article(article, model=model, api_key=resolved_key)
 
         if events:
             log.info(f"  ✓ Found {len(events)} event(s)")

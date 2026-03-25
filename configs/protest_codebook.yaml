@@ -2,27 +2,32 @@
 # Aligned with Meta Codebook & Halterman & Keith (2025)
 # Author: Your Name
 # Created: March 2026
-# Version: 1.1 — Revised after first pipeline run (2026-03-22)
+# Version: 2.2 — Merged v1.1 (non-event filtering, African context) +
+#                 v2.1 (vigil/hunger_strike types, turmoil_level)
 #
-# Revision notes (v1.1):
-#   - Expanded non_events based on observed false positives: conferences, celebrations,
-#     armed attacks, sports matches, economic meetings, helicopter crashes, phone calls,
-#     import/export news, donations, war/conflict reporting
-#   - Added African/Global South context notes throughout
-#   - Added mandatory pre-extraction checklist (minimum_criteria)
-#   - Aligned event_type keys with extractor vocabulary (see type_aliases)
-#   - Strengthened confidence guidance
+# Revision notes (v2.2):
+#   - Non-event disqualifiers and minimum_criteria gate from v1.1
+#   - Expanded non_events covering all observed false positives from first pipeline run
+#   - African/Global South context section from v1.1
+#   - Type aliases for extractor normalisation from v1.1
+#   - vigil and hunger_strike event types from v2.1
+#   - turmoil_level derived field from v2.1
+#   - LLM backend: Claude API (Anthropic)
 
 metadata:
   title: "Protest Event Codebook for LLM Classification — Global South Focus"
-  description: "Type III Stipulative definitions for zero-shot and few-shot event classification"
+  description: |
+    Type III Stipulative definitions for zero-shot and few-shot event classification.
+    v2.2 combines non-event filtering (v1.1) with vigil/hunger_strike types and
+    turmoil_level derived field (v2.1).
   temporal_scope: "Any time period"
   geographic_scope: "Global South / non-Western contexts (primary); English and translated sources"
   source_datasets: ["ACLED", "PolDem", "FARPE", "Meta Codebook"]
   unit_of_analysis: "Individual protest event"
   minimum_participants: 2
-  version: "1.1"
-  last_updated: "2026-03-22"
+  llm_backend: "Claude (Anthropic API)"
+  version: "2.2"
+  last_updated: "2026-03-25"
 
 # ============================================================================
 # MINIMUM CRITERIA — ALL must be satisfied before any event is coded
@@ -31,7 +36,7 @@ metadata:
 # Before assigning any event type, verify ALL of the following:
 #
 minimum_criteria:
-  1_collective_action: "≥2 people acting together (not an individual)"
+  1_collective_action: "≥2 people acting together (exception: hunger_strike can be 1 person)"
   2_public_setting: "Action takes place in public space or targets a public/institutional audience"
   3_political_motivation: "Explicit political motivation, grievance, or demand stated or strongly implied"
   4_voluntary_contention: "Action is chosen by participants (not a natural disaster, accident, or armed attack by external forces)"
@@ -49,14 +54,11 @@ minimum_criteria:
     - "Article is about legal proceedings, court judgments, or electoral processes"
 
 # ============================================================================
-# CORE EVENT TYPES
+# TYPE ALIASES
 # ============================================================================
 #
-# IMPORTANT: Use the exact key names below as the event_type value.
-# Valid keys: demonstration_march | strike_boycott | riot | occupation_seizure
-#             | confrontation | petition_signature
+# Accepted synonyms during extraction — normalised to canonical keys downstream.
 #
-# Type aliases accepted during extraction (will be normalised downstream):
 type_aliases:
   "demonstration": "demonstration_march"
   "march": "demonstration_march"
@@ -77,6 +79,19 @@ type_aliases:
   "confrontation": "confrontation"
   "picket": "confrontation"
   "petition": "petition_signature"
+  "vigil": "vigil"
+  "candlelight vigil": "vigil"
+  "hunger strike": "hunger_strike"
+  "hunger_strike": "hunger_strike"
+
+# ============================================================================
+# CORE EVENT TYPES
+# ============================================================================
+#
+# IMPORTANT: Use the exact key names below as the event_type value.
+# Valid keys: demonstration_march | strike_boycott | riot | occupation_seizure
+#             | confrontation | petition_signature | vigil | hunger_strike
+#
 
 event_types:
 
@@ -208,7 +223,7 @@ event_types:
 
     negative_examples:
       - "Police used tear gas against peaceful protesters (police action, not riot)"
-      - "Peaceful march where police initiated violence (still DEMONSTRATION)"
+      - "Peaceful march where police initiated violence (still DEMONSTRATION_MARCH)"
       - "Property damage from weather or accident (not collective political violence)"
       - "Verbal fight between individuals on political topic (not collective action)"
       - "Military or armed group attacks civilians (armed conflict, not protest riot)"
@@ -216,7 +231,7 @@ event_types:
 
     decision_rules:
       - "CRITICAL: Violence must be initiated by PROTESTERS, not state/police response"
-      - "IF peaceful protest → police use force → DEMONSTRATION (not riot)"
+      - "IF peaceful protest → police use force → DEMONSTRATION_MARCH (not riot)"
       - "IF some violence during event, ask: was it majority participant action or minority?"
       - "IF minority broke off to riot while main group stayed peaceful → code as TWO EVENTS"
       - "When in doubt: favor peaceful classification (assume force was provoked by police)"
@@ -302,6 +317,7 @@ event_types:
       Organized collection of signatures on petitions, letter-writing campaigns, or
       formal written demands. Must involve ACTIVE collection/organization (e.g., public
       petition table, coordinated email campaign), not just individuals signing.
+      Excludes online petitions or social media unless explicitly part of organized campaign.
 
     positive_examples:
       - "Group set up table to collect signatures for petition demanding park preservation"
@@ -314,6 +330,136 @@ event_types:
       - "Government publishing a public report or statement"
 
     confidence_threshold: 0.65
+
+  vigil:
+    name: "Vigil or Commemorative Assembly"
+    definition: |
+      A solemn, typically silent or quiet gathering of ≥2 people to mourn, remember,
+      or bear witness — often in response to a tragedy, death, or injustice. May be
+      explicitly political (e.g., demanding justice, policy change) or primarily
+      commemorative. Candles, flowers, and silence are characteristic markers.
+      Duration is typically 30 minutes to several hours.
+
+    positive_examples:
+      - "Hundreds gathered by candlelight outside parliament to mourn victims of police shooting"
+      - "Community held silent vigil demanding justice after teenager killed by officers"
+      - "Activists organized overnight vigil outside prison the night before an execution"
+      - "Mourners held memorial rally calling for gun reform after school shooting"
+
+    negative_examples:
+      - "Private funeral or memorial service not open to public"
+      - "Religious service that makes no political demands"
+      - "Spontaneous crowd gathering at accident scene (no political intention)"
+
+    decision_rules:
+      - "IF vigil explicitly demands policy change or accountability → classify as VIGIL (not DEMONSTRATION)"
+      - "IF vigil turns into march or active protest → recode primary type as DEMONSTRATION_MARCH"
+      - "Solemn atmosphere and symbolic acts (candles, flowers, silence) are key markers"
+
+    confidence_threshold: 0.70
+    codebook_equivalents:
+      acled: "Protests"
+      capt: "Vigil"
+
+    temporal_markers:
+      - "vigil"
+      - "candlelight"
+      - "mourners"
+      - "silent protest"
+      - "remembrance"
+      - "memorial rally"
+      - "bear witness"
+
+  hunger_strike:
+    name: "Hunger Strike or Self-Deprivation Protest"
+    definition: |
+      Individual or collective act of refusing food (or other self-deprivation) as a
+      form of protest to pressure authorities or draw attention to demands. Must be
+      publicly declared and politically motivated. Can be individual (one person) or
+      collective (multiple participants, often simultaneously). Duration is typically
+      days to weeks.
+
+    positive_examples:
+      - "Political prisoner announced hunger strike demanding release and fair trial"
+      - "Detained migrants began collective hunger strike to protest detention conditions"
+      - "Activist went on indefinite hunger strike outside government ministry demanding land rights"
+      - "Six prisoners simultaneously refused food to demand reform of solitary confinement"
+
+    negative_examples:
+      - "Person skips meals due to poverty (not a declared protest act)"
+      - "Private fast for religious reasons (no political claim)"
+      - "Person threatens hunger strike but does not begin one"
+
+    decision_rules:
+      - "Must be PUBLICLY DECLARED (announced to media, authorities, or public)"
+      - "Must have EXPLICIT POLITICAL DEMAND or grievance"
+      - "Can be a single individual (minimum participants rule does not apply)"
+      - "IF hunger strike combined with occupation → code as HUNGER_STRIKE (more specific)"
+
+    confidence_threshold: 0.75
+    codebook_equivalents:
+      acled: "Protests"
+      poldem: "Hunger strike (code 12)"
+
+    temporal_markers:
+      - "hunger strike"
+      - "refused food"
+      - "fasting in protest"
+      - "starvation protest"
+      - "went without food"
+
+# ============================================================================
+# DERIVED OUTPUT FIELD: TURMOIL LEVEL
+# ============================================================================
+
+turmoil_level:
+  description: |
+    A derived summary field indicating the overall intensity of a protest event,
+    combining information about state response, violence, arrests, fatalities, and
+    injuries. Computed automatically from extracted fields — NOT extracted directly
+    from the article text.
+
+  values:
+    high:
+      label: "High turmoil"
+      criteria:
+        - "Fatalities reported (fatalities > 0)"
+        - "State response includes live_ammunition or rubber_bullets"
+        - "Outcome is 'escalated'"
+        - "Injuries reported AND arrests made simultaneously"
+      examples:
+        - "Police opened fire on crowd, killing 2 and injuring 15"
+        - "Security forces fired live rounds as riot escalated; 30 arrested"
+
+    medium:
+      label: "Medium turmoil"
+      criteria:
+        - "State response includes teargas, water_cannon, or dispersal"
+        - "Injuries reported (but no fatalities)"
+        - "Arrests made"
+        - "Outcome is 'arrested' or 'dispersed' with force"
+      examples:
+        - "Police dispersed protesters with tear gas; 10 arrested"
+        - "Three protesters injured in clashes with security forces"
+
+    low:
+      label: "Low turmoil"
+      criteria:
+        - "No state response OR state response is 'monitoring' only"
+        - "No injuries or fatalities"
+        - "Outcome is 'ongoing', 'demands_met', or 'partial_concession'"
+        - "Peaceful event with no escalation reported"
+      examples:
+        - "Peaceful march concluded without incident"
+        - "Protesters delivered petition; officials agreed to meet"
+
+  derivation_logic: |
+    Evaluate in order:
+    1. IF fatalities > 0 OR state_response IN [live_ammunition, rubber_bullets]
+       OR outcome == escalated → turmoil_level = high
+    2. ELSE IF state_response IN [teargas, water_cannon, dispersal, arrests]
+       OR injuries is not null/zero → turmoil_level = medium
+    3. ELSE → turmoil_level = low
 
 # ============================================================================
 # NON-EVENTS — Explicit Exclusions
@@ -412,12 +558,16 @@ non_events:
       - "Siege of city by armed forces"
     reason: "Distinct from protest events; use dedicated conflict datasets"
 
+  - category: "Private mourning with no political claim"
+    examples:
+      - "Family funeral for a political figure"
+      - "Private memorial not open to public"
+    reason: "No collective public protest element"
+
 # ============================================================================
 # AFRICAN / GLOBAL SOUTH CONTEXT NOTES
 # ============================================================================
-#
-# This codebook is designed for Global South contexts. Key considerations:
-#
+
 african_context:
 
   regional_organizations_not_protests:
@@ -468,6 +618,14 @@ edge_cases:
     description: "Opposing groups protesting same topic or location"
     rule: "If separated spatially/temporally → TWO EVENTS. If directly confronting → ONE CONFRONTATION event or TWO DEMONSTRATIONS with note"
 
+  vigil_to_demonstration:
+    description: "Vigil that transitions into an active march or demonstration"
+    rule: "If vigil transitions into active march or chanting → recode as DEMONSTRATION_MARCH. If it remains solemn throughout → VIGIL"
+
+  hunger_strike_in_prison:
+    description: "Hunger strike by prisoners or detainees"
+    rule: "Count as HUNGER_STRIKE regardless of participant count (even 1). Must be publicly declared."
+
   ambiguous_news_framing:
     description: "Article discusses protest but may be commentary, analysis, or retrospective"
     rule: "If the protest action occurred in the past and the article is commentary → code the underlying event if details are present. If article is purely analytical → do not extract."
@@ -504,8 +662,8 @@ confidence_guidance:
       - "Event in country outside target scope"
 
   unknown_confidence:
-    meaning: "Model could not determine confidence (avoid using this — choose high/medium/low)"
-    action: "Treat as low confidence in analysis"
+    meaning: "Model could not determine confidence — AVOID USING THIS"
+    action: "Treat as low confidence in analysis; prompt should never return 'unknown'"
 
 # ============================================================================
 # QUALITY CONTROL CHECKLIST
@@ -514,29 +672,31 @@ confidence_guidance:
 qc_checklist:
   mandatory:
     - "Does the article explicitly report a REAL, PAST protest event (not a plan, proposal, or commentary)?"
-    - "Are ≥2 participants mentioned or clearly implied?"
+    - "Are ≥2 participants mentioned or clearly implied (exception: hunger_strike)?"
     - "Is there explicit political motivation, demand, or grievance?"
     - "Does the event take place in public space or target a public audience?"
     - "Is this action OUTSIDE normal institutional channels (not a conference, vote, or court proceeding)?"
     - "Is the event NOT in the non_events list above?"
   quality:
     - "Can I identify the country AND at least approximate date?"
-    - "Does the event type match one of the six valid types?"
+    - "Does the event type match one of the eight valid keys?"
     - "Would a protest event scholar agree this qualifies?"
     - "Is confidence set to high/medium/low (not unknown)?"
+    - "Have I correctly derived turmoil_level from the extracted fields?"
 
 # ============================================================================
 # CODING RULES SUMMARY
 # ============================================================================
 
 general_rules:
-  1_primary_type: "Assign ONE primary event type per event (from the six valid keys)"
+  1_primary_type: "Assign ONE primary event type per event (from the eight valid keys)"
   2_confidence: "Provide confidence score: high / medium / low — never 'unknown'"
   3_text_only: "Use only information in provided text; do not infer or hallucinate"
   4_political: "All classifications require explicit or very clear political motivation"
   5_peace_bias: "When uncertain between peaceful and violent, bias toward peaceful classification"
-  6_organization: "Protests require ≥2 people; note organized vs. spontaneous"
+  6_organization: "Protests require ≥2 people (exception: hunger_strike can be 1); note organized vs. spontaneous"
   7_location_temporal: "All events must have identifiable country and approximate date"
   8_ambiguous_types: "If genuinely ambiguous between 2 types, choose more restrictive one"
   9_non_event_gate: "Apply minimum_criteria check FIRST — if any disqualifier applies, return []"
-  10_african_scope: "Flag events outside African target countries with low confidence"
+  10_turmoil_level: "Always derive turmoil_level from extracted fields using the defined derivation logic"
+  11_african_scope: "Flag events outside African target countries with low confidence"
