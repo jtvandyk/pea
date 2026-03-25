@@ -112,6 +112,9 @@ def run_pipeline(
 
 
 def main():
+    from dotenv import load_dotenv
+    load_dotenv()
+
     parser = argparse.ArgumentParser(
         description="Protest Event Analysis Pipeline — Global South focus (codebook v2.1)"
     )
