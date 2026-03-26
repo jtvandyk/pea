@@ -110,9 +110,11 @@ def save_results(
     events: list[dict],
     output_dir: Path,
     run_id: str,
+    failures: list[dict] | None = None,
 ) -> Path:
     """
     Save events to JSONL, CSV, and a run summary file.
+    If failures are provided, writes them to failures_{run_id}.jsonl.
 
     Derives turmoil_level for each event before writing.
     Returns the path to the output directory.
@@ -150,11 +152,21 @@ def save_results(
             f.write(json.dumps(event, ensure_ascii=False) + "\n")
     log.info(f"Appended to cumulative: {cumulative_path}")
 
-    # 4. Run summary
+    # 4. Dead-letter file for failed extractions
+    failures_path = None
+    if failures:
+        failures_path = output_dir / f"failures_{run_id}.jsonl"
+        with open(failures_path, "w", encoding="utf-8") as f:
+            for failure in failures:
+                f.write(json.dumps(failure, ensure_ascii=False) + "\n")
+        log.warning(f"Failures written: {failures_path} ({len(failures)} articles)")
+
+    # 5. Run summary
     summary = {
         "run_id": run_id,
         "timestamp": datetime.utcnow().isoformat(),
         "total_events": len(events),
+        "total_failures": len(failures) if failures else 0,
         "events_by_country": _count_by(events, "country"),
         "events_by_type": _count_by(events, "event_type"),
         "events_by_state_response": _count_by(events, "state_response"),
@@ -164,6 +176,7 @@ def save_results(
             "jsonl": str(jsonl_path),
             "csv": str(csv_path),
             "cumulative_jsonl": str(cumulative_path),
+            **({"failures_jsonl": str(failures_path)} if failures_path else {}),
         },
     }
     summary_path = output_dir / f"summary_{run_id}.json"

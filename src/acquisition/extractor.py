@@ -213,7 +213,7 @@ def extract_from_article(
     model: str,
     api_key: str,
     max_retries: int = 2,
-) -> list[dict]:
+) -> Optional[list[dict]]:
     """
     Run LLM extraction on a single article.
     Returns list of extracted event dicts.
@@ -268,7 +268,7 @@ def extract_from_article(
         if attempt < max_retries:
             time.sleep(1)
 
-    return []
+    return None
 
 
 def extract_events(
@@ -276,7 +276,7 @@ def extract_events(
     model: str = "claude-sonnet-4-6",
     api_key: Optional[str] = None,
     rate_limit_delay: float = 0.5,
-) -> list[dict]:
+) -> tuple[list[dict], list[dict]]:
     """
     Run LLM extraction across all scraped articles using Claude.
 
@@ -287,7 +287,8 @@ def extract_events(
         rate_limit_delay: seconds between requests (polite pacing)
 
     Returns:
-        flat list of all extracted event dicts
+        (events, failures) — flat list of extracted event dicts, and list of
+        articles that failed extraction after all retries.
     """
     resolved_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
     if not resolved_key:
@@ -296,6 +297,7 @@ def extract_events(
         )
 
     all_events = []
+    failures = []
     processed = 0
     skipped = 0
 
@@ -309,8 +311,19 @@ def extract_events(
             log.info(f"  ✓ Found {len(events)} event(s)")
             all_events.extend(events)
             processed += 1
+        elif events is not None and len(events) == 0:
+            # Empty list = valid response (no protest events in article)
+            log.info(f"  — No events found")
+            skipped += 1
         else:
-            log.info(f"  — No events found or extraction failed")
+            # None = extraction failed after all retries
+            log.warning(f"  ✗ Extraction failed: {url}")
+            failures.append({
+                "url": article.get("url", ""),
+                "title": article.get("title", ""),
+                "reason": "extraction_failed",
+                "lang": article.get("text_lang", "unknown"),
+            })
             skipped += 1
 
         if i < len(articles) - 1:
@@ -318,6 +331,6 @@ def extract_events(
 
     log.info(
         f"Extraction complete: {len(all_events)} events from "
-        f"{processed} articles ({skipped} with no events)"
+        f"{processed} articles ({skipped} with no events, {len(failures)} failures)"
     )
-    return all_events
+    return all_events, failures

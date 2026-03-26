@@ -23,6 +23,7 @@ Requires:
 """
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -35,11 +36,21 @@ from src.acquisition.translator import translate_articles
 from src.acquisition.extractor import extract_events
 from src.acquisition.storage import save_results
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
+class _JsonFormatter(logging.Formatter):
+    def format(self, record):
+        entry = {
+            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        if record.exc_info:
+            entry["exc"] = self.formatException(record.exc_info)
+        return json.dumps(entry)
+
+_handler = logging.StreamHandler(sys.stdout)
+_handler.setFormatter(_JsonFormatter())
+logging.basicConfig(level=logging.INFO, handlers=[_handler])
 log = logging.getLogger("pipeline")
 
 # Default output dir — aligns with project data structure
@@ -95,16 +106,16 @@ def run_pipeline(
 
     # Stage 4: LLM Extraction via Claude
     log.info("--- Stage 4: LLM Event Extraction (Claude API) ---")
-    events = extract_events(
+    events, failures = extract_events(
         scraped,
         model=claude_model,
         api_key=claude_api_key,
     )
-    log.info(f"Extracted {len(events)} protest events")
+    log.info(f"Extracted {len(events)} protest events ({len(failures)} extraction failures)")
 
     # Stage 5: Storage
     log.info("--- Stage 5: Saving Results ---")
-    out_path = save_results(events, output_dir=output_dir, run_id=run_id)
+    out_path = save_results(events, output_dir=output_dir, run_id=run_id, failures=failures)
     log.info(f"Results saved to {out_path}")
 
     log.info("=== Pipeline complete ===")
