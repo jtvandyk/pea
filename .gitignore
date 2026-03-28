@@ -210,4 +210,5 @@ __marimo__/
 data/raw/*
 data/processed/*
 data/predictions/*
+data/validation/*
 !data/**/.gitkeep

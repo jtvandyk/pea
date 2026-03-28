@@ -250,6 +250,164 @@ Secrets are stored in GitHub repo → Settings → Secrets.
 
 ---
 
+---
+
+## ACLED Validation Plan
+
+### Goal
+
+Verify that the PEA pipeline achieves acceptable **recall** against ACLED — i.e. events that ACLED recorded for the same countries and date window are also being captured by PEA. PEA finding events ACLED missed is expected and desirable (that's the project's contribution). The concern is the inverse: PEA *missing* events that ACLED found.
+
+Event type alignment is coarse by design. ACLED uses only two relevant top-level categories (`Protests`, `Riots`); PEA uses 8 finer-grained types. The crosswalk in `protest_codebook.yaml` maps all 8 PEA types back to one of those two ACLED categories, so matching ignores sub-type and focuses on event co-occurrence.
+
+---
+
+### ACLED Event Type Crosswalk
+
+| PEA type | ACLED equivalent |
+|---|---|
+| `demonstration_march` | Protests |
+| `strike_boycott` | Protests |
+| `occupation_seizure` | Protests |
+| `confrontation` | Protests |
+| `petition_signature` | Protests |
+| `vigil` | Protests |
+| `hunger_strike` | Protests |
+| `riot` | Riots |
+
+---
+
+### Step 1 — Obtain ACLED Data
+
+Register at acleddata.com to get an API key + registered email. Then pull protest/riot events for the same countries and date range as a PEA pipeline run:
+
+```python
+import requests, pandas as pd
+
+params = {
+    "key": "<ACLED_API_KEY>",
+    "email": "<REGISTERED_EMAIL>",
+    "country": "Nigeria|South Africa|Uganda|Algeria",
+    "event_type": "Protests|Riots",
+    "event_date": "2026-03-01|2026-03-28",
+    "event_date_where": "BETWEEN",
+    "fields": "event_date|country|admin1|location|event_type|sub_event_type|notes",
+    "limit": 5000,
+}
+resp = requests.get("https://api.acleddata.com/acled/read", params=params)
+acled = pd.DataFrame(resp.json()["data"])
+```
+
+Store the raw response to `data/validation/acled_{date_range}.json` for reproducibility.
+
+---
+
+### Step 2 — Load PEA Output
+
+Load the events JSONL from the run you want to validate:
+
+```python
+import json, pandas as pd
+
+pea = pd.read_json("data/raw/events_{run_id}.jsonl", lines=True)
+pea["event_date"] = pd.to_datetime(pea["event_date"], errors="coerce")
+acled["event_date"] = pd.to_datetime(acled["event_date"], errors="coerce")
+```
+
+---
+
+### Step 3 — Match Events
+
+Match each ACLED event to a PEA event using three criteria:
+1. **Country** — exact match (normalise to lowercase)
+2. **Date** — within ±2 days (accounts for article publication lag)
+3. **Location** — fuzzy city match using `difflib.SequenceMatcher` with threshold ≥ 0.6 on `city` / `location` fields
+
+```python
+from difflib import SequenceMatcher
+
+def location_match(a, b, threshold=0.6):
+    if not a or not b:
+        return True  # can't falsify without location — treat as ambiguous
+    return SequenceMatcher(None, a.lower(), b.lower()).ratio() >= threshold
+
+results = []
+for _, acled_row in acled.iterrows():
+    candidates = pea[
+        (pea["country"].str.lower() == acled_row["country"].lower()) &
+        (abs(pea["event_date"] - acled_row["event_date"]) <= pd.Timedelta(days=2))
+    ]
+    matched = any(
+        location_match(acled_row.get("location"), row.get("city"))
+        for _, row in candidates.iterrows()
+    )
+    results.append({
+        "acled_date": acled_row["event_date"],
+        "acled_country": acled_row["country"],
+        "acled_location": acled_row["location"],
+        "acled_type": acled_row["event_type"],
+        "matched": matched,
+    })
+
+df = pd.DataFrame(results)
+```
+
+---
+
+### Step 4 — Calculate Recall
+
+```python
+recall = df["matched"].mean()
+print(f"Recall: {recall:.1%}  ({df['matched'].sum()} / {len(df)} ACLED events matched)")
+
+# Break down missed events by country and type
+missed = df[~df["matched"]]
+print(missed.groupby(["acled_country", "acled_type"]).size())
+```
+
+**Target threshold:** ≥ 60% recall is acceptable for a GDELT-sourced pipeline (GDELT covers far fewer sources per event than ACLED's curated network). Below 40% warrants investigation.
+
+---
+
+### Step 5 — Diagnose Misses
+
+For each unmatched ACLED event, check:
+
+1. **Was the event in GDELT at all?** Query GDELT DOC API for the same country + date + keywords. If GDELT has no article, the miss is a GDELT coverage gap, not a PEA bug.
+2. **Was the article scraped but filtered?** Check `failures_{run_id}.jsonl` for the date/country.
+3. **Was the article scraped but rejected by the LLM?** This is harder to diagnose without per-article LLM output — a future improvement would be to log the raw LLM response for rejected articles.
+
+Document findings in `data/validation/recall_report_{run_id}.md`.
+
+---
+
+### Step 6 — Precision Spot-Check
+
+PEA will extract events ACLED does not have. This is expected. However, spot-check a random sample of 20 PEA-only events (not matched to ACLED) and manually verify against the source article to confirm they are genuine protest events and not false positives.
+
+```python
+pea_only = pea[~pea["article_url"].isin(matched_urls)]
+sample = pea_only.sample(min(20, len(pea_only)), random_state=42)
+sample[["event_date", "country", "city", "event_type", "article_url"]].to_csv(
+    "data/validation/precision_sample.csv", index=False
+)
+```
+
+---
+
+### Files for Validation
+
+| Path | Purpose |
+|------|---------|
+| `data/validation/acled_{date_range}.json` | Raw ACLED pull |
+| `data/validation/recall_report_{run_id}.md` | Recall results + diagnosis of misses |
+| `data/validation/precision_sample.csv` | Manual spot-check sample |
+| `notebooks/acled_validation.ipynb` | Notebook containing Steps 1–6 |
+
+> The `data/validation/` directory should be `.gitignore`d (same as `data/raw/`) to avoid committing large datasets.
+
+---
+
 ## Recommended Implementation Order
 
 | # | Improvement | Effort | Risk |
