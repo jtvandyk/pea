@@ -13,9 +13,6 @@ For the Global South focus, this module:
 
 import logging
 import time
-import urllib.parse
-from datetime import datetime, timedelta
-from typing import Optional
 
 import requests
 
@@ -130,13 +127,10 @@ def build_gdelt_query(query: str, countries: list, days: int) -> dict:
     keyword_parts = [f'"{term}"' if " " in term else term for term in query.split()]
     keyword_query = "(" + " OR ".join(keyword_parts) + ")"
 
-    # Add country name variants for better recall on non-Western sources
-    country_names = [COUNTRY_LABELS.get(c, c) for c in countries if c in COUNTRY_LABELS]
-
     params = {
         "query": keyword_query,
-        "mode": "ArtList",          # return article list (not timeline)
-        "maxrecords": 250,          # max per request
+        "mode": "ArtList",  # return article list (not timeline)
+        "maxrecords": 250,  # max per request
         "timespan": timespan,
         "format": "json",
         "sort": "DateDesc",
@@ -150,9 +144,13 @@ def build_gdelt_query(query: str, countries: list, days: int) -> dict:
         params["sourcecountry"] = fips
         log.debug(f"Using FIPS code '{fips}' for country '{countries[0]}'")
     elif countries:
-        country_name_query = "(" + " OR ".join(
-            f'"{COUNTRY_LABELS[c]}"' for c in countries if c in COUNTRY_LABELS
-        ) + ")"
+        country_name_query = (
+            "("
+            + " OR ".join(
+                f'"{COUNTRY_LABELS[c]}"' for c in countries if c in COUNTRY_LABELS
+            )
+            + ")"
+        )
         if country_name_query != "()":
             params["query"] = f"{keyword_query} {country_name_query}"
 
@@ -164,6 +162,7 @@ def fetch_gdelt_articles(params: dict, retries: int = 3) -> list[dict]:
     Call GDELT DOC API and return raw article list.
     """
     import json as _json
+
     for attempt in range(retries):
         resp = None
         try:
@@ -172,30 +171,34 @@ def fetch_gdelt_articles(params: dict, retries: int = 3) -> list[dict]:
         except requests.exceptions.Timeout:
             log.warning(f"GDELT request timed out (attempt {attempt+1})")
             if attempt < retries - 1:
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
             continue
         except requests.exceptions.HTTPError as e:
             log.warning(f"GDELT HTTP error (attempt {attempt+1}): {e}")
             if attempt < retries - 1:
-                wait = 30 * (attempt + 1) if "429" in str(e) else 2 ** attempt
+                wait = 30 * (attempt + 1) if "429" in str(e) else 2**attempt
                 time.sleep(wait)
             continue
         except requests.exceptions.RequestException as e:
             log.warning(f"GDELT connection error (attempt {attempt+1}): {e}")
             if attempt < retries - 1:
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
             continue
 
         # Parse JSON manually so we can log what GDELT actually returned on failure
         text = resp.text.strip() if resp else ""
         if not text:
-            log.warning(f"GDELT returned empty body (attempt {attempt+1}) — invalid param or rate limit")
+            log.warning(
+                f"GDELT returned empty body (attempt {attempt+1}) — invalid param or rate limit"
+            )
             break
         try:
             data = _json.loads(text)
             return data.get("articles", [])
         except _json.JSONDecodeError as e:
-            log.warning(f"GDELT JSON parse error (attempt {attempt+1}): {e} — response: {text[:300]}")
+            log.warning(
+                f"GDELT JSON parse error (attempt {attempt+1}): {e} — response: {text[:300]}"
+            )
             break
 
     return []
@@ -208,20 +211,47 @@ def filter_protest_relevant(articles: list[dict], min_score: float = 0.0) -> lis
     """
     # Keywords that strongly indicate protest event reporting
     protest_signals = {
-        "protest", "protests", "protester", "protesters",
-        "demonstration", "demonstrators", "march", "marched",
-        "strike", "strikes", "strikers", "walkout",
-        "rally", "rallies", "riot", "riots",
-        "unrest", "uprising", "revolt", "rebellion",
-        "civil disobedience", "blockade", "sit-in",
-        "clashes", "crackdown", "teargas", "tear gas",
-        "detained", "arrested", "dispersed",
+        "protest",
+        "protests",
+        "protester",
+        "protesters",
+        "demonstration",
+        "demonstrators",
+        "march",
+        "marched",
+        "strike",
+        "strikes",
+        "strikers",
+        "walkout",
+        "rally",
+        "rallies",
+        "riot",
+        "riots",
+        "unrest",
+        "uprising",
+        "revolt",
+        "rebellion",
+        "civil disobedience",
+        "blockade",
+        "sit-in",
+        "clashes",
+        "crackdown",
+        "teargas",
+        "tear gas",
+        "detained",
+        "arrested",
+        "dispersed",
         # Non-English signals (common in multilingual GDELT)
-        "manifestation", "manifestantes",  # Spanish/French
-        "huelga", "paro",                  # Spanish
-        "grève", "manifestation",          # French
-        "aksi", "demonstrasi",             # Indonesian/Malay
-        "احتجاج", "مظاهرة",               # Arabic
+        "manifestation",
+        "manifestantes",  # Spanish/French
+        "huelga",
+        "paro",  # Spanish
+        "grève",
+        "manifestation",  # French
+        "aksi",
+        "demonstrasi",  # Indonesian/Malay
+        "احتجاج",
+        "مظاهرة",  # Arabic
     }
 
     filtered = []
@@ -233,7 +263,10 @@ def filter_protest_relevant(articles: list[dict], min_score: float = 0.0) -> lis
         if any(signal in title for signal in protest_signals):
             article["_relevance"] = "title_match"
             filtered.append(article)
-        elif any(signal in url for signal in ["protest", "strike", "demo", "march", "riot", "unrest"]):
+        elif any(
+            signal in url
+            for signal in ["protest", "strike", "demo", "march", "riot", "unrest"]
+        ):
             article["_relevance"] = "url_match"
             filtered.append(article)
         else:
@@ -263,7 +296,9 @@ def discover_articles(
         list of article dicts with keys: url, title, seendate, sourcecountry,
         sourcelanguage, domain, _relevance
     """
-    log.info(f"Querying GDELT DOC API: query='{query}', countries={countries}, days={days}")
+    log.info(
+        f"Querying GDELT DOC API: query='{query}', countries={countries}, days={days}"
+    )
 
     params = build_gdelt_query(query, countries, days)
     log.debug(f"GDELT params: {params}")
@@ -274,12 +309,16 @@ def discover_articles(
     if not raw_articles:
         # Fallback: try without sourcecountry filter (GDELT sourcecountry is sometimes unreliable)
         # but add country name(s) to the keyword query so results stay geographically relevant
-        log.info("Retrying without sourcecountry filter — adding country name keywords instead...")
+        log.info(
+            "Retrying without sourcecountry filter — adding country name keywords instead..."
+        )
         time.sleep(5)  # brief pause before fallback to avoid rate limits
         fallback_params = {k: v for k, v in params.items() if k != "sourcecountry"}
         country_names = [COUNTRY_LABELS[c] for c in countries if c in COUNTRY_LABELS]
         if country_names:
-            country_name_query = "(" + " OR ".join(f'"{n}"' for n in country_names) + ")"
+            country_name_query = (
+                "(" + " OR ".join(f'"{n}"' for n in country_names) + ")"
+            )
             base_query = fallback_params.get("query", "")
             if country_name_query not in base_query:
                 fallback_params["query"] = f"{base_query} {country_name_query}"
@@ -294,19 +333,21 @@ def discover_articles(
         if not url or url in seen_urls:
             continue
         seen_urls.add(url)
-        normalized.append({
-            "url": url,
-            "title": art.get("title", ""),
-            "seendate": art.get("seendate", ""),
-            "sourcecountry": art.get("sourcecountry", ""),
-            "sourcelanguage": art.get("sourcelanguage", ""),
-            "domain": art.get("domain", ""),
-            "_relevance": None,
-            "text": None,
-            "text_lang": None,
-            "text_en": None,
-            "events": [],
-        })
+        normalized.append(
+            {
+                "url": url,
+                "title": art.get("title", ""),
+                "seendate": art.get("seendate", ""),
+                "sourcecountry": art.get("sourcecountry", ""),
+                "sourcelanguage": art.get("sourcelanguage", ""),
+                "domain": art.get("domain", ""),
+                "_relevance": None,
+                "text": None,
+                "text_lang": None,
+                "text_en": None,
+                "events": [],
+            }
+        )
 
     # Filter for protest relevance
     filtered = filter_protest_relevant(normalized)

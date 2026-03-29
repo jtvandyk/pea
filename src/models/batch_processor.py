@@ -52,13 +52,15 @@ class BatchProcessor:
 
             except Exception as e:
                 print(f"Error on text {i}: {e}")
-                predictions.append(ProtestEventPrediction(
-                    event_type="ERROR",
-                    confidence_score=0.0,
-                    reasoning=str(e),
-                    schema_valid=False,
-                    key_indicators=[]
-                ))
+                predictions.append(
+                    ProtestEventPrediction(
+                        event_type="ERROR",
+                        confidence_score=0.0,
+                        reasoning=str(e),
+                        schema_valid=False,
+                        key_indicators=[],
+                    )
+                )
 
         return predictions
 
@@ -66,13 +68,15 @@ class BatchProcessor:
         """Convert predictions to a pandas DataFrame."""
         import pandas as pd
 
-        return pd.DataFrame([
-            {
-                "event_type": p.event_type,
-                "confidence": p.confidence_score,
-                "reasoning": p.reasoning,
-                "schema_valid": p.schema_valid,
-                "num_indicators": len(p.key_indicators),
-            }
-            for p in predictions
-        ])
+        return pd.DataFrame(
+            [
+                {
+                    "event_type": p.event_type,
+                    "confidence": p.confidence_score,
+                    "reasoning": p.reasoning,
+                    "schema_valid": p.schema_valid,
+                    "num_indicators": len(p.key_indicators),
+                }
+                for p in predictions
+            ]
+        )

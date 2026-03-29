@@ -26,14 +26,17 @@ log = logging.getLogger(__name__)
 
 # User agents to rotate — helps with sites that block default scrapers
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",  # noqa: E501
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",  # noqa: E501
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
 ]
 
 # Domains known to block scrapers — fall back gracefully
 BLOCKED_DOMAINS = {
-    "nytimes.com", "wsj.com", "ft.com", "bloomberg.com",
+    "nytimes.com",
+    "wsj.com",
+    "ft.com",
+    "bloomberg.com",
     "reuters.com",  # Reuters has its own API; scraping is unreliable
 }
 
@@ -72,6 +75,7 @@ def scrape_with_newspaper(url: str, session: requests.Session) -> Optional[str]:
     """
     try:
         from newspaper import Article
+
         article = Article(url, request_timeout=15)
         article.download()
         article.parse()
@@ -100,19 +104,40 @@ def scrape_with_bs4(url: str, session: requests.Session) -> Optional[str]:
         soup = BeautifulSoup(resp.text, "html.parser")
 
         # Remove noise elements
-        for tag in soup(["script", "style", "nav", "header", "footer",
-                         "aside", "form", "iframe", "noscript"]):
+        for tag in soup(
+            [
+                "script",
+                "style",
+                "nav",
+                "header",
+                "footer",
+                "aside",
+                "form",
+                "iframe",
+                "noscript",
+            ]
+        ):
             tag.decompose()
 
         # Try common article containers in order of preference
         article_containers = [
             soup.find("article"),
-            soup.find(class_=lambda c: c and any(
-                kw in (c if isinstance(c, str) else " ".join(c))
-                for kw in ["article-body", "story-body", "post-content",
-                           "entry-content", "article-content", "news-body",
-                           "story-content", "article__body"]
-            )),
+            soup.find(
+                class_=lambda c: c
+                and any(
+                    kw in (c if isinstance(c, str) else " ".join(c))
+                    for kw in [
+                        "article-body",
+                        "story-body",
+                        "post-content",
+                        "entry-content",
+                        "article-content",
+                        "news-body",
+                        "story-content",
+                        "article__body",
+                    ]
+                )
+            ),
             soup.find("main"),
         ]
 
@@ -184,7 +209,9 @@ def scrape_articles(
 
         # Skip articles that already have text (e.g. pre-populated by BBC Monitoring)
         if article.get("text"):
-            log.info(f"[{i+1}/{len(articles)}] Skipping (text pre-populated): {url[:80]}")
+            log.info(
+                f"[{i+1}/{len(articles)}] Skipping (text pre-populated): {url[:80]}"
+            )
             success += 1
             continue
 
@@ -201,11 +228,13 @@ def scrape_articles(
             failures = 0  # reset consecutive failure counter
         else:
             article["text"] = None
-            log.info(f"  ✗ Scraping failed")
+            log.info("  ✗ Scraping failed")
             failures += 1
 
         if failures >= max_failures:
-            log.warning(f"Too many consecutive failures ({failures}). Stopping scraping.")
+            log.warning(
+                f"Too many consecutive failures ({failures}). Stopping scraping."
+            )
             break
 
         # Polite delay between requests

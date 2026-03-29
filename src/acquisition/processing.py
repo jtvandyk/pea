@@ -30,13 +30,41 @@ log = logging.getLogger(__name__)
 
 # Default target countries for Africa focus (lowercase for comparison)
 DEFAULT_TARGET_COUNTRIES = {
-    "nigeria", "south africa", "uganda", "algeria", "libya", "angola",
-    "kenya", "somalia", "tanzania", "ghana", "ethiopia", "senegal",
-    "zimbabwe", "cameroon", "ivory coast", "côte d'ivoire",
-    "democratic republic of the congo", "drc", "sudan", "south sudan",
-    "mozambique", "zambia", "malawi", "rwanda", "burundi", "mali",
-    "niger", "chad", "mauritania", "guinea", "sierra leone", "liberia",
-    "togo", "benin", "central african republic",
+    "nigeria",
+    "south africa",
+    "uganda",
+    "algeria",
+    "libya",
+    "angola",
+    "kenya",
+    "somalia",
+    "tanzania",
+    "ghana",
+    "ethiopia",
+    "senegal",
+    "zimbabwe",
+    "cameroon",
+    "ivory coast",
+    "côte d'ivoire",
+    "democratic republic of the congo",
+    "drc",
+    "sudan",
+    "south sudan",
+    "mozambique",
+    "zambia",
+    "malawi",
+    "rwanda",
+    "burundi",
+    "mali",
+    "niger",
+    "chad",
+    "mauritania",
+    "guinea",
+    "sierra leone",
+    "liberia",
+    "togo",
+    "benin",
+    "central african republic",
 }
 
 # Confidence string → numeric score for ranking duplicates
@@ -49,7 +77,7 @@ def _parse_event_date(date_str: str) -> Optional[datetime]:
         return None
     for fmt in ("%Y-%m-%d", "%Y%m%d", "%Y-%m", "%Y"):
         try:
-            return datetime.strptime(str(date_str)[:len(fmt)], fmt)
+            return datetime.strptime(str(date_str)[: len(fmt)], fmt)
         except ValueError:
             continue
     return None
@@ -59,7 +87,9 @@ def _fuzzy_match(a: str, b: str, threshold: float = 0.7) -> bool:
     """Return True if strings are similar enough (or either is empty)."""
     if not a or not b:
         return True  # can't falsify without both values
-    return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio() >= threshold
+    return (
+        SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio() >= threshold
+    )
 
 
 def _are_duplicates(a: dict, b: dict) -> bool:
@@ -128,15 +158,17 @@ def deduplicate(events: list) -> tuple:
             existing = kept[matched_idx]
             event_score = _CONF_SCORE.get(event.get("confidence", ""), 0)
             existing_score = _CONF_SCORE.get(existing.get("confidence", ""), 0)
-            duplicates_log.append({
-                "kept_url": existing.get("article_url"),
-                "removed_url": event.get("article_url"),
-                "country": event.get("country"),
-                "city": event.get("city"),
-                "event_type": event.get("event_type"),
-                "event_date": event.get("event_date"),
-                "reason": "duplicate",
-            })
+            duplicates_log.append(
+                {
+                    "kept_url": existing.get("article_url"),
+                    "removed_url": event.get("article_url"),
+                    "country": event.get("country"),
+                    "city": event.get("city"),
+                    "event_type": event.get("event_type"),
+                    "event_date": event.get("event_date"),
+                    "reason": "duplicate",
+                }
+            )
             if event_score > existing_score:
                 kept[matched_idx] = event  # replace with higher-confidence version
 
@@ -171,9 +203,7 @@ def recheck_borderline(
         ollama_model=model,
     )
 
-    borderline = [
-        e for e in events if e.get("confidence") in ("medium", "low")
-    ]
+    borderline = [e for e in events if e.get("confidence") in ("medium", "low")]
     log.info(f"Re-checking {len(borderline)} borderline events via {provider}/{model}")
 
     for event in borderline:
@@ -205,7 +235,9 @@ def recheck_borderline(
             else:
                 event["confidence"] = "low"
         except Exception as e:
-            log.warning(f"Re-classification failed for event ({event.get('article_url')}): {e}")
+            log.warning(
+                f"Re-classification failed for event ({event.get('article_url')}): {e}"
+            )
 
     return events
 
@@ -220,22 +252,29 @@ def run_quality_control(events: list) -> dict:
 
     _CONF_TO_SCORE = {"high": 0.85, "medium": 0.70, "low": 0.50}
     valid_types = {
-        "demonstration_march", "strike_boycott", "occupation_seizure",
-        "confrontation", "petition_signature", "vigil",
-        "hunger_strike", "riot",
+        "demonstration_march",
+        "strike_boycott",
+        "occupation_seizure",
+        "confrontation",
+        "petition_signature",
+        "vigil",
+        "hunger_strike",
+        "riot",
     }
 
     predictions = []
     for event in events:
         score = _CONF_TO_SCORE.get(event.get("confidence", ""), 0.60)
         event_type = event.get("event_type", "UNCLASSIFIABLE")
-        predictions.append(ProtestEventPrediction(
-            event_type=event_type,
-            confidence_score=score,
-            reasoning="",
-            schema_valid=(event_type in valid_types and score >= 0.70),
-            key_indicators=[],
-        ))
+        predictions.append(
+            ProtestEventPrediction(
+                event_type=event_type,
+                confidence_score=score,
+                reasoning="",
+                schema_valid=(event_type in valid_types and score >= 0.70),
+                key_indicators=[],
+            )
+        )
 
     qc = QualityController(predictions)
     report = qc.generate_quality_report()
@@ -293,16 +332,26 @@ def process_events(
 
     # Step 1: Filter to target geography
     events, removed = filter_to_target_countries(raw_events, target_countries)
-    log.info(f"Geography filter: kept {len(events)}, removed {len(removed)} non-target events")
+    log.info(
+        f"Geography filter: kept {len(events)}, removed {len(removed)} non-target events"
+    )
 
     # Step 2: Deduplicate
     events, duplicates_log = deduplicate(events)
-    log.info(f"Deduplication: {len(events)} events remain ({len(duplicates_log)} duplicates removed)")
+    log.info(
+        f"Deduplication: {len(events)} events remain ({len(duplicates_log)} duplicates removed)"
+    )
 
     # Step 3: Re-verify borderline events
     if recheck:
-        from src.acquisition.extractor import _PROVIDER_ENV_VARS, _PROVIDER_DEFAULT_MODELS
-        resolved_key = api_key or os.environ.get(_PROVIDER_ENV_VARS.get(provider, ""), "")
+        from src.acquisition.extractor import (
+            _PROVIDER_ENV_VARS,
+            _PROVIDER_DEFAULT_MODELS,
+        )
+
+        resolved_key = api_key or os.environ.get(
+            _PROVIDER_ENV_VARS.get(provider, ""), ""
+        )
         resolved_model = model or _PROVIDER_DEFAULT_MODELS.get(provider, "gpt-4o-mini")
         if resolved_key:
             events = recheck_borderline(events, provider, resolved_model, resolved_key)
@@ -340,13 +389,21 @@ def process_events(
     print("STAGE 2 — PROCESSING SUMMARY")
     print("=" * 60)
     print(f"Input events:        {len(raw_events)}")
-    print(f"After geo filter:    {len(raw_events) - len(removed)} ({len(removed)} removed)")
-    print(f"After dedup:         {len(events)} ({len(duplicates_log)} duplicates removed)")
-    print(f"Schema valid:        {quality_report['schema_validity']['valid_schemas']} / {len(events)}")
-    print(f"\nBy country:")
-    for c, n in sorted(quality_report["events_by_country"].items(), key=lambda x: -x[1]):
+    print(
+        f"After geo filter:    {len(raw_events) - len(removed)} ({len(removed)} removed)"
+    )
+    print(
+        f"After dedup:         {len(events)} ({len(duplicates_log)} duplicates removed)"
+    )
+    print(
+        f"Schema valid:        {quality_report['schema_validity']['valid_schemas']} / {len(events)}"
+    )
+    print("\nBy country:")
+    for c, n in sorted(
+        quality_report["events_by_country"].items(), key=lambda x: -x[1]
+    ):
         print(f"  {c:35s} {n}")
-    print(f"\nBy event type:")
+    print("\nBy event type:")
     for t, n in sorted(quality_report["events_by_type"].items(), key=lambda x: -x[1]):
         print(f"  {t:35s} {n}")
     print(f"\nOutput: {output_dir}")
@@ -355,6 +412,7 @@ def process_events(
     # Upload
     if upload_to:
         from src.acquisition.storage import _upload_outputs
+
         paths = [consolidated_path, quality_path]
         if duplicates_log:
             paths.append(output_dir / "duplicates_log.jsonl")

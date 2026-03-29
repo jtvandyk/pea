@@ -133,7 +133,9 @@ def sync_checkpoint_from_blob(upload_to: str, output_dir: Path) -> bool:
         return False
     conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
     if not conn_str:
-        log.warning("AZURE_STORAGE_CONNECTION_STRING not set — cannot sync checkpoint from blob")
+        log.warning(
+            "AZURE_STORAGE_CONNECTION_STRING not set — cannot sync checkpoint from blob"
+        )
         return False
     container, prefix = upload_to[5:].split("/", 1)
     blob_name = f"{prefix}/checkpoint.txt"
@@ -296,21 +298,25 @@ def save_results(
         json.dump(summary, f, indent=2, ensure_ascii=False)
 
     # Print summary to console
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print(f"RUN SUMMARY — {run_id}")
-    print("="*60)
+    print("=" * 60)
     print(f"Total events extracted: {len(events)}")
-    print(f"\nBy country:")
-    for country, count in sorted(summary["events_by_country"].items(), key=lambda x: -x[1]):
+    print("\nBy country:")
+    for country, count in sorted(
+        summary["events_by_country"].items(), key=lambda x: -x[1]
+    ):
         print(f"  {country:30s} {count}")
-    print(f"\nBy event type:")
+    print("\nBy event type:")
     for etype, count in sorted(summary["events_by_type"].items(), key=lambda x: -x[1]):
         print(f"  {etype:30s} {count}")
-    print(f"\nBy turmoil level:")
-    for level, count in sorted(summary["events_by_turmoil_level"].items(), key=lambda x: -x[1]):
+    print("\nBy turmoil level:")
+    for level, count in sorted(
+        summary["events_by_turmoil_level"].items(), key=lambda x: -x[1]
+    ):
         print(f"  {level:30s} {count}")
     print(f"\nOutput: {output_dir}")
-    print("="*60 + "\n")
+    print("=" * 60 + "\n")
 
     # Upload to cloud storage if requested
     if upload_to:

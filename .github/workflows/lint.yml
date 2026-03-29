@@ -20,4 +20,4 @@ jobs:
       run: black --check src/ tests/
 
     - name: flake8
-      run: flake8 src/ tests/ --max-line-length=100
+      run: flake8 src/ tests/

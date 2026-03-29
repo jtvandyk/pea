@@ -78,13 +78,21 @@ PROTEST_TOPICS = ["Civil_unrest", "Domestic_political", "Human_rights"]
 PROTEST_CATEGORIES = ["NEWS_ALERT", "REPORT", "ROUND_UP", "PROGRAMME_SUMMARY"]
 
 # Categories explicitly excluded (passed to API via exclusion in query logic)
-_EXCLUDE_CATEGORIES = ["BIOGRAPHY", "ARMED_ORGANISATION", "ORGANISATION",
-                       "POLITICAL_PARTY", "TRADE_UNION", "FORCES",
-                       "REGIONAL_AND_LOCAL_GOVERNMENT", "MEDIA_GUIDE"]
+_EXCLUDE_CATEGORIES = [
+    "BIOGRAPHY",
+    "ARMED_ORGANISATION",
+    "ORGANISATION",
+    "POLITICAL_PARTY",
+    "TRADE_UNION",
+    "FORCES",
+    "REGIONAL_AND_LOCAL_GOVERNMENT",
+    "MEDIA_GUIDE",
+]
 
 
 class _HTMLStripper(HTMLParser):
     """Minimal HTML-to-plaintext converter."""
+
     def __init__(self):
         super().__init__()
         self._parts = []
@@ -124,7 +132,9 @@ def bbc_login(username: str, password: str, timeout: int = 30) -> Optional[str]:
             if token:
                 log.info("BBC Monitoring login successful")
                 return token
-            log.warning("BBC Monitoring login: 204 received but no JSESSIONID cookie in response")
+            log.warning(
+                "BBC Monitoring login: 204 received but no JSESSIONID cookie in response"
+            )
             return None
         if resp.status_code == 401:
             log.error("BBC Monitoring login: incorrect username or password")
@@ -135,7 +145,9 @@ def bbc_login(username: str, password: str, timeout: int = 30) -> Optional[str]:
                 "Log in via browser at monitoring.bbc.co.uk to accept them first."
             )
             return None
-        log.error(f"BBC Monitoring login: unexpected status {resp.status_code} — {resp.text[:200]}")
+        log.error(
+            f"BBC Monitoring login: unexpected status {resp.status_code} — {resp.text[:200]}"
+        )
         return None
     except Exception as e:
         log.error(f"BBC Monitoring login error: {e}")
@@ -167,7 +179,9 @@ def search_bbc(
             page_params["cursor"] = cursor
 
         try:
-            resp = requests.get(BBC_SEARCH_URL, params=page_params, headers=headers, timeout=30)
+            resp = requests.get(
+                BBC_SEARCH_URL, params=page_params, headers=headers, timeout=30
+            )
             resp.raise_for_status()
         except requests.exceptions.HTTPError as e:
             log.warning(f"BBC search HTTP error: {e}")
@@ -184,7 +198,9 @@ def search_bbc(
 
         products = data.get("products", [])
         results.extend(products)
-        log.debug(f"BBC search page: {len(products)} results (total so far: {len(results)})")
+        log.debug(
+            f"BBC search page: {len(products)} results (total so far: {len(results)})"
+        )
 
         cursor = data.get("cursor")
         if not cursor or not products:
@@ -316,7 +332,11 @@ def discover_articles(
         # Publication time is a Unix timestamp in milliseconds (may be null)
         try:
             pub_ts = int(product.get("publicationTime") or 0)
-            pub_date = datetime.utcfromtimestamp(pub_ts / 1000).strftime("%Y%m%dT%H%M%SZ") if pub_ts else ""
+            pub_date = (
+                datetime.utcfromtimestamp(pub_ts / 1000).strftime("%Y%m%dT%H%M%SZ")
+                if pub_ts
+                else ""
+            )
         except (OSError, OverflowError, ValueError, TypeError):
             pub_date = ""
 

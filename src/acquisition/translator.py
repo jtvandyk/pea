@@ -23,8 +23,25 @@ log = logging.getLogger(__name__)
 # Languages Claude can handle natively — skip translation for these
 # (saves time and avoids translation noise)
 CLAUDE_NATIVE_LANGUAGES = {
-    "en", "es", "fr", "pt", "ar", "zh", "de", "it", "ru", "ja", "ko",
-    "hi", "bn", "id", "ms", "tr", "vi", "th", "tl",
+    "en",
+    "es",
+    "fr",
+    "pt",
+    "ar",
+    "zh",
+    "de",
+    "it",
+    "ru",
+    "ja",
+    "ko",
+    "hi",
+    "bn",
+    "id",
+    "ms",
+    "tr",
+    "vi",
+    "th",
+    "tl",
 }
 
 # Max characters to translate per article (Google free tier limit awareness)
@@ -38,7 +55,8 @@ def detect_language(text: str) -> str:
     Returns 'unknown' on failure.
     """
     try:
-        from langdetect import detect, LangDetectException
+        from langdetect import detect
+
         # Use first 500 chars for faster detection
         lang = detect(text[:500])
         return lang
@@ -67,7 +85,9 @@ def translate_text(text: str, source_lang: str) -> Optional[str]:
         # Truncate to avoid rate limits / long processing
         truncated = text[:MAX_CHARS_TO_TRANSLATE]
         if len(text) > MAX_CHARS_TO_TRANSLATE:
-            log.debug(f"Truncated text from {len(text)} to {MAX_CHARS_TO_TRANSLATE} chars for translation")
+            log.debug(
+                f"Truncated text from {len(text)} to {MAX_CHARS_TO_TRANSLATE} chars for translation"
+            )
 
         # deep_translator uses language names or codes
         translator = GoogleTranslator(source=source_lang, target="en")
@@ -132,7 +152,9 @@ def translate_articles(articles: list[dict]) -> list[dict]:
             else:
                 # Translation failed — pass original, note language for LLM
                 article["text_en"] = text
-                log.info(f"  ✗ Translation failed — passing original '{lang}' text to LLM")
+                log.info(
+                    f"  ✗ Translation failed — passing original '{lang}' text to LLM"
+                )
 
     log.info(
         f"Translation summary: {translated_count} translated, "

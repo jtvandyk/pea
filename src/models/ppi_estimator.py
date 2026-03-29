@@ -32,8 +32,13 @@ class PredictionPoweredInference:
 
         n = len(self.predictions)
         if n == 0:
-            return {"estimate": 0.0, "ci_lower": 0.0, "ci_upper": 0.0,
-                    "n_classified": 0, "total_n": 0}
+            return {
+                "estimate": 0.0,
+                "ci_lower": 0.0,
+                "ci_upper": 0.0,
+                "n_classified": 0,
+                "total_n": 0,
+            }
 
         correct = sum(1 for p in self.predictions if p.event_type == event_type)
         prevalence = correct / n
@@ -76,10 +81,9 @@ class PredictionPoweredInference:
         import numpy as np
         from scipy.stats import spearmanr
 
-        coded = np.array([
-            1 if p.event_type != "UNCLASSIFIABLE" else 0
-            for p in predictions_var1
-        ])
+        coded = np.array(
+            [1 if p.event_type != "UNCLASSIFIABLE" else 0 for p in predictions_var1]
+        )
         external = np.array(external_var)
         corr, p_value = spearmanr(coded, external)
 

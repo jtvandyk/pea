@@ -27,9 +27,14 @@ log = logging.getLogger(__name__)
 _CONF_TO_SCORE = {"high": 0.85, "medium": 0.70, "low": 0.50}
 
 VALID_EVENT_TYPES = {
-    "demonstration_march", "strike_boycott", "occupation_seizure",
-    "confrontation", "petition_signature", "vigil",
-    "hunger_strike", "riot",
+    "demonstration_march",
+    "strike_boycott",
+    "occupation_seizure",
+    "confrontation",
+    "petition_signature",
+    "vigil",
+    "hunger_strike",
+    "riot",
 }
 
 
@@ -41,13 +46,15 @@ def _events_to_predictions(events: list) -> list:
     for event in events:
         score = _CONF_TO_SCORE.get(event.get("confidence", ""), 0.60)
         event_type = event.get("event_type", "UNCLASSIFIABLE")
-        predictions.append(ProtestEventPrediction(
-            event_type=event_type,
-            confidence_score=score,
-            reasoning="",
-            schema_valid=(event_type in VALID_EVENT_TYPES and score >= 0.70),
-            key_indicators=[],
-        ))
+        predictions.append(
+            ProtestEventPrediction(
+                event_type=event_type,
+                confidence_score=score,
+                reasoning="",
+                schema_valid=(event_type in VALID_EVENT_TYPES and score >= 0.70),
+                key_indicators=[],
+            )
+        )
     return predictions
 
 
@@ -183,19 +190,24 @@ def run_predictions(
     print("=" * 60)
     print(f"Events analysed:   {len(events)}")
     print(f"Countries covered: {len(countries)}")
-    print(f"\nPrevalence by event type (95% CI):")
-    for etype, est in sorted(prevalence_by_type.items(), key=lambda x: -x[1]["n_classified"]):
+    print("\nPrevalence by event type (95% CI):")
+    for etype, est in sorted(
+        prevalence_by_type.items(), key=lambda x: -x[1]["n_classified"]
+    ):
         if est["n_classified"] > 0:
             print(
                 f"  {etype:30s} {est['estimate']:.1%}  "
                 f"[{est['ci_lower']:.1%}–{est['ci_upper']:.1%}]  "
                 f"n={est['n_classified']}"
             )
-    print(f"\nConfidence breakdown:")
-    print(f"  High:   {confidence_breakdown.get('high_confidence', 0)} ({confidence_breakdown.get('pct_high', 0):.0%})")
-    print(f"  Medium: {confidence_breakdown.get('medium_confidence', 0)} ({confidence_breakdown.get('pct_medium', 0):.0%})")
-    print(f"  Low:    {confidence_breakdown.get('low_confidence', 0)} ({confidence_breakdown.get('pct_low', 0):.0%})")
-    print(f"\nTurmoil distribution:")
+    print("\nConfidence breakdown:")
+    hi = confidence_breakdown.get("high_confidence", 0)
+    md = confidence_breakdown.get("medium_confidence", 0)
+    lo = confidence_breakdown.get("low_confidence", 0)
+    print(f"  High:   {hi} ({confidence_breakdown.get('pct_high', 0):.0%})")
+    print(f"  Medium: {md} ({confidence_breakdown.get('pct_medium', 0):.0%})")
+    print(f"  Low:    {lo} ({confidence_breakdown.get('pct_low', 0):.0%})")
+    print("\nTurmoil distribution:")
     for level, count in sorted(turmoil_counts.items(), key=lambda x: -x[1]):
         print(f"  {level:10s} {count}")
     print(f"\nOutput: {output_dir}")
@@ -204,6 +216,7 @@ def run_predictions(
     # Upload
     if upload_to:
         from src.acquisition.storage import _upload_outputs
+
         _upload_outputs(upload_to, [prev_path, conf_path, summary_path])
         log.info(f"Stage 3 outputs uploaded to {upload_to}")
 

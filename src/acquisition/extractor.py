@@ -106,7 +106,7 @@ JSON schema for each event:
   "country": "country name",
   "city": "city or town name",
   "region": "state/province/region",
-  "venue": "specific named location within the city if mentioned (e.g. 'Lekki Toll Gate', 'Parliament Square', 'University of Lagos')",
+  "venue": "specific named venue/landmark within the city (e.g. 'Lekki Toll Gate', 'Parliament Square')",
   "location_notes": "any additional location context",
   "event_type": "one of the 8 allowed keys above",
   "organizer": "organisation or group that called the event",
@@ -182,6 +182,7 @@ def _call_openai(
     """
     try:
         from openai import OpenAI, APIStatusError
+
         client = OpenAI(api_key=api_key, timeout=timeout)
         response = client.chat.completions.create(
             model=model,
@@ -216,6 +217,7 @@ def _call_azure(
     """
     try:
         from openai import OpenAI, APIStatusError
+
         endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
         if not endpoint:
             raise ValueError("AZURE_OPENAI_ENDPOINT env var is not set")
@@ -292,7 +294,7 @@ def _parse_events(raw: str) -> list[dict]:
     end = text.rfind("]")
     if start != -1 and end != -1 and end > start:
         try:
-            cleaned = _clean_json(text[start:end + 1])
+            cleaned = _clean_json(text[start : end + 1])
             return json.loads(cleaned)
         except json.JSONDecodeError:
             pass
@@ -315,7 +317,9 @@ def extract_from_article(
     text = article.get("text_en") or article.get("text") or ""
 
     if not text or len(text) < 100:
-        log.debug(f"Skipping article with insufficient text: {article.get('url', '')[:60]}")
+        log.debug(
+            f"Skipping article with insufficient text: {article.get('url', '')[:60]}"
+        )
         return []
 
     truncated_text = text[:12000]
@@ -339,13 +343,15 @@ def extract_from_article(
         )
 
         if raw == "__CONTENT_FILTERED__":
-            log.warning(f"Content filtered by Azure policy (violence:medium) — skipping retries")
+            log.warning(
+                "Content filtered by Azure policy (violence:medium) — skipping retries"
+            )
             return None
 
         if raw is None:
             log.warning(f"LLM returned nothing (attempt {attempt + 1})")
             if attempt < max_retries:
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
             continue
 
         events = _parse_events(raw)
@@ -412,7 +418,9 @@ def extract_events(
         articles that failed extraction after all retries.
     """
     if provider not in _PROVIDER_ENV_VARS:
-        raise ValueError(f"Unknown provider '{provider}'. Choose 'claude', 'openai', or 'azure'.")
+        raise ValueError(
+            f"Unknown provider '{provider}'. Choose 'claude', 'openai', or 'azure'."
+        )
 
     resolved_model = model or _PROVIDER_DEFAULT_MODELS[provider]
     env_var = _PROVIDER_ENV_VARS[provider]
@@ -443,12 +451,16 @@ def extract_events(
         url_display = url[:70]
 
         if url in done_urls:
-            log.info(f"[{i+1}/{len(articles)}] Skipping (checkpointed): {url_display}...")
+            log.info(
+                f"[{i+1}/{len(articles)}] Skipping (checkpointed): {url_display}..."
+            )
             continue
 
         log.info(f"[{i+1}/{len(articles)}] Extracting from: {url_display}...")
 
-        events = extract_from_article(article, model=resolved_model, api_key=resolved_key, provider=provider)
+        events = extract_from_article(
+            article, model=resolved_model, api_key=resolved_key, provider=provider
+        )
 
         if events:
             log.info(f"  ✓ Found {len(events)} event(s)")
@@ -456,17 +468,19 @@ def extract_events(
             processed += 1
         elif events is not None and len(events) == 0:
             # Empty list = valid response (no protest events in article)
-            log.info(f"  — No events found")
+            log.info("  — No events found")
             skipped += 1
         else:
             # None = extraction failed after all retries
             log.warning(f"  ✗ Extraction failed: {url_display}")
-            failures.append({
-                "url": url,
-                "title": article.get("title", ""),
-                "reason": "extraction_failed",
-                "lang": article.get("text_lang", "unknown"),
-            })
+            failures.append(
+                {
+                    "url": url,
+                    "title": article.get("title", ""),
+                    "reason": "extraction_failed",
+                    "lang": article.get("text_lang", "unknown"),
+                }
+            )
             skipped += 1
 
         # Write to checkpoint after every article (success or no-events; not failures)
@@ -476,6 +490,7 @@ def extract_events(
             # Upload checkpoint to blob every 10 articles for crash-safe resume
             if upload_to and (i + 1) % 10 == 0:
                 from src.acquisition.storage import upload_checkpoint
+
                 upload_checkpoint(upload_to, Path(checkpoint_path).parent)
 
         if i < len(articles) - 1:

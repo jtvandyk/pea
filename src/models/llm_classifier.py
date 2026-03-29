@@ -5,7 +5,6 @@ Model initialisation is deferred until the LLM setup stage.
 """
 
 import json
-import re
 from typing import List, Dict, Optional
 
 from src.models.schemas import ProtestEventPrediction
@@ -19,7 +18,7 @@ def _unclassifiable(reason: str) -> ProtestEventPrediction:
         confidence_score=0.0,
         reasoning=reason,
         schema_valid=False,
-        key_indicators=[]
+        key_indicators=[],
     )
 
 
@@ -94,16 +93,18 @@ class LLMClassifier:
         except json.JSONDecodeError:
             pass
         # Find the last { ... } block (handles preamble/postamble text)
-        start = response.rfind('{')
-        end = response.rfind('}')
+        start = response.rfind("{")
+        end = response.rfind("}")
         if start != -1 and end != -1 and end > start:
             try:
-                return json.loads(response[start:end + 1])
+                return json.loads(response[start : end + 1])
             except json.JSONDecodeError:
                 pass
         raise ValueError(f"No JSON found in response: {response[:200]}")
 
-    def _to_prediction(self, response: str, _retry: bool = True) -> ProtestEventPrediction:
+    def _to_prediction(
+        self, response: str, _retry: bool = True
+    ) -> ProtestEventPrediction:
         try:
             data = self._parse_response(response)
             pred = ProtestEventPrediction(**data)

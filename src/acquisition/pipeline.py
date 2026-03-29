@@ -25,7 +25,6 @@ Requires:
 import argparse
 import json
 import logging
-import os
 import sys
 from pathlib import Path
 from datetime import datetime
@@ -37,9 +36,13 @@ from src.acquisition.scraper import scrape_articles
 from src.acquisition.geocoder import geocode_events
 from src.acquisition.translator import translate_articles
 from src.acquisition.extractor import extract_events
-from src.acquisition.storage import save_results, sync_checkpoint_from_blob, upload_checkpoint
+from src.acquisition.storage import (
+    save_results,
+    sync_checkpoint_from_blob,
+)
 from src.acquisition.processing import process_events
 from src.acquisition.predictions import run_predictions
+
 
 class _JsonFormatter(logging.Formatter):
     def format(self, record):
@@ -52,6 +55,7 @@ class _JsonFormatter(logging.Formatter):
         if record.exc_info:
             entry["exc"] = self.formatException(record.exc_info)
         return json.dumps(entry)
+
 
 _handler = logging.StreamHandler(sys.stdout)
 _handler.setFormatter(_JsonFormatter())
@@ -91,7 +95,9 @@ def run_pipeline(
 ):
     log.info("=== Protest Event Analysis Pipeline (codebook v2.2) ===")
     log.info(f"Query: '{query}' | Countries: {countries} | Days back: {days}")
-    log.info(f"LLM provider: {provider} | model: {model or 'default'} | source: {source}")
+    log.info(
+        f"LLM provider: {provider} | model: {model or 'default'} | source: {source}"
+    )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     run_id = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
@@ -114,7 +120,9 @@ def run_pipeline(
     if source in ("bbc", "both"):
         log.info("--- Stage 1b: BBC Monitoring Discovery ---")
         bbc_articles = _bbc.discover_articles(
-            query=query, countries=countries, days=days,
+            query=query,
+            countries=countries,
+            days=days,
             max_results=max_articles,
             fetch_full_text=True,
         )
@@ -129,7 +137,9 @@ def run_pipeline(
             if a["url"] not in seen:
                 seen.add(a["url"])
                 deduped.append(a)
-        log.info(f"After dedup: {len(deduped)} articles ({len(articles) - len(deduped)} duplicates removed)")
+        log.info(
+            f"After dedup: {len(deduped)} articles ({len(articles) - len(deduped)} duplicates removed)"
+        )
         articles = deduped
 
     log.info(f"Discovered {len(articles)} candidate articles total")
@@ -168,7 +178,9 @@ def run_pipeline(
         checkpoint_path=checkpoint_path,
         upload_to=upload_to,
     )
-    log.info(f"Extracted {len(events)} protest events ({len(failures)} extraction failures)")
+    log.info(
+        f"Extracted {len(events)} protest events ({len(failures)} extraction failures)"
+    )
 
     # Stage 4.5: Geocoding
     if geocode and events:
@@ -177,7 +189,13 @@ def run_pipeline(
 
     # Stage 5: Storage
     log.info("--- Stage 5: Saving Results ---")
-    out_path = save_results(events, output_dir=output_dir, run_id=run_id, failures=failures, upload_to=upload_to)
+    out_path = save_results(
+        events,
+        output_dir=output_dir,
+        run_id=run_id,
+        failures=failures,
+        upload_to=upload_to,
+    )
     log.info(f"Results saved to {out_path}")
 
     log.info("=== Pipeline complete ===")
@@ -186,43 +204,72 @@ def run_pipeline(
 
 def main():
     from dotenv import load_dotenv
+
     load_dotenv()
 
     parser = argparse.ArgumentParser(
         description="Protest Event Analysis Pipeline — Global South focus (codebook v2.1)"
     )
     parser.add_argument(
-        "--query", default="protest demonstration strike rally march",
-        help="Keywords to search in GDELT (space-separated)"
+        "--query",
+        default="protest demonstration strike rally march",
+        help="Keywords to search in GDELT (space-separated)",
     )
     parser.add_argument(
-        "--countries", default="NG,ZA,UG,DZ",
-        help="Comma-separated ISO2 country codes"
+        "--countries", default="NG,ZA,UG,DZ", help="Comma-separated ISO2 country codes"
     )
-    parser.add_argument("--days", type=int, default=7,
-                        help="How many days back to search")
-    parser.add_argument("--max-articles", type=int, default=50,
-                        help="Max articles to process")
-    parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR),
-                        help="Directory to write results (default: data/raw/)")
-    parser.add_argument("--no-translate", action="store_true",
-                        help="Skip translation step")
-    parser.add_argument("--provider", default="claude", choices=["claude", "openai", "azure"],
-                        help="LLM provider: 'claude' (default), 'openai', or 'azure' (Azure AI Foundry)")
-    parser.add_argument("--model", default=None,
-                        help="Model ID — defaults to claude-sonnet-4-6 (claude) or gpt-4o-mini (openai)")
-    parser.add_argument("--api-key", default=None,
-                        help="API key — defaults to ANTHROPIC_API_KEY or OPENAI_API_KEY env var")
-    parser.add_argument("--source", default="gdelt", choices=["gdelt", "bbc", "both"],
-                        help="Discovery source: 'gdelt' (default), 'bbc' (BBC Monitoring), or 'both'")
-    parser.add_argument("--no-geocode", action="store_true",
-                        help="Skip geocoding step (Nominatim OSM)")
-    parser.add_argument("--resume", action="store_true",
-                        help="Resume from checkpoint.txt — skip already-processed URLs")
-    parser.add_argument("--upload-to", default=None,
-                        help="Upload outputs after run: 's3://bucket/prefix' or 'az://container/prefix'")
     parser.add_argument(
-        "--stage", default="acquire",
+        "--days", type=int, default=7, help="How many days back to search"
+    )
+    parser.add_argument(
+        "--max-articles", type=int, default=50, help="Max articles to process"
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=str(DEFAULT_OUTPUT_DIR),
+        help="Directory to write results (default: data/raw/)",
+    )
+    parser.add_argument(
+        "--no-translate", action="store_true", help="Skip translation step"
+    )
+    parser.add_argument(
+        "--provider",
+        default="claude",
+        choices=["claude", "openai", "azure"],
+        help="LLM provider: 'claude' (default), 'openai', or 'azure' (Azure AI Foundry)",
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Model ID — defaults to claude-sonnet-4-6 (claude) or gpt-4o-mini (openai)",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        help="API key — defaults to ANTHROPIC_API_KEY or OPENAI_API_KEY env var",
+    )
+    parser.add_argument(
+        "--source",
+        default="gdelt",
+        choices=["gdelt", "bbc", "both"],
+        help="Discovery source: 'gdelt' (default), 'bbc' (BBC Monitoring), or 'both'",
+    )
+    parser.add_argument(
+        "--no-geocode", action="store_true", help="Skip geocoding step (Nominatim OSM)"
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from checkpoint.txt — skip already-processed URLs",
+    )
+    parser.add_argument(
+        "--upload-to",
+        default=None,
+        help="Upload outputs after run: 's3://bucket/prefix' or 'az://container/prefix'",
+    )
+    parser.add_argument(
+        "--stage",
+        default="acquire",
         choices=["acquire", "process", "predict", "all"],
         help=(
             "Pipeline stage to run: "

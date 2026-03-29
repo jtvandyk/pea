@@ -20,8 +20,7 @@ In Azure, the app's managed identity is used.
 
 import json
 import os
-import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from io import StringIO
 from typing import Optional
 
@@ -44,23 +43,51 @@ st.set_page_config(
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 COUNTRIES = {
-    "Nigeria": "NG", "South Africa": "ZA", "Uganda": "UG", "Algeria": "DZ",
-    "Libya": "LY", "Angola": "AO", "Kenya": "KE", "Somalia": "SO",
-    "Tanzania": "TZ", "Ghana": "GH", "Ethiopia": "ET", "Senegal": "SN",
-    "Zimbabwe": "ZW", "Cameroon": "CM", "Sudan": "SD", "South Sudan": "SS",
-    "Mozambique": "MZ", "Zambia": "ZM", "Mali": "ML", "Niger": "NE",
-    "Rwanda": "RW", "DRC": "CD", "Ivory Coast": "CI",
+    "Nigeria": "NG",
+    "South Africa": "ZA",
+    "Uganda": "UG",
+    "Algeria": "DZ",
+    "Libya": "LY",
+    "Angola": "AO",
+    "Kenya": "KE",
+    "Somalia": "SO",
+    "Tanzania": "TZ",
+    "Ghana": "GH",
+    "Ethiopia": "ET",
+    "Senegal": "SN",
+    "Zimbabwe": "ZW",
+    "Cameroon": "CM",
+    "Sudan": "SD",
+    "South Sudan": "SS",
+    "Mozambique": "MZ",
+    "Zambia": "ZM",
+    "Mali": "ML",
+    "Niger": "NE",
+    "Rwanda": "RW",
+    "DRC": "CD",
+    "Ivory Coast": "CI",
 }
 
 EVENT_TYPES = [
-    "demonstration_march", "strike_boycott", "confrontation",
-    "occupation_seizure", "petition_signature", "vigil",
-    "hunger_strike", "riot",
+    "demonstration_march",
+    "strike_boycott",
+    "confrontation",
+    "occupation_seizure",
+    "petition_signature",
+    "vigil",
+    "hunger_strike",
+    "riot",
 ]
 
-TURMOIL_COLOURS = {"high": "#e74c3c", "medium": "#f39c12", "low": "#2ecc71", "unknown": "#95a5a6"}
+TURMOIL_COLOURS = {
+    "high": "#e74c3c",
+    "medium": "#f39c12",
+    "low": "#2ecc71",
+    "unknown": "#95a5a6",
+}
 
 # ── Azure helpers ─────────────────────────────────────────────────────────────
+
 
 @st.cache_resource(ttl=3500)
 def _get_credential():
@@ -125,10 +152,12 @@ def trigger_pipeline_job(pipeline_args: list) -> dict:
 
     payload = {
         "template": {
-            "containers": [{
-                "name": "pea-pipeline",
-                "args": pipeline_args,
-            }]
+            "containers": [
+                {
+                    "name": "pea-pipeline",
+                    "args": pipeline_args,
+                }
+            ]
         }
     }
 
@@ -195,7 +224,9 @@ def load_events_from_blob() -> pd.DataFrame:
     try:
         container = client.get_container_client(container_name)
         blobs = list(container.list_blobs(name_starts_with=prefix))
-        event_blobs = [b for b in blobs if b.name.endswith(".jsonl") and "/events_" in b.name]
+        event_blobs = [
+            b for b in blobs if b.name.endswith(".jsonl") and "/events_" in b.name
+        ]
 
         if not event_blobs:
             return pd.DataFrame()
@@ -259,7 +290,9 @@ st.sidebar.caption(
 
 # ── Main tabs ─────────────────────────────────────────────────────────────────
 
-tab_launch, tab_events, tab_history = st.tabs(["Launch Run", "Events Browser", "Run History"])
+tab_launch, tab_events, tab_history = st.tabs(
+    ["Launch Run", "Events Browser", "Run History"]
+)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -300,7 +333,9 @@ with tab_launch:
         )
 
         days = st.slider("Days back to search", min_value=1, max_value=90, value=14)
-        max_articles = st.slider("Max articles to process", min_value=10, max_value=500, value=50)
+        max_articles = st.slider(
+            "Max articles to process", min_value=10, max_value=500, value=50
+        )
 
     with col_right:
         st.subheader("Extraction")
@@ -311,7 +346,11 @@ with tab_launch:
             index=0,
         )
 
-        model_defaults = {"azure": "gpt-4o-mini", "claude": "claude-sonnet-4-6", "openai": "gpt-4o-mini"}
+        model_defaults = {
+            "azure": "gpt-4o-mini",
+            "claude": "claude-sonnet-4-6",
+            "openai": "gpt-4o-mini",
+        }
         model = st.text_input(
             "Model / deployment name",
             value=model_defaults.get(provider, "gpt-4o-mini"),
@@ -346,14 +385,22 @@ with tab_launch:
     # Build the args list preview
     country_codes = ",".join(COUNTRIES[c] for c in selected_countries if c in COUNTRIES)
     args_preview = [
-        "--query", query,
-        "--countries", country_codes,
-        "--days", str(days),
-        "--max-articles", str(max_articles),
-        "--provider", provider,
-        "--model", model,
-        "--source", source,
-        "--stage", stage,
+        "--query",
+        query,
+        "--countries",
+        country_codes,
+        "--days",
+        str(days),
+        "--max-articles",
+        str(max_articles),
+        "--provider",
+        provider,
+        "--model",
+        model,
+        "--source",
+        source,
+        "--stage",
+        stage,
     ]
     if not translate:
         args_preview.append("--no-translate")
@@ -428,20 +475,36 @@ with tab_events:
         fcol1, fcol2, fcol3, fcol4 = st.columns(4)
 
         with fcol1:
-            countries_in_data = sorted(df["country"].dropna().unique()) if "country" in df.columns else []
-            filter_countries = st.multiselect("Country", options=countries_in_data, default=[])
+            countries_in_data = (
+                sorted(df["country"].dropna().unique())
+                if "country" in df.columns
+                else []
+            )
+            filter_countries = st.multiselect(
+                "Country", options=countries_in_data, default=[]
+            )
 
         with fcol2:
-            types_in_data = sorted(df["event_type"].dropna().unique()) if "event_type" in df.columns else []
-            filter_types = st.multiselect("Event type", options=types_in_data, default=[])
+            types_in_data = (
+                sorted(df["event_type"].dropna().unique())
+                if "event_type" in df.columns
+                else []
+            )
+            filter_types = st.multiselect(
+                "Event type", options=types_in_data, default=[]
+            )
 
         with fcol3:
             turmoil_options = ["high", "medium", "low", "unknown"]
-            filter_turmoil = st.multiselect("Turmoil level", options=turmoil_options, default=[])
+            filter_turmoil = st.multiselect(
+                "Turmoil level", options=turmoil_options, default=[]
+            )
 
         with fcol4:
             confidence_options = ["high", "medium", "low"]
-            filter_confidence = st.multiselect("Confidence", options=confidence_options, default=[])
+            filter_confidence = st.multiselect(
+                "Confidence", options=confidence_options, default=[]
+            )
 
         # Date range
         if "event_date" in df.columns and df["event_date"].notna().any():
@@ -469,8 +532,8 @@ with tab_events:
         if date_range and len(date_range) == 2 and "event_date" in filtered.columns:
             start, end = date_range
             filtered = filtered[
-                (filtered["event_date"].dt.date >= start) &
-                (filtered["event_date"].dt.date <= end)
+                (filtered["event_date"].dt.date >= start)
+                & (filtered["event_date"].dt.date <= end)
             ]
 
         st.caption(f"Showing {len(filtered)} of {len(df)} events")
@@ -484,11 +547,17 @@ with tab_events:
                     type_counts = filtered["event_type"].value_counts().reset_index()
                     type_counts.columns = ["event_type", "count"]
                     fig = px.bar(
-                        type_counts, x="count", y="event_type", orientation="h",
-                        title="By Event Type", height=300,
+                        type_counts,
+                        x="count",
+                        y="event_type",
+                        orientation="h",
+                        title="By Event Type",
+                        height=300,
                         color_discrete_sequence=["#3498db"],
                     )
-                    fig.update_layout(showlegend=False, margin=dict(l=0, r=0, t=30, b=0))
+                    fig.update_layout(
+                        showlegend=False, margin=dict(l=0, r=0, t=30, b=0)
+                    )
                     st.plotly_chart(fig, use_container_width=True)
 
             with chart_col2:
@@ -496,22 +565,34 @@ with tab_events:
                     country_counts = filtered["country"].value_counts().reset_index()
                     country_counts.columns = ["country", "count"]
                     fig = px.bar(
-                        country_counts, x="count", y="country", orientation="h",
-                        title="By Country", height=300,
+                        country_counts,
+                        x="count",
+                        y="country",
+                        orientation="h",
+                        title="By Country",
+                        height=300,
                         color_discrete_sequence=["#9b59b6"],
                     )
-                    fig.update_layout(showlegend=False, margin=dict(l=0, r=0, t=30, b=0))
+                    fig.update_layout(
+                        showlegend=False, margin=dict(l=0, r=0, t=30, b=0)
+                    )
                     st.plotly_chart(fig, use_container_width=True)
 
             with chart_col3:
                 if "turmoil_level" in filtered.columns:
-                    turmoil_counts = filtered["turmoil_level"].value_counts().reset_index()
+                    turmoil_counts = (
+                        filtered["turmoil_level"].value_counts().reset_index()
+                    )
                     turmoil_counts.columns = ["turmoil_level", "count"]
                     colour_map = TURMOIL_COLOURS
                     fig = px.pie(
-                        turmoil_counts, names="turmoil_level", values="count",
-                        title="Turmoil Level", height=300,
-                        color="turmoil_level", color_discrete_map=colour_map,
+                        turmoil_counts,
+                        names="turmoil_level",
+                        values="count",
+                        title="Turmoil Level",
+                        height=300,
+                        color="turmoil_level",
+                        color_discrete_map=colour_map,
                     )
                     fig.update_layout(margin=dict(l=0, r=0, t=30, b=0))
                     st.plotly_chart(fig, use_container_width=True)
@@ -521,15 +602,30 @@ with tab_events:
                 map_df = filtered.dropna(subset=["latitude", "longitude"]).copy()
                 if not map_df.empty:
                     st.subheader("Event Map")
-                    map_df["turmoil_colour"] = map_df.get("turmoil_level", "unknown").map(
-                        lambda x: TURMOIL_COLOURS.get(x, "#95a5a6")
-                    )
-                    hover_cols = [c for c in ["country", "city", "event_type", "event_date", "turmoil_level", "confidence"] if c in map_df.columns]
+                    map_df["turmoil_colour"] = map_df.get(
+                        "turmoil_level", "unknown"
+                    ).map(lambda x: TURMOIL_COLOURS.get(x, "#95a5a6"))
+                    hover_cols = [
+                        c
+                        for c in [
+                            "country",
+                            "city",
+                            "event_type",
+                            "event_date",
+                            "turmoil_level",
+                            "confidence",
+                        ]
+                        if c in map_df.columns
+                    ]
                     fig_map = px.scatter_mapbox(
                         map_df,
                         lat="latitude",
                         lon="longitude",
-                        color="turmoil_level" if "turmoil_level" in map_df.columns else None,
+                        color=(
+                            "turmoil_level"
+                            if "turmoil_level" in map_df.columns
+                            else None
+                        ),
                         color_discrete_map=TURMOIL_COLOURS,
                         hover_data={col: True for col in hover_cols},
                         zoom=3,
@@ -542,14 +638,32 @@ with tab_events:
 
         # ── Data table ──
         st.subheader("Events Table")
-        display_cols = [c for c in [
-            "event_date", "country", "city", "event_type", "turmoil_level",
-            "confidence", "organizer", "claims", "state_response",
-            "arrests", "fatalities", "outcome", "article_url",
-        ] if c in filtered.columns]
+        display_cols = [
+            c
+            for c in [
+                "event_date",
+                "country",
+                "city",
+                "event_type",
+                "turmoil_level",
+                "confidence",
+                "organizer",
+                "claims",
+                "state_response",
+                "arrests",
+                "fatalities",
+                "outcome",
+                "article_url",
+            ]
+            if c in filtered.columns
+        ]
 
         st.dataframe(
-            filtered[display_cols].sort_values("event_date", ascending=False) if "event_date" in filtered.columns else filtered[display_cols],
+            (
+                filtered[display_cols].sort_values("event_date", ascending=False)
+                if "event_date" in filtered.columns
+                else filtered[display_cols]
+            ),
             use_container_width=True,
             height=400,
         )
@@ -610,12 +724,14 @@ with tab_history:
                 except Exception:
                     pass
 
-            rows.append({
-                "Status": f"{status_emoji.get(status, '?')} {status}",
-                "Execution": ex.get("name", ""),
-                "Started": start_time[:19].replace("T", " ") if start_time else "",
-                "Duration": duration,
-            })
+            rows.append(
+                {
+                    "Status": f"{status_emoji.get(status, '?')} {status}",
+                    "Execution": ex.get("name", ""),
+                    "Started": start_time[:19].replace("T", " ") if start_time else "",
+                    "Duration": duration,
+                }
+            )
 
         history_df = pd.DataFrame(rows)
         st.dataframe(history_df, use_container_width=True, hide_index=True)

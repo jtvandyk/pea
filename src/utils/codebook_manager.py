@@ -12,20 +12,20 @@ class CodebookManager:
     """Load, manage, and validate against codebook definitions."""
 
     def __init__(self, codebook_path: str):
-        with open(codebook_path, 'r') as f:
+        with open(codebook_path, "r") as f:
             self.codebook_raw = yaml.safe_load(f)
         self.event_definitions: Dict[str, EventDefinition] = {}
         self._parse_codebook()
 
     def _parse_codebook(self):
-        for event_type, details in self.codebook_raw['event_types'].items():
+        for event_type, details in self.codebook_raw["event_types"].items():
             self.event_definitions[event_type] = EventDefinition(
                 name=event_type,
-                definition=details['definition'],
-                positive_examples=details.get('positive_examples', []),
-                negative_examples=details.get('negative_examples', []),
-                decision_rules=details.get('decision_rules', []),
-                confidence_threshold=details.get('confidence_threshold', 0.70)
+                definition=details["definition"],
+                positive_examples=details.get("positive_examples", []),
+                negative_examples=details.get("negative_examples", []),
+                decision_rules=details.get("decision_rules", []),
+                confidence_threshold=details.get("confidence_threshold", 0.70),
             )
 
     def get_prompt_context(self) -> str:
