@@ -10,6 +10,13 @@ deep-translator>=1.11.0
 
 # LLM APIs
 anthropic>=0.49.0
+openai>=1.30.0
+
+# Geocoding
+geopy>=2.4.0
+
+# Azure Storage
+azure-storage-blob>=12.19.0
 
 # Data Processing
 pydantic==2.6.0

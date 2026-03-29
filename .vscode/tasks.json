@@ -1,0 +1,128 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "PEA: Trigger Pipeline Run (Azure)",
+      "type": "shell",
+      "command": "az containerapp job start --name ${input:jobName} --resource-group ${input:resourceGroup} --args \"--provider azure --model gpt-4o-mini --countries ${input:countries} --days ${input:days} --max-articles ${input:maxArticles} --source ${input:source} --stage ${input:stage} --upload-to az://pea-outputs/runs\"",
+      "group": "none",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "PEA: Watch Job Status",
+      "type": "shell",
+      "command": "watch -n 10 'az containerapp job execution list --name ${input:jobName} --resource-group ${input:resourceGroup} --output table | head -20'",
+      "group": "none",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "PEA: Run Pipeline Locally",
+      "type": "shell",
+      "command": "venv/bin/python -m src.acquisition.pipeline --provider azure --model gpt-4o-mini --countries ${input:countries} --days ${input:days} --max-articles ${input:maxArticles} --source ${input:source} --stage ${input:stage}",
+      "group": "none",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "PEA: Run Dashboard Locally",
+      "type": "shell",
+      "command": "venv/bin/pip install -q -r requirements-web.txt && venv/bin/streamlit run src/web/app.py",
+      "group": "none",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "PEA: Open Dashboard in Browser",
+      "type": "shell",
+      "command": "open $(az containerapp show --name ${input:dashboardApp} --resource-group ${input:resourceGroup} --query 'properties.configuration.ingress.fqdn' -o tsv | xargs -I{} echo 'https://{}')",
+      "group": "none",
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "PEA: Build Docker Images Locally",
+      "type": "shell",
+      "command": "docker build -f Dockerfile -t pea-pipeline:local . && docker build -f Dockerfile.web -t pea-dashboard:local .",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true
+      },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "jobName",
+      "type": "promptString",
+      "description": "Container Apps Job name",
+      "default": "pea-pipeline-job"
+    },
+    {
+      "id": "dashboardApp",
+      "type": "promptString",
+      "description": "Container Apps dashboard app name",
+      "default": "pea-dashboard"
+    },
+    {
+      "id": "resourceGroup",
+      "type": "promptString",
+      "description": "Azure Resource Group",
+      "default": "pea-rg"
+    },
+    {
+      "id": "countries",
+      "type": "promptString",
+      "description": "Comma-separated country codes (e.g. ZA,NG,UG)",
+      "default": "ZA,NG"
+    },
+    {
+      "id": "days",
+      "type": "promptString",
+      "description": "Days back to search",
+      "default": "14"
+    },
+    {
+      "id": "maxArticles",
+      "type": "promptString",
+      "description": "Max articles to process",
+      "default": "50"
+    },
+    {
+      "id": "source",
+      "type": "pickString",
+      "description": "News source",
+      "options": ["gdelt", "bbc", "both"],
+      "default": "both"
+    },
+    {
+      "id": "stage",
+      "type": "pickString",
+      "description": "Pipeline stage to run",
+      "options": ["acquire", "process", "predict", "all"],
+      "default": "acquire"
+    }
+  ]
+}

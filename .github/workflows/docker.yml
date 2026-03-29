@@ -19,13 +19,23 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      - name: Build and push image
+      - name: Build and push pipeline image
         run: |
-          IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/pea
-          docker build -t $IMAGE:${{ github.sha }} .
+          IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/pea-pipeline
+          docker build -f Dockerfile -t $IMAGE:${{ github.sha }} .
+          docker push $IMAGE:${{ github.sha }}
+          docker tag $IMAGE:${{ github.sha }} $IMAGE:latest
+          docker push $IMAGE:latest
+
+      - name: Build and push dashboard image
+        run: |
+          IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/pea-dashboard
+          docker build -f Dockerfile.web -t $IMAGE:${{ github.sha }} .
           docker push $IMAGE:${{ github.sha }}
           docker tag $IMAGE:${{ github.sha }} $IMAGE:latest
           docker push $IMAGE:latest
 
       - name: Image digest
-        run: echo "Pushed ${{ secrets.ACR_LOGIN_SERVER }}/pea:${{ github.sha }}"
+        run: |
+          echo "Pipeline: ${{ secrets.ACR_LOGIN_SERVER }}/pea-pipeline:${{ github.sha }}"
+          echo "Dashboard: ${{ secrets.ACR_LOGIN_SERVER }}/pea-dashboard:${{ github.sha }}"
