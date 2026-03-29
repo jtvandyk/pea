@@ -37,7 +37,9 @@ from src.acquisition.scraper import scrape_articles
 from src.acquisition.geocoder import geocode_events
 from src.acquisition.translator import translate_articles
 from src.acquisition.extractor import extract_events
-from src.acquisition.storage import save_results
+from src.acquisition.storage import save_results, sync_checkpoint_from_blob, upload_checkpoint
+from src.acquisition.processing import process_events
+from src.acquisition.predictions import run_predictions
 
 class _JsonFormatter(logging.Formatter):
     def format(self, record):
@@ -85,6 +87,7 @@ def run_pipeline(
     upload_to: Optional[str] = None,
     source: str = "gdelt",
     geocode: bool = True,
+    resume: bool = False,
 ):
     log.info("=== Protest Event Analysis Pipeline (codebook v2.2) ===")
     log.info(f"Query: '{query}' | Countries: {countries} | Days back: {days}")
@@ -92,6 +95,10 @@ def run_pipeline(
 
     output_dir.mkdir(parents=True, exist_ok=True)
     run_id = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+
+    # Sync checkpoint from blob before reading it (enables resume after container restart)
+    if resume and upload_to:
+        sync_checkpoint_from_blob(upload_to, output_dir)
 
     # Stage 1: Discovery
     articles = []
@@ -159,6 +166,7 @@ def run_pipeline(
         api_key=api_key,
         provider=provider,
         checkpoint_path=checkpoint_path,
+        upload_to=upload_to,
     )
     log.info(f"Extracted {len(events)} protest events ({len(failures)} extraction failures)")
 
@@ -213,29 +221,58 @@ def main():
                         help="Resume from checkpoint.txt — skip already-processed URLs")
     parser.add_argument("--upload-to", default=None,
                         help="Upload outputs after run: 's3://bucket/prefix' or 'az://container/prefix'")
+    parser.add_argument(
+        "--stage", default="acquire",
+        choices=["acquire", "process", "predict", "all"],
+        help=(
+            "Pipeline stage to run: "
+            "'acquire' (default) — GDELT/BBC → extract → data/raw/; "
+            "'process' — dedup + quality control → data/processed/; "
+            "'predict' — PPI + prevalence estimates → data/predictions/; "
+            "'all' — run all three stages in sequence"
+        ),
+    )
     args = parser.parse_args()
 
-    # Clear checkpoint on fresh run
     output_dir = Path(args.output_dir)
-    checkpoint = output_dir / "checkpoint.txt"
-    if not args.resume and checkpoint.exists():
-        checkpoint.unlink()
-        log.info("Fresh run — cleared existing checkpoint")
 
-    run_pipeline(
-        query=args.query,
-        countries=args.countries.split(","),
-        days=args.days,
-        output_dir=Path(args.output_dir),
-        max_articles=args.max_articles,
-        translate=not args.no_translate,
-        provider=args.provider,
-        model=args.model,
-        api_key=args.api_key,
-        upload_to=args.upload_to,
-        source=args.source,
-        geocode=not args.no_geocode,
-    )
+    if args.stage in ("acquire", "all"):
+        # Clear checkpoint on fresh acquire run
+        checkpoint = output_dir / "checkpoint.txt"
+        if not args.resume and checkpoint.exists():
+            checkpoint.unlink()
+            log.info("Fresh run — cleared existing checkpoint")
+
+        run_pipeline(
+            query=args.query,
+            countries=args.countries.split(","),
+            days=args.days,
+            output_dir=output_dir,
+            max_articles=args.max_articles,
+            translate=not args.no_translate,
+            provider=args.provider,
+            model=args.model,
+            api_key=args.api_key,
+            upload_to=args.upload_to,
+            source=args.source,
+            geocode=not args.no_geocode,
+            resume=args.resume,
+        )
+
+    if args.stage in ("process", "all"):
+        log.info("=== Stage 2: Processing and Consolidation ===")
+        process_events(
+            provider=args.provider,
+            model=args.model,
+            api_key=args.api_key,
+            upload_to=args.upload_to,
+        )
+
+    if args.stage in ("predict", "all"):
+        log.info("=== Stage 3: Predictions and Statistical Inference ===")
+        run_predictions(
+            upload_to=args.upload_to,
+        )
 
 
 if __name__ == "__main__":

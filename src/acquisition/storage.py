@@ -112,6 +112,62 @@ def flatten_for_csv(event: dict) -> dict:
     return row
 
 
+def _az_client(conn_str: str):
+    """Return a BlobServiceClient from a connection string."""
+    try:
+        from azure.storage.blob import BlobServiceClient
+    except ImportError:
+        raise ImportError(
+            "azure-storage-blob is required: pip install azure-storage-blob"
+        )
+    return BlobServiceClient.from_connection_string(conn_str)
+
+
+def sync_checkpoint_from_blob(upload_to: str, output_dir: Path) -> bool:
+    """
+    Download checkpoint.txt from Azure Blob to output_dir before a --resume run.
+    Returns True if a checkpoint was found and downloaded, False otherwise.
+    Only operates on az:// destinations; no-op for s3:// or if no connection string.
+    """
+    if not upload_to.startswith("az://"):
+        return False
+    conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
+    if not conn_str:
+        log.warning("AZURE_STORAGE_CONNECTION_STRING not set — cannot sync checkpoint from blob")
+        return False
+    container, prefix = upload_to[5:].split("/", 1)
+    blob_name = f"{prefix}/checkpoint.txt"
+    try:
+        client = _az_client(conn_str)
+        blob = client.get_blob_client(container, blob_name)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        local_path = output_dir / "checkpoint.txt"
+        with open(local_path, "wb") as f:
+            f.write(blob.download_blob().readall())
+        lines = len(local_path.read_text().splitlines())
+        log.info(f"Resumed checkpoint from blob ({lines} URLs already processed)")
+        return True
+    except Exception as e:
+        if "BlobNotFound" in str(e) or "404" in str(e):
+            log.info("No checkpoint found in blob — starting fresh")
+        else:
+            log.warning(f"Could not sync checkpoint from blob: {e}")
+        return False
+
+
+def upload_checkpoint(upload_to: str, output_dir: Path) -> None:
+    """Upload checkpoint.txt to Azure Blob (called periodically during a run)."""
+    if not upload_to.startswith("az://"):
+        return
+    cp = output_dir / "checkpoint.txt"
+    if not cp.exists():
+        return
+    try:
+        _upload_outputs(upload_to, [cp])
+    except Exception as e:
+        log.warning(f"Checkpoint upload failed (non-fatal): {e}")
+
+
 def _upload_outputs(destination: str, paths: list[Path]) -> None:
     """
     Upload a list of local files to cloud storage.
@@ -261,6 +317,9 @@ def save_results(
         upload_paths = [jsonl_path, csv_path, cumulative_path, summary_path]
         if failures_path:
             upload_paths.append(failures_path)
+        checkpoint_path = output_dir / "checkpoint.txt"
+        if checkpoint_path.exists():
+            upload_paths.append(checkpoint_path)
         log.info(f"Uploading {len(upload_paths)} files to {upload_to} ...")
         _upload_outputs(upload_to, upload_paths)
         log.info("Cloud upload complete")

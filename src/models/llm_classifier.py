@@ -54,9 +54,11 @@ class LLMClassifier:
         """Return a callable that accepts a prompt string and returns a string."""
         if self.model_name == "llama":
             return self._call_ollama
+        if self.model_name in ("claude", "openai", "azure"):
+            return self._call_cloud
         raise ValueError(
             f"Unknown model '{self.model_name}'. "
-            "Supported: 'llama'. See LLAMA_LOCAL_SETUP_M2_MAC.md for setup."
+            "Supported: 'claude', 'openai', 'azure', 'llama'."
         )
 
     def _call_ollama(self, prompt: str) -> str:
@@ -70,6 +72,19 @@ class LLMClassifier:
             stream=False,
         )
         return response["response"]
+
+    def _call_cloud(self, prompt: str) -> str:
+        """Send prompt to a cloud LLM (claude/openai/azure) via extractor._call_llm."""
+        from src.acquisition.extractor import _call_llm
+
+        result = _call_llm(
+            system="You are an expert protest event classifier. Return only valid JSON.",
+            user=prompt,
+            model=self.ollama_model,  # ollama_model field reused as model/deployment name
+            api_key=self.api_keys.get(self.model_name, ""),
+            provider=self.model_name,
+        )
+        return result or ""
 
     def _parse_response(self, response: str) -> dict:
         """Extract the outermost JSON object from an LLM response string."""

@@ -389,6 +389,7 @@ def extract_events(
     provider: str = "claude",
     rate_limit_delay: float = 1.5,
     checkpoint_path: Optional[str] = None,
+    upload_to: Optional[str] = None,
 ) -> tuple[list[dict], list[dict]]:
     """
     Run LLM extraction across all scraped articles.
@@ -472,6 +473,10 @@ def extract_events(
         if checkpoint_path and events is not None:
             with open(checkpoint_path, "a") as f:
                 f.write(url + "\n")
+            # Upload checkpoint to blob every 10 articles for crash-safe resume
+            if upload_to and (i + 1) % 10 == 0:
+                from src.acquisition.storage import upload_checkpoint
+                upload_checkpoint(upload_to, Path(checkpoint_path).parent)
 
         if i < len(articles) - 1:
             time.sleep(rate_limit_delay)
