@@ -209,9 +209,12 @@ __marimo__/
 # Deployment script contains hardcoded ACR credentials — never commit
 infra/deploy.sh
 
-# Project data (keep structure, ignore contents)
-data/raw/*
-data/processed/*
-data/predictions/*
-data/validation/*
-!data/**/.gitkeep
+# Infrastructure outputs / local scripts
+infra/
+
+# Project data
+data/
+
+# Loose data files anywhere in the repo
+*.jsonl
+*.csv
