@@ -487,6 +487,11 @@ def extract_from_article(
                 event.setdefault("article_date", article.get("seendate", ""))
                 event.setdefault("source_country", article.get("sourcecountry", ""))
                 event.setdefault("source_language", article.get("text_lang", "unknown"))
+                # Store source text for annotation training pairs.
+                # Truncated to 12k chars (same as extraction limit) so JSONL
+                # files don't balloon. Prefixed with _ so it's stripped from
+                # the final CSV output and public-facing datasets.
+                event["_article_text"] = truncated_text
             return events
 
         log.warning(f"Parse failed (attempt {attempt + 1}), retrying...")

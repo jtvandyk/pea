@@ -30,7 +30,9 @@ tqdm==4.66.0
 requests==2.31.0
 
 # Relevance filter (ConfliBERT / zero-shot NLI)
-# CPU-only torch is ~250 MB vs ~2 GB for CUDA build.
-# Pin to cpu variant so Docker image stays lean.
-torch>=2.1.0
+# torch is installed separately in the Dockerfile via the PyTorch CPU-only
+# index URL to avoid pulling the 2 GB CUDA build.
+# For local dev outside Docker, install manually:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   pip install transformers>=4.40.0
 transformers>=4.40.0
