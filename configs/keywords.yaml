@@ -1,0 +1,73 @@
+# PEA Discovery Keywords
+# ======================
+# Protest-related GDELT GKG themes and text-matching signals.
+# Loaded by gdelt_discovery.py at import time — edit here, not in the source.
+#
+# GDELT theme list: http://data.gdeltproject.org/api/v2/guides/LOOKUP-GKGTHEMES.TXT
+
+# GDELT GKG themes used as secondary filters in the DOC 2.0 API query.
+protest_themes:
+  - PROTEST
+  - UNREST
+  - STRIKE
+  - DEMONSTRATION
+  - RIOT
+  - CIVIL_UNREST
+  - SOC_PROTEST
+  - TAX_FNCACT_PROTESTER
+
+# Keywords matched against article title to confirm protest relevance.
+# Multilingual signals included for GDELT's mixed-language feeds.
+protest_signals:
+  # English
+  - protest
+  - protests
+  - protester
+  - protesters
+  - demonstration
+  - demonstrators
+  - march
+  - marched
+  - strike
+  - strikes
+  - strikers
+  - walkout
+  - rally
+  - rallies
+  - riot
+  - riots
+  - unrest
+  - uprising
+  - revolt
+  - rebellion
+  - civil disobedience
+  - blockade
+  - sit-in
+  - clashes
+  - crackdown
+  - teargas
+  - tear gas
+  - detained
+  - arrested
+  - dispersed
+  # Spanish / French
+  - manifestation
+  - manifestantes
+  - huelga
+  - paro
+  - grève
+  # Indonesian / Malay
+  - aksi
+  - demonstrasi
+  # Arabic
+  - احتجاج
+  - مظاهرة
+
+# Substrings checked against article URL as a fallback relevance signal.
+url_signals:
+  - protest
+  - strike
+  - demo
+  - march
+  - riot
+  - unrest

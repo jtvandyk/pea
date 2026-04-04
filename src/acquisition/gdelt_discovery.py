@@ -13,26 +13,44 @@ For the Global South focus, this module:
 
 import logging
 import time
+from pathlib import Path
 
 import requests
+import yaml
 
 log = logging.getLogger(__name__)
 
 # GDELT DOC 2.0 API base URL
 GDELT_DOC_API = "https://api.gdeltproject.org/api/v2/doc/doc"
 
+_KEYWORDS_PATH = Path(__file__).parent.parent.parent / "configs" / "keywords.yaml"
+
+
+def _load_keywords(path: Path) -> dict:
+    """Load keywords YAML. Returns hardcoded fallback dict on failure."""
+    try:
+        with open(path) as f:
+            return yaml.safe_load(f) or {}
+    except Exception as e:
+        log.warning(f"Could not load keywords config ({path}): {e} — using fallback defaults")
+        return {
+            "protest_themes": [
+                "PROTEST", "UNREST", "STRIKE", "DEMONSTRATION",
+                "RIOT", "CIVIL_UNREST", "SOC_PROTEST", "TAX_FNCACT_PROTESTER",
+            ],
+            "protest_signals": [
+                "protest", "demonstration", "strike", "march", "riot", "unrest",
+                "rally", "uprising", "blockade", "clashes", "crackdown",
+            ],
+            "url_signals": ["protest", "strike", "demo", "march", "riot", "unrest"],
+        }
+
+
+_KEYWORDS = _load_keywords(_KEYWORDS_PATH)
+
 # GDELT GKG themes related to protest/unrest — use these as secondary filters
 # Full theme list: http://data.gdeltproject.org/api/v2/guides/LOOKUP-GKGTHEMES.TXT
-PROTEST_THEMES = [
-    "PROTEST",
-    "UNREST",
-    "STRIKE",
-    "DEMONSTRATION",
-    "RIOT",
-    "CIVIL_UNREST",
-    "SOC_PROTEST",
-    "TAX_FNCACT_PROTESTER",
-]
+PROTEST_THEMES: list[str] = _KEYWORDS.get("protest_themes", [])
 
 # ISO2 → country display name (used for keyword fallback in multi-country queries)
 COUNTRY_LABELS = {
@@ -204,69 +222,24 @@ def fetch_gdelt_articles(params: dict, retries: int = 3) -> list[dict]:
     return []
 
 
+_PROTEST_SIGNALS: set[str] = set(_KEYWORDS.get("protest_signals", []))
+_URL_SIGNALS: list[str] = _KEYWORDS.get("url_signals", [])
+
+
 def filter_protest_relevant(articles: list[dict], min_score: float = 0.0) -> list[dict]:
     """
     Filter articles to keep only those likely to be about protest events.
     GDELT returns articles matching the keyword query but may include noise.
     """
-    # Keywords that strongly indicate protest event reporting
-    protest_signals = {
-        "protest",
-        "protests",
-        "protester",
-        "protesters",
-        "demonstration",
-        "demonstrators",
-        "march",
-        "marched",
-        "strike",
-        "strikes",
-        "strikers",
-        "walkout",
-        "rally",
-        "rallies",
-        "riot",
-        "riots",
-        "unrest",
-        "uprising",
-        "revolt",
-        "rebellion",
-        "civil disobedience",
-        "blockade",
-        "sit-in",
-        "clashes",
-        "crackdown",
-        "teargas",
-        "tear gas",
-        "detained",
-        "arrested",
-        "dispersed",
-        # Non-English signals (common in multilingual GDELT)
-        "manifestation",
-        "manifestantes",  # Spanish/French
-        "huelga",
-        "paro",  # Spanish
-        "grève",
-        "manifestation",  # French
-        "aksi",
-        "demonstrasi",  # Indonesian/Malay
-        "احتجاج",
-        "مظاهرة",  # Arabic
-    }
-
     filtered = []
     for article in articles:
         title = (article.get("title") or "").lower()
         url = (article.get("url") or "").lower()
 
-        # Check title for protest signals
-        if any(signal in title for signal in protest_signals):
+        if any(signal in title for signal in _PROTEST_SIGNALS):
             article["_relevance"] = "title_match"
             filtered.append(article)
-        elif any(
-            signal in url
-            for signal in ["protest", "strike", "demo", "march", "riot", "unrest"]
-        ):
+        elif any(signal in url for signal in _URL_SIGNALS):
             article["_relevance"] = "url_match"
             filtered.append(article)
         else:
@@ -277,6 +250,32 @@ def filter_protest_relevant(articles: list[dict], min_score: float = 0.0) -> lis
     return filtered
 
 
+def _fetch_for_country(query: str, country: str, days: int) -> list[dict]:
+    """
+    Fetch GDELT articles for a single country using the FIPS sourcecountry filter.
+    Falls back to country-name keyword injection if the primary query returns nothing.
+    """
+    params = build_gdelt_query(query, [country], days)
+    log.debug(f"GDELT params for {country}: {params}")
+    articles = fetch_gdelt_articles(params)
+
+    if not articles:
+        log.info(
+            f"No results for {country} with sourcecountry filter — "
+            "retrying with country name keywords..."
+        )
+        time.sleep(5)
+        fallback_params = {k: v for k, v in params.items() if k != "sourcecountry"}
+        country_name = COUNTRY_LABELS.get(country)
+        if country_name:
+            base_query = fallback_params.get("query", "")
+            fallback_params["query"] = f'{base_query} "{country_name}"'
+        articles = fetch_gdelt_articles(fallback_params)
+        log.info(f"Fallback for {country} returned {len(articles)} articles")
+
+    return articles
+
+
 def discover_articles(
     query: str,
     countries: list,
@@ -285,6 +284,11 @@ def discover_articles(
 ) -> list[dict]:
     """
     Main discovery function. Queries GDELT and returns candidate article metadata.
+
+    Runs one query per country using the GDELT sourcecountry FIPS filter so that
+    results are geographically precise. Country-name keyword injection (which
+    introduces noise) is only used as a per-country fallback when sourcecountry
+    returns nothing.
 
     Args:
         query: search keywords
@@ -300,39 +304,26 @@ def discover_articles(
         f"Querying GDELT DOC API: query='{query}', countries={countries}, days={days}"
     )
 
-    params = build_gdelt_query(query, countries, days)
-    log.debug(f"GDELT params: {params}")
+    # One GDELT request per country — uses accurate sourcecountry FIPS filter.
+    # Merge and dedup by URL across all per-country result sets.
+    seen_urls: dict[str, dict] = {}
+    for country in countries:
+        articles = _fetch_for_country(query, country, days)
+        log.info(f"GDELT returned {len(articles)} raw articles for {country}")
+        for art in articles:
+            url = art.get("url", "")
+            if url and url not in seen_urls:
+                seen_urls[url] = art
 
-    raw_articles = fetch_gdelt_articles(params)
-    log.info(f"GDELT returned {len(raw_articles)} raw articles")
-
-    if not raw_articles:
-        # Fallback: try without sourcecountry filter (GDELT sourcecountry is sometimes unreliable)
-        # but add country name(s) to the keyword query so results stay geographically relevant
-        log.info(
-            "Retrying without sourcecountry filter — adding country name keywords instead..."
-        )
-        time.sleep(5)  # brief pause before fallback to avoid rate limits
-        fallback_params = {k: v for k, v in params.items() if k != "sourcecountry"}
-        country_names = [COUNTRY_LABELS[c] for c in countries if c in COUNTRY_LABELS]
-        if country_names:
-            country_name_query = (
-                "(" + " OR ".join(f'"{n}"' for n in country_names) + ")"
-            )
-            base_query = fallback_params.get("query", "")
-            if country_name_query not in base_query:
-                fallback_params["query"] = f"{base_query} {country_name_query}"
-        raw_articles = fetch_gdelt_articles(fallback_params)
-        log.info(f"Fallback returned {len(raw_articles)} articles")
+    raw_articles = list(seen_urls.values())
+    log.info(f"Total unique articles across all countries: {len(raw_articles)}")
 
     # Normalize fields
     normalized = []
-    seen_urls = set()
     for art in raw_articles:
         url = art.get("url", "")
-        if not url or url in seen_urls:
+        if not url:
             continue
-        seen_urls.add(url)
         normalized.append(
             {
                 "url": url,
