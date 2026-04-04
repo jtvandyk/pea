@@ -35,8 +35,97 @@ from pathlib import Path
 from typing import Optional
 
 import anthropic
+import yaml
 
 log = logging.getLogger(__name__)
+
+
+def _build_codebook_context(codebook_path: Path) -> str:
+    """
+    Load the protest codebook YAML and return a formatted string of all event type
+    definitions, positive/negative examples, and decision rules for injection into
+    the system prompt.  Returns an empty string if the file cannot be loaded.
+    """
+    try:
+        with open(codebook_path) as f:
+            cb = yaml.safe_load(f)
+    except Exception as e:
+        log.warning(f"Could not load codebook for prompt injection: {e}")
+        return ""
+
+    event_types = cb.get("event_types", {})
+    if not event_types:
+        return ""
+
+    lines = ["\n\n== FULL EVENT TYPE DEFINITIONS (Codebook v2.2) ==\n"]
+    for event_type, details in event_types.items():
+        lines.append(f"TYPE: {event_type.upper()}")
+        definition = details.get("definition", "").strip()
+        lines.append(f"DEFINITION: {definition}")
+
+        pos = details.get("positive_examples", [])
+        if pos:
+            lines.append("POSITIVE EXAMPLES (these qualify):")
+            for ex in pos:
+                lines.append(f"  + {ex}")
+
+        neg = details.get("negative_examples", [])
+        if neg:
+            lines.append("NEGATIVE EXAMPLES (these do NOT qualify as this type):")
+            for ex in neg:
+                lines.append(f"  - {ex}")
+
+        rules = details.get("decision_rules", [])
+        if rules:
+            lines.append("DECISION RULES:")
+            for rule in rules:
+                lines.append(f"  → {rule}")
+
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+_CODEBOOK_PATH = Path(__file__).parent.parent.parent / "configs" / "protest_codebook.yaml"
+_EXAMPLES_PATH = Path(__file__).parent.parent.parent / "configs" / "extraction_examples.yaml"
+
+
+def _build_few_shot_examples(examples_path: Path) -> str:
+    """
+    Load the gold-standard extraction examples YAML and return a formatted
+    string of demonstrated input/output pairs for injection into the user prompt.
+    Returns an empty string if the file cannot be loaded.
+    """
+    try:
+        with open(examples_path) as f:
+            data = yaml.safe_load(f)
+    except Exception as e:
+        log.warning(f"Could not load extraction examples for prompt injection: {e}")
+        return ""
+
+    examples = data.get("examples", [])
+    if not examples:
+        return ""
+
+    lines = ["== FEW-SHOT EXAMPLES ==", ""]
+    lines.append(
+        "The following are gold-standard examples of correct extraction. "
+        "Study them before processing the real article below.\n"
+    )
+
+    for ex in examples:
+        lines.append(f"--- Example: {ex.get('description', '')} ---")
+        lines.append("ARTICLE TEXT:")
+        lines.append(ex.get("article_snippet", "").strip())
+        lines.append("")
+        lines.append("CORRECT OUTPUT:")
+        lines.append(json.dumps(ex.get("extracted_events", []), indent=2))
+        lines.append("")
+
+    lines.append("== END OF EXAMPLES — NOW PROCESS THE REAL ARTICLE BELOW ==")
+    lines.append("")
+    return "\n".join(lines)
+
 
 SYSTEM_PROMPT = """You are an expert coder for a protest event analysis (PEA) dataset,
 specialising in the Global South and African contexts.
@@ -86,8 +175,14 @@ For qualifying articles, extract each distinct protest event. Follow these rules
    - petition_signature   (organized petition or letter campaign)
    - vigil                (solemn/commemorative gathering, candlelight assembly)
    - hunger_strike        (publicly declared food refusal as political protest)
-7. For state_response, choose from: none, monitoring, dispersal, teargas, water_cannon,
-   rubber_bullets, live_ammunition, arrests, ban, curfew, unknown.
+7. For state_response, choose the most severe response reported. Allowed values:
+   Standard: none, monitoring, dispersal, teargas, water_cannon, rubber_bullets,
+             live_ammunition, arrests, ban, curfew
+   Extended: legal_criminalisation (charged under novel anti-protest statute),
+             anti_terrorism_designation (labelled terrorist/security threat),
+             organisational_dissolution (movement legally dissolved),
+             non_association_bail (bail bars activists from contacting each other)
+   If unclear: unknown.
 8. For outcome, choose from: ongoing, dispersed, arrested, demands_met, partial_concession,
    escalated, unknown.
 9. crowd_size: numeric estimate if given, or "hundreds" / "thousands" / "tens of thousands".
@@ -129,7 +224,11 @@ JSON schema for each event:
   "confidence": "high / medium / low"
 }"""
 
-USER_PROMPT_TEMPLATE = """Article title: {title}
+SYSTEM_PROMPT = SYSTEM_PROMPT + _build_codebook_context(_CODEBOOK_PATH)
+
+_FEW_SHOT_EXAMPLES = _build_few_shot_examples(_EXAMPLES_PATH)
+
+USER_PROMPT_TEMPLATE = """{few_shot_examples}Article title: {title}
 Article URL: {url}
 Article date: {date}
 Source country: {source_country}
@@ -325,6 +424,7 @@ def extract_from_article(
     truncated_text = text[:12000]
 
     prompt = USER_PROMPT_TEMPLATE.format(
+        few_shot_examples=_FEW_SHOT_EXAMPLES,
         title=article.get("title", "Unknown"),
         url=article.get("url", ""),
         date=article.get("seendate", "Unknown"),

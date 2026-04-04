@@ -1,0 +1,146 @@
+# Few-Shot Extraction Examples for LLM Prompt Injection
+# ========================================================
+# Codebook v2.3 — aligned with Halterman & Keith (2025)
+#
+# These are gold-standard input/output pairs injected into the user prompt
+# before the real article text. They ground the model on the expected JSON
+# schema, the Africa-specific context, and the two most common failure modes:
+# (1) extracting events from non-protest articles, and (2) collapsing
+# multi-event articles into one event.
+#
+# Methodology: Caren, Andrews & Ray (2023); You et al. (2025) — domain-specific
+# few-shot examples substantially outperform zero-shot for tasks requiring
+# contextual knowledge (e.g. identifying that a named location is a township,
+# or that an organisation is a trade union).
+#
+# DO NOT change the structure of the extracted_events arrays — they must
+# be valid JSON arrays matching the extraction schema exactly.
+
+examples:
+
+  - id: "ex_01"
+    description: "Clean single event — South African service delivery protest with roadblock"
+    rationale: |
+      Demonstrates the correct handling of a township roadblock with burning tyres,
+      which is a CONFRONTATION (not a RIOT — no violence against persons). Shows
+      Africa-specific protest form, partial location detail, and appropriate
+      confidence assignment when crowd_size is not given.
+    article_snippet: |
+      Residents of Mzimhlope hostel in Soweto blocked the main road into the area
+      on Tuesday, using burning tyres and debris, to protest against the lack of
+      running water and electricity for three weeks. The South Gauteng Community
+      Forum organised the action, which lasted about four hours before police cleared
+      the road. No arrests were made. Municipality officials promised to send a
+      technical team by Thursday.
+    extracted_events:
+      - event_date: null
+        country: "South Africa"
+        city: "Soweto"
+        region: "Gauteng"
+        venue: "Mzimhlope hostel"
+        location_notes: "Main road into Mzimhlope hostel area"
+        event_type: "confrontation"
+        organizer: "South Gauteng Community Forum"
+        participant_groups: ["residents", "hostel community"]
+        claims: ["running water restoration", "electricity restoration"]
+        crowd_size: null
+        duration: "4 hours"
+        state_response: "none"
+        state_actors: ["police"]
+        arrests: "0"
+        fatalities: null
+        injuries: null
+        outcome: "partial_concession"
+        outcome_notes: "Municipality promised technical team by Thursday; road cleared by police"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "high"
+
+  - id: "ex_02"
+    description: "Correct empty result — AU summit, not a protest"
+    rationale: |
+      Demonstrates the disqualifier gate working correctly. AU and SADC summits
+      are a major source of false positives in African news feeds. The model must
+      return [] immediately without attempting to extract events. This is the
+      system working as intended.
+    article_snippet: |
+      African Union heads of state convened in Addis Ababa on Monday for the 38th
+      ordinary session of the Assembly of the African Union. Leaders discussed
+      climate finance, regional security cooperation, and the proposed reform of
+      the African Continental Free Trade Area. Ethiopian Prime Minister Abiy Ahmed
+      opened the session. South African President Cyril Ramaphosa is expected to
+      speak on Wednesday.
+    extracted_events: []
+
+  - id: "ex_03"
+    description: "Multi-event article — strike and simultaneous student occupation, Nigeria"
+    rationale: |
+      Demonstrates that one article can contain multiple distinct protest events
+      that must each be extracted separately. A strike and an occupation at the
+      same institution on the same day are TWO events with different types,
+      actors, and locations. Collapsing them into one event is the most common
+      multi-event failure mode.
+    article_snippet: |
+      Staff at the University of Lagos went on indefinite strike on Monday over
+      unpaid salaries, shutting down academic activities across all faculties.
+      The Academic Staff Union of Universities (ASUU) said the strike would
+      continue until the federal government released withheld funds. Meanwhile,
+      students separately occupied the university's senate building to demand the
+      resumption of lectures and the resolution of the salary dispute. The students,
+      numbering about 300, said they would remain in the building until management
+      gave them a written commitment. Police were deployed to campus but made no arrests.
+    extracted_events:
+      - event_date: null
+        country: "Nigeria"
+        city: "Lagos"
+        region: null
+        venue: "University of Lagos"
+        location_notes: null
+        event_type: "strike_boycott"
+        organizer: "Academic Staff Union of Universities (ASUU)"
+        participant_groups: ["academic staff", "university lecturers"]
+        claims: ["release of withheld salary funds"]
+        crowd_size: null
+        duration: "ongoing (indefinite)"
+        state_response: "none"
+        state_actors: []
+        arrests: null
+        fatalities: null
+        injuries: null
+        outcome: "ongoing"
+        outcome_notes: "Strike to continue until federal government releases funds"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "high"
+
+      - event_date: null
+        country: "Nigeria"
+        city: "Lagos"
+        region: null
+        venue: "University of Lagos senate building"
+        location_notes: null
+        event_type: "occupation_seizure"
+        organizer: null
+        participant_groups: ["students"]
+        claims: ["resumption of lectures", "resolution of salary dispute"]
+        crowd_size: "300"
+        duration: null
+        state_response: "monitoring"
+        state_actors: ["police"]
+        arrests: "0"
+        fatalities: null
+        injuries: null
+        outcome: "ongoing"
+        outcome_notes: "Students demanded written commitment from management before leaving"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "high"

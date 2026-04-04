@@ -2,8 +2,25 @@
 # Aligned with Meta Codebook & Halterman & Keith (2025)
 # Author: Your Name
 # Created: March 2026
-# Version: 2.2 — Merged v1.1 (non-event filtering, African context) +
-#                 v2.1 (vigil/hunger_strike types, turmoil_level)
+# Version: 2.3 — Merged v1.1 (non-event filtering, African context) +
+#                 v2.1 (vigil/hunger_strike types, turmoil_level) +
+#                 v2.3 (boundary negatives, decision rules, lit review additions)
+#
+# Revision notes (v2.3):
+#   - Boundary negative examples and confusable-pair decision rules for all 8 event types
+#   - Africa-specific positive examples added to confrontation, occupation_seizure,
+#     vigil, hunger_strike, petition_signature, strike_boycott
+#   - Expanded disqualify_immediately: parliamentary delegations, military parades,
+#     shareholder meetings, NGO conferences, religious services, inter-communal violence
+#   - New non_event category: mob_violence_inter_communal (ACLED 2024)
+#   - Expanded african_context: state ceremonies, digital mobilisation, WhatsApp
+#     organiser note, CIVICUS civic space confidence modifier
+#   - New edge cases: simultaneous_distributed_blockades, digital_protest_online_only,
+#     whatsapp_organiser
+#   - New state_response_vocabulary section with 4 new sub-types:
+#     legal_criminalisation, anti_terrorism_designation, organisational_dissolution,
+#     non_association_bail (from criminalisation of climate protest literature, 2025)
+#   - confidence_guidance: civic_space_downgrade modifier added
 #
 # Revision notes (v2.2):
 #   - Non-event disqualifiers and minimum_criteria gate from v1.1
@@ -26,8 +43,8 @@ metadata:
   unit_of_analysis: "Individual protest event"
   minimum_participants: 2
   llm_backend: "Claude (Anthropic API)"
-  version: "2.2"
-  last_updated: "2026-03-25"
+  version: "2.3"
+  last_updated: "2026-04-04"
 
 # ============================================================================
 # MINIMUM CRITERIA — ALL must be satisfied before any event is coded
@@ -52,6 +69,12 @@ minimum_criteria:
     - "Article describes natural disasters, accidents, or crashes"
     - "Article is an analysis, commentary, or academic discussion ABOUT protest (not reporting one)"
     - "Article is about legal proceedings, court judgments, or electoral processes"
+    - "Article describes a parliamentary march or official delegation visiting a site (institutional representation, not protest)"
+    - "Article describes a police or military parade, ceremony, or official drill"
+    - "Article describes a private company shareholder meeting or investor activism without political demand targeting public policy"
+    - "Article describes an NGO, civil society, or international organisation conference or seminar (not a protest)"
+    - "Article describes a religious service, prayer meeting, or church gathering with no explicit political demand directed at authorities"
+    - "Article describes inter-communal or ethnic mob violence between civilian groups with no stated political demand targeting the state or public institutions"
 
 # ============================================================================
 # TYPE ALIASES
@@ -122,6 +145,9 @@ event_types:
       - "Economic conference attended by government officials and economists"
       - "Community celebration or cultural festival with political speeches"
       - "Press conference by political party announcing policy position"
+      - "Town hall meeting where residents discussed policy with officials (deliberation, not protest)"
+      - "Religious march or procession with no political demands directed at authorities"
+      - "State-organised independence day parade or national day celebration"
 
     decision_rules:
       - "IF participants ≥2 AND physically assembled AND expressing political demands AND non-violent → DEMONSTRATION_MARCH"
@@ -129,6 +155,8 @@ event_types:
       - "IF demonstration is part of larger strike (e.g., striking workers march) → STRIKE_BOYCOTT (more specific)"
       - "IF duration < 15 minutes AND no specific political claim → consider CONFRONTATION instead"
       - "IF ≥5,000 people AND described as 'unruly' or 'massive turnout' → still DEMONSTRATION if non-violent"
+      - "IF march passes by a building without physically blocking access → DEMONSTRATION_MARCH (not CONFRONTATION)"
+      - "IF participants begin moving through public space with chants or banners → DEMONSTRATION_MARCH (not VIGIL, even if it started as one)"
 
     confidence_threshold: 0.70
     codebook_equivalents:
@@ -174,6 +202,7 @@ event_types:
       - "South African public sector workers downed tools in nationwide strike over wage dispute"
       - "Nigerian oil workers threatened to strike unless government reverses fuel policy"
       - "Algerian civil servants staged a general strike against austerity measures"
+      - "Zambian mineworkers at Konkola Copper Mines downed tools demanding unpaid wages"
 
     negative_examples:
       - "Individual worker decided not to go to work (personal choice, not organized)"
@@ -181,12 +210,15 @@ event_types:
       - "Mass sick day not organised by any group (spontaneous, not collective action)"
       - "Company shutting down production due to supply chain issues (not a labor action)"
       - "Parliament refusing to pass a bill (institutional channel, not protest)"
+      - "Union announces it is considering a strike next month (planned/future — action has not yet begun)"
+      - "Workers informally slow down production without a union call or public announcement"
 
     decision_rules:
       - "KEY: Must be ORGANIZED (union call, group coordination, publicly announced)"
       - "Individual refusal without organization → NOT a strike/boycott"
       - "IF work stoppage explicitly tied to demands → STRIKE"
       - "IF refusal to consume tied to political goal → BOYCOTT"
+      - "IF strike is announced but not yet started → do NOT code (extract only when action has begun)"
 
     confidence_threshold: 0.75
     codebook_equivalents:
@@ -220,14 +252,18 @@ event_types:
       - "Violent confrontation resulted in 15 injured and 30 arrests"
       - "Looters and arsonists took over downtown streets for several hours"
       - "Post-election violence erupted as supporters of losing candidate burned vehicles"
+      - "Post-election protests in Lagos turned violent as opposition supporters clashed with police and set vehicles ablaze"
 
     negative_examples:
       - "Police used tear gas against peaceful protesters (police action, not riot)"
       - "Peaceful march where police initiated violence (still DEMONSTRATION_MARCH)"
+      - "Police fired rubber bullets at an otherwise peaceful crowd (state repression, not protester-initiated riot)"
       - "Property damage from weather or accident (not collective political violence)"
       - "Verbal fight between individuals on political topic (not collective action)"
       - "Military or armed group attacks civilians (armed conflict, not protest riot)"
       - "Terrorist attack or insurgency action (out of scope)"
+      - "Inter-communal ethnic clashes between two civilian groups without political demand targeting the state (mob violence — return [])"
+      - "Xenophobic attacks on foreign nationals without state-directed political demand (non-event — return [])"
 
     decision_rules:
       - "CRITICAL: Violence must be initiated by PROTESTERS, not state/police response"
@@ -236,6 +272,7 @@ event_types:
       - "IF minority broke off to riot while main group stayed peaceful → code as TWO EVENTS"
       - "When in doubt: favor peaceful classification (assume force was provoked by police)"
       - "IF article describes armed attack by militia/military → NOT a protest event"
+      - "IF violence is between two civilian groups with no political demand targeting state or institution → NOT a protest riot, return []"
 
     confidence_threshold: 0.80
     codebook_equivalents:
@@ -269,9 +306,12 @@ event_types:
       - "Students sat in at university administration building demanding policy change"
       - "Protesters blocked entry to government office for 24 hours"
       - "Movement established autonomous zone with barriers and tents in downtown area"
+      - "University of Nairobi students occupied the administration block for 36 hours demanding fee reduction"
+      - "South African farmworkers occupied farm owner's office building to demand back pay"
 
     negative_examples:
       - "Brief blockade lasting <15 minutes (better classified as CONFRONTATION)"
+      - "A brief 20-minute sit-down at an entrance before dispersing (too short — CONFRONTATION)"
       - "Occupying own private property for reasons unrelated to protest"
       - "Military occupation or territorial seizure by armed forces (conflict, not protest)"
 
@@ -280,6 +320,8 @@ event_types:
       - "IF just blocking passage without occupying space → CONFRONTATION"
       - "IF occupies space for hours+ → OCCUPATION_SEIZURE"
       - "Armed groups taking territory → NOT a protest event"
+      - "IF occupation lasts < 2 hours AND protesters do not establish sustained presence → CONFRONTATION instead"
+      - "IF article describes occupation AND hunger strike → HUNGER_STRIKE (more specific form takes priority)"
 
     confidence_threshold: 0.75
 
@@ -297,6 +339,8 @@ event_types:
       - "Group surrounded police vehicle and prevented it from leaving"
       - "Protesters disrupted political rally by interrupting speakers"
       - "Activists picketed outside corporate headquarters"
+      - "South African community members barricaded the N2 highway with burning tyres, demanding service delivery from the municipality"
+      - "Ugandan opposition activists blocked the road outside Electoral Commission offices"
 
     negative_examples:
       - "People simply standing in crowd (classification: DEMONSTRATION_MARCH)"
@@ -304,10 +348,14 @@ event_types:
       - "Organized work stoppage (classification: STRIKE_BOYCOTT)"
       - "Diplomatic confrontation between countries (not a protest event)"
       - "Verbal argument between public officials or politicians"
+      - "Security guards removing a single trespasser (not collective action — minimum 2 participants required)"
+      - "A march or rally that passes near but does not physically block a building (DEMONSTRATION_MARCH)"
 
     decision_rules:
-      - "Distinguish from DEMONSTRATION_MARCH: Confrontation involves direct obstruction/interruption"
+      - "Distinguish from DEMONSTRATION_MARCH: Confrontation requires intentional physical obstruction or interruption of access/activity"
       - "Distinguish from RIOT: Confrontation is intentional but non-violent"
+      - "Distinguish from OCCUPATION_SEIZURE: Confrontation blocks or disrupts but does not establish sustained presence (< 2 hours typically)"
+      - "IF burning tyres or debris are used to block a road → CONFRONTATION (roadblock is the action; fire is a tactic, not violence against persons)"
 
     confidence_threshold: 0.70
 
@@ -323,11 +371,19 @@ event_types:
       - "Group set up table to collect signatures for petition demanding park preservation"
       - "Union coordinated letter-writing campaign to legislators demanding wage increase"
       - "Civil society coalition launched petition with 50,000+ signers to parliament"
+      - "Nigerian civil society coalition launched petition with 100,000 signatures demanding SARS disbandment"
+      - "South African student groups coordinated #FeesMustFall social media campaign with explicit demand to halt fee increases, alongside physical demonstrations"
 
     negative_examples:
       - "Individual posts petition online without organizing others"
       - "Person signs petition they found (signing alone, not organizing)"
       - "Government publishing a public report or statement"
+      - "An online poll or social media hashtag campaign without evidence of organized coordination or explicit political demand"
+      - "A social media trend discussing a political topic without a specific addressee or demand"
+
+    decision_rules:
+      - "Online-only campaigns (hashtags, digital strikes, social media blackouts) qualify ONLY when they carry an explicit political demand AND show evidence of organized coordination — not individual signing or trending"
+      - "IF an online campaign accompanies a physical protest → code the physical event as its primary type; note the online component in outcome_notes"
 
     confidence_threshold: 0.65
 
@@ -345,16 +401,21 @@ event_types:
       - "Community held silent vigil demanding justice after teenager killed by officers"
       - "Activists organized overnight vigil outside prison the night before an execution"
       - "Mourners held memorial rally calling for gun reform after school shooting"
+      - "Families of Marikana massacre victims held candlelight vigil outside Parliament demanding justice and accountability"
+      - "Ugandan activists gathered in silent vigil outside Kampala police headquarters after opposition member died in custody"
 
     negative_examples:
       - "Private funeral or memorial service not open to public"
       - "Religious service that makes no political demands"
       - "Spontaneous crowd gathering at accident scene (no political intention)"
+      - "A religious ceremony commemorating a historical event with no political demand to authorities"
+      - "A church service marking a religious anniversary (no political claim)"
 
     decision_rules:
       - "IF vigil explicitly demands policy change or accountability → classify as VIGIL (not DEMONSTRATION)"
       - "IF vigil turns into march or active protest → recode primary type as DEMONSTRATION_MARCH"
       - "Solemn atmosphere and symbolic acts (candles, flowers, silence) are key markers"
+      - "IF gathering is a religious ceremony with no political demand → NOT a vigil, return []"
 
     confidence_threshold: 0.70
     codebook_equivalents:
@@ -384,17 +445,22 @@ event_types:
       - "Detained migrants began collective hunger strike to protest detention conditions"
       - "Activist went on indefinite hunger strike outside government ministry demanding land rights"
       - "Six prisoners simultaneously refused food to demand reform of solitary confinement"
+      - "Jailed Ugandan opposition politician declared hunger strike demanding fair trial conditions"
+      - "Ethiopian journalist on hunger strike in pre-trial detention demanding access to legal counsel"
 
     negative_examples:
       - "Person skips meals due to poverty (not a declared protest act)"
       - "Private fast for religious reasons (no political claim)"
       - "Person threatens hunger strike but does not begin one"
+      - "An individual refuses hospital food out of frustration or personal distress (not publicly declared, not political)"
+      - "Religious fast (Ramadan, Lent) with no stated political demand"
 
     decision_rules:
       - "Must be PUBLICLY DECLARED (announced to media, authorities, or public)"
       - "Must have EXPLICIT POLITICAL DEMAND or grievance"
       - "Can be a single individual (minimum participants rule does not apply)"
       - "IF hunger strike combined with occupation → code as HUNGER_STRIKE (more specific)"
+      - "IF person merely threatens or says they will begin → do NOT code (action must have started)"
 
     confidence_threshold: 0.75
     codebook_equivalents:
@@ -564,6 +630,17 @@ non_events:
       - "Private memorial not open to public"
     reason: "No collective public protest element"
 
+  - category: "Mob violence and inter-communal conflict"
+    examples:
+      - "Ethnic clashes between two communities over land or grazing rights"
+      - "Xenophobic attacks on foreign nationals by local residents"
+      - "Inter-communal violence between rival groups with no political demand targeting the state"
+      - "Vigilante action against alleged criminals"
+    reason: |
+      Per ACLED 2024 codebook revision: 'mob violence' is coded as inter-communal
+      conflict without state targeting — distinct from protest riots. These events lack
+      a political demand directed at state or public institutions. Do not code as RIOT.
+
 # ============================================================================
 # AFRICAN / GLOBAL SOUTH CONTEXT NOTES
 # ============================================================================
@@ -571,14 +648,25 @@ non_events:
 african_context:
 
   regional_organizations_not_protests:
-    note: "SADC, AU, ECOWAS, IGAD summits and meetings are NOT protest events"
+    note: "SADC, AU, ECOWAS, IGAD, COMESA summits and meetings are NOT protest events"
     examples:
       - "SADC heads of state summit → NOT a protest"
       - "AU Commission meeting → NOT a protest"
       - "ECOWAS mediation mission → NOT a protest"
+      - "IGAD special envoy visit → NOT a protest"
+      - "COMESA trade ministerial → NOT a protest"
+
+  state_ceremonies_not_protests:
+    note: "State-organised ceremonies, parades, and traditional events are NOT protests"
+    examples:
+      - "National independence day celebration or parade → NOT a protest"
+      - "Presidential inauguration ceremony → NOT a protest"
+      - "Traditional chieftaincy ceremony or royal investiture → NOT a protest"
+      - "Military or police passing-out parade → NOT a protest"
+      - "Sports victory parade organised by government → NOT a protest"
 
   protest_specific_to_region:
-    note: "Common African protest forms that DO qualify"
+    note: "Common African protest forms that DO qualify — include these positive examples in classification"
     examples:
       - "Street demonstrations against fuel price increases (Nigeria, Zimbabwe, etc.)"
       - "Anti-austerity marches (South Africa, Zambia, Kenya)"
@@ -587,6 +675,40 @@ african_context:
       - "Student protests over fees, accommodation (South Africa, Uganda)"
       - "Labour strikes in mining, public sector (South Africa, Zambia)"
       - "Anti-government demonstrations in Algeria (ongoing since Hirak 2019)"
+      - "Road blockades with burning tyres over service delivery failures (South Africa townships)"
+      - "Market shutdowns by traders protesting tax policy (West Africa)"
+      - "Youth civic movement protests (Y'en a marre in Senegal, Balai Citoyen in Burkina Faso)"
+      - "EndSARS-style police brutality protests (Nigeria and diaspora solidarity actions)"
+
+  digital_mobilisation_note:
+    note: |
+      African protests are frequently organised through private messaging apps (WhatsApp,
+      Telegram). Such protests may appear organiser-less or 'spontaneous' in news text even
+      when carefully coordinated by identifiable groups or networks.
+    rule: |
+      IF no formal organisation is named → code organizer as 'unknown'; do NOT assume
+      'spontaneous' solely because no organisation is named. Record any movement names,
+      hashtags, or collective identifiers mentioned in the article in organizer field.
+
+  civic_space_confidence_modifier:
+    note: |
+      Protests in countries with severely restricted civic space are systematically
+      under-reported in independent media. Protest events from these countries are more
+      likely to be incomplete, unconfirmed, or sourced from a single outlet. Apply an
+      automatic confidence downgrade. Source: CIVICUS Monitor 2023-24; CASE 2025.
+    repressed_countries:
+      - "Cameroon"
+      - "Democratic Republic of Congo"
+      - "Ethiopia"
+      - "Tanzania"
+    closed_countries:
+      - "Eritrea"
+      - "Sudan"
+    rule: |
+      IF country is in repressed_countries AND field-completeness would yield 'high'
+      confidence → downgrade to 'medium'.
+      IF country is in closed_countries → cap confidence at 'low' regardless of
+      field completeness.
 
   country_filter_note: |
     This pipeline targets African countries. If an extracted event is set in a country
@@ -634,6 +756,84 @@ edge_cases:
     description: "Protest targeting a regional body (AU, SADC, UN) rather than a national government"
     rule: "Qualifies as a protest event if the action meets all minimum_criteria. Use the host country as 'country' field."
 
+  simultaneous_distributed_blockades:
+    description: |
+      A coordinated campaign of blockades at multiple geographic locations on the same day
+      (e.g. 'one day, three ports', multiple highway blockades across cities). Source: DIY
+      Climate Protest literature (2025); increasingly documented in African environmental
+      and service delivery protests.
+    rule: |
+      Code as MULTIPLE CONFRONTATION or OCCUPATION_SEIZURE events — one per location —
+      not as a single combined event. Record the coordinating campaign name in organizer
+      and/or outcome_notes. Do NOT collapse simultaneous distributed actions into one event
+      simply because they share a single news article.
+    example: "Blockade Australia 'one day, three ports' → three separate CONFRONTATION events, one per port"
+
+  digital_protest_online_only:
+    description: |
+      Online-only protest forms — hashtag campaigns, social media blackouts, digital strikes
+      — with no corresponding physical assembly. Source: Sorce & Dumitrica (2022).
+    rule: |
+      Qualify as PETITION_SIGNATURE when: (1) the campaign carries an explicit political
+      demand directed at a specific authority, AND (2) there is evidence of organized
+      coordination (not just individual sharing). If the online campaign accompanies a
+      physical protest, code the physical event as its primary type and note the online
+      component in outcome_notes.
+    example: "#EndSARS with explicit demand to disband SARS unit + coordinated posting → PETITION_SIGNATURE"
+
+  whatsapp_organiser:
+    description: |
+      Protests organised via private messaging apps (WhatsApp, Telegram) often appear
+      leaderless or spontaneous in news text even when carefully coordinated. Source:
+      WhatsApp EndSARS study (Social Media + Society, 2024).
+    rule: |
+      Do NOT code organizer as 'spontaneous' solely because no formal organisation is named.
+      If a movement name, hashtag, or collective identity is present → use it.
+      If the article uses phrases like 'residents' or 'youth' without naming a group →
+      code organizer as 'unknown' and note 'possibly WhatsApp-coordinated' in outcome_notes
+      if the context supports it.
+
+# ============================================================================
+# STATE RESPONSE VOCABULARY
+# ============================================================================
+#
+# Allowed values for the state_response field.
+# Select the MOST SEVERE response reported in the article.
+# Multiple responses may occur — record the highest severity.
+#
+state_response_vocabulary:
+  description: |
+    Ordered from least to most severe. If multiple responses are reported,
+    record the highest severity in state_response and note others in outcome_notes.
+    If unclear from the article text, use "unknown".
+
+  values:
+    none: "No state response reported"
+    monitoring: "Security forces present but took no action"
+    dispersal: "Authorities dispersed protesters without force (verbal orders, cordons)"
+    teargas: "Tear gas or pepper spray deployed"
+    water_cannon: "Water cannon used against protesters"
+    rubber_bullets: "Rubber bullets, birdshot, or less-lethal projectiles fired"
+    live_ammunition: "Live rounds fired by security forces"
+    arrests: "Protesters arrested or detained"
+    ban: "Protest banned by authorities before or during the event"
+    curfew: "Curfew imposed in response to protest activity"
+    legal_criminalisation: |
+      Protesters charged under a new or novel statutory offence specifically
+      targeting protest tactics (e.g. infrastructure blockade laws, lock-on laws,
+      anti-protest legislation). Distinct from ordinary arrest charges.
+    anti_terrorism_designation: |
+      Protest movement or participants labelled as a terrorist threat, security risk,
+      or subjected to counter-terrorism provisions or red-tagging. Increasingly
+      documented in Philippines, Ethiopia, Kenya, Cameroon.
+    organisational_dissolution: |
+      Protest movement or organisation legally dissolved, deregistered, or banned
+      by state order (e.g. France's dissolution of Soulèvements de la Terre).
+    non_association_bail: |
+      Bail conditions imposed prohibiting contact between arrested activists,
+      preventing future coordination. A legally targeted disruption of organising.
+    unknown: "State response unclear from article text — avoid using if possible"
+
 # ============================================================================
 # CONFIDENCE THRESHOLDS EXPLAINED
 # ============================================================================
@@ -664,6 +864,15 @@ confidence_guidance:
   unknown_confidence:
     meaning: "Model could not determine confidence — AVOID USING THIS"
     action: "Treat as low confidence in analysis; prompt should never return 'unknown'"
+
+  civic_space_downgrade:
+    meaning: "Events from CIVICUS-rated 'repressed' or 'closed' countries are systematically under-reported"
+    action: |
+      Apply automatic downgrade regardless of field completeness:
+      - Country rated 'repressed' (Cameroon, DRC, Ethiopia, Tanzania) → cap at 'medium'
+      - Country rated 'closed' (Eritrea, Sudan) → cap at 'low'
+      This reflects known reporting gaps in independent media under civic space restriction,
+      not a judgment about the event itself.
 
 # ============================================================================
 # QUALITY CONTROL CHECKLIST
