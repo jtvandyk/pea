@@ -2,24 +2,38 @@
 
 ## Project Overview
 
-Protest Event Analysis (PEA) pipeline. Discovers news articles via GDELT DOC 2.0 API, scrapes + translates, extracts structured protest events via an LLM backend, and stores results as JSONL/CSV.
+Protest Event Analysis (PEA) pipeline. Discovers news articles via GDELT DOC 2.0 API and BBC Monitoring, scrapes + translates, filters for relevance, extracts structured protest events via an LLM backend, and stores results as JSONL/CSV.
 
-**Codebook version:** 2.2 (Halterman & Keith 2025, Type III)
-**LLM backend:** Configurable via `--provider` flag (see below)
+**Codebook version:** 2.3 (Halterman & Keith 2025, Type III)
+**LLM backend:** Configurable via `--provider` flag (default: azure / gpt-4o-mini)
 **Target geography:** African countries (NG, ZA, UG, DZ)
-**Python:** 3.9 (venv at `venv/`) — use `X | Y` union syntax requires 3.10+, use `Optional[X]` instead
+**Current branch:** `dev` (all recent improvements here; `main` is stable)
+**Python:** 3.9 (venv at `venv/`) — `X | Y` union syntax requires 3.10+, use `Optional[X]` instead
+
+---
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `configs/protest_codebook.yaml` | Codebook v2.2 — event types, non-event disqualifiers, minimum criteria |
-| `src/acquisition/pipeline.py` | Entry point — 5-stage pipeline (discover → scrape → translate → extract → store) |
-| `src/acquisition/extractor.py` | LLM extraction — multi-provider, SYSTEM_PROMPT with two-step disqualifier gate |
+| `configs/protest_codebook.yaml` | Codebook v2.3 — 8 event types with positive/negative examples, decision rules, non-event disqualifiers, African context, edge cases, state response vocabulary, confidence guidance |
+| `configs/extraction_examples.yaml` | 3 gold-standard few-shot examples injected into every user prompt |
+| `configs/keywords.yaml` | GDELT GKG themes, protest signal keywords (39, multilingual), URL signals — edit here not in source |
+| `src/acquisition/pipeline.py` | Entry point — 6-stage pipeline (discover → scrape → **relevance filter** → translate → extract → store) |
+| `src/acquisition/extractor.py` | LLM extraction — codebook v2.3 injected into SYSTEM_PROMPT, few-shot examples in USER_PROMPT, prompt caching logging |
+| `src/acquisition/gdelt_discovery.py` | GDELT DOC 2.0 API — **one query per country** using FIPS `sourcecountry` filter; keywords from `configs/keywords.yaml` |
+| `src/acquisition/relevance_filter.py` | Stage 2.5 — zero-shot NLI classifier (DeBERTa) rejects non-protest articles before LLM; keyword fallback if model unavailable |
+| `src/acquisition/processing.py` | Stage 2 processing — geography filter, **improved deduplicator** (TF-IDF claims similarity + fixed null-city logic), LLM re-verification, quality control |
 | `src/acquisition/storage.py` | Output — JSONL, CSV, run summary JSON, `_derive_turmoil_level()` |
-| `src/acquisition/gdelt_discovery.py` | GDELT DOC 2.0 API discovery — note: multi-country queries use keyword matching, not strict source filtering |
-| `Dockerfile` | Multi-stage build using `requirements-core.txt` (no GPU packages) |
+| `src/validation/glocon_validator.py` | Benchmark PEA output against GLOCON GSC (recall by type + country) — awaiting GLOCON data access |
+| `src/annotation/export_for_annotation.py` | Export prioritised events to Label Studio JSON (active learning tier 1/2 first) |
+| `src/annotation/import_annotations.py` | Import Label Studio export → `reviewed_events.jsonl` + `training_data.jsonl` |
+| `src/annotation/labeling_config.xml` | Label Studio labeling interface XML — paste into project settings |
+| `docker-compose.annotation.yml` | Runs Label Studio at localhost:8080 for annotation workflow |
+| `Dockerfile` | Multi-stage build using `requirements-core.txt` |
 | `.github/workflows/docker.yml` | CI — builds and pushes Docker image to ACR on push to `main` |
+
+---
 
 ## Environment
 
@@ -27,38 +41,45 @@ Protest Event Analysis (PEA) pipeline. Discovers news articles via GDELT DOC 2.0
 ```
 ANTHROPIC_API_KEY=        # --provider claude
 OPENAI_API_KEY=           # --provider openai
-AZURE_FOUNDRY_API_KEY=    # --provider azure
+AZURE_FOUNDRY_API_KEY=    # --provider azure (active fallback)
 AZURE_OPENAI_ENDPOINT=    # --provider azure (e.g. https://<resource>.openai.azure.com/openai/v1)
 AZURE_STORAGE_CONNECTION_STRING=  # --upload-to az://...
+BBC_MONITORING_USER_NAME=         # --source bbc or both
+BBC_MONITORING_USER_PASSWORD=     # --source bbc or both
 ```
 
-Install missing packages into the venv as needed:
-```bash
-venv/bin/pip install anthropic openai python-dotenv
-```
+---
 
 ## Running the Pipeline
 
 ```bash
-# Azure AI Foundry (active fallback while Anthropic account is being recovered)
-venv/bin/python -m src.acquisition.pipeline \
+# Standard run — Azure AI Foundry, South Africa, 30 days
+python -m src.acquisition.pipeline \
   --provider azure \
   --model gpt-4o-mini \
   --countries ZA \
   --days 30 \
   --max-articles 100
 
-# Claude (default, once API key is restored)
-venv/bin/python -m src.acquisition.pipeline \
-  --provider claude \
+# Multi-country
+python -m src.acquisition.pipeline \
+  --provider azure \
   --countries NG,ZA,UG,DZ \
   --days 7
 
+# Adjust relevance filter threshold (default 0.30 — conservative/high recall)
+python -m src.acquisition.pipeline \
+  --provider azure --countries ZA --days 30 \
+  --relevance-threshold 0.50
+
 # Resume after a crash
-venv/bin/python -m src.acquisition.pipeline --provider azure --resume
+python -m src.acquisition.pipeline --provider azure --resume
+
+# Run all three stages (acquire → process → predict)
+python -m src.acquisition.pipeline --stage all --countries ZA --days 30
 
 # Upload outputs to Azure Blob after run
-venv/bin/python -m src.acquisition.pipeline --provider azure \
+python -m src.acquisition.pipeline --provider azure \
   --upload-to az://my-container/pea/runs
 ```
 
@@ -69,7 +90,24 @@ venv/bin/python -m src.acquisition.pipeline --provider azure \
 | `openai` | `gpt-4o-mini` | `OPENAI_API_KEY` |
 | `azure` | `gpt-4o-mini` | `AZURE_FOUNDRY_API_KEY` + `AZURE_OPENAI_ENDPOINT` |
 
-For `--provider azure`, `--model` is the **deployment name** in your Azure AI Foundry project (must be deployed first in the portal). Any model available in Foundry can be used (e.g. `gpt-4o`, `claude-sonnet-4-6`, `gpt-5`).
+For `--provider azure`, `--model` is the **deployment name** in your Azure AI Foundry project.
+
+---
+
+## Pipeline Stages
+
+| Stage | What happens |
+|-------|-------------|
+| 1a. GDELT discovery | One query per country using FIPS `sourcecountry` filter; merges results by URL |
+| 1b. BBC Monitoring (optional) | `--source bbc` or `--source both`; requires credentials |
+| 2. Scraping | `newspaper3k` + requests/BS4 fallback; paywall domains skipped |
+| 2.5. Relevance filter | DeBERTa zero-shot NLI rejects non-protest articles; keyword fallback if model unavailable; `--relevance-threshold` controls sensitivity |
+| 3. Translation | `langdetect` + Google Translate; native Claude languages (en/fr/ar/sw/etc.) skip translation |
+| 4. LLM extraction | Codebook v2.3 in SYSTEM_PROMPT (~29k tokens); 3 few-shot examples in USER_PROMPT; prompt caching saves ~36% on cached prefix |
+| 4.5. Geocoding | Nominatim OSM; venue → city → region → country fallback; `--no-geocode` to skip |
+| 5. Storage | JSONL + CSV + summary + dead-letter file; `--upload-to` for cloud |
+
+---
 
 ## Pipeline Outputs
 
@@ -84,434 +122,131 @@ All written to `data/raw/`:
 | `all_events.jsonl` | Cumulative append across all runs |
 | `checkpoint.txt` | URLs processed — used by `--resume` |
 
-## Known GDELT Discovery Behaviour
-
-- Multi-country queries (`--countries NG,ZA,UG,DZ`) append country names as keywords rather than using GDELT's `sourcecountry` filter (which only accepts one country). This causes noise — articles mentioning a country in passing (e.g. US news about South Africa) get returned.
-- **Recommended for testing:** use a single country (`--countries ZA`) and a longer window (`--days 30`) for higher-quality results.
-- The LLM disqualifier gate correctly rejects non-protest articles — a run with 0 events extracted but 44 "no events found" is the system working as intended, not a bug.
+Stage 2 outputs in `data/processed/`, Stage 3 in `data/predictions/`.
 
 ---
 
-## Production-Readiness Improvements (All Implemented ✅)
+## Extraction Quality Architecture
 
-All seven improvements are complete as of 2026-03-28.
+The extractor uses three layers working together:
 
-| # | Improvement | Status |
-|---|---|---|
-| 1 | Dockerfile + .dockerignore | ✅ |
-| 2 | Activate python-dotenv | ✅ |
-| 3 | Structured JSON logging | ✅ |
-| 4 | Cloud storage upload (S3 / Azure Blob) | ✅ |
-| 5 | Checkpoint / resume for long runs | ✅ |
-| 6 | Dead-letter file for failed articles | ✅ |
-| 7 | GitHub Actions Docker build + push to ACR | ✅ |
+1. **SYSTEM_PROMPT** — two-step disqualifier gate (non-protest article types → return `[]`) + minimum criteria + extraction rules + state response vocabulary
+2. **Codebook injection** — `_build_codebook_context()` loads `configs/protest_codebook.yaml` at import time and appends all 8 event type definitions (positive examples, boundary negatives, decision rules) to SYSTEM_PROMPT. ~22k tokens. This is the dominant input token cost driver.
+3. **Few-shot examples** — `_build_few_shot_examples()` loads `configs/extraction_examples.yaml` and prepends 3 gold-standard article → JSON pairs to every user prompt. ~6k tokens.
 
-**Additional (beyond original plan):**
-- `--provider` flag: `claude`, `openai`, `azure` — switchable without code changes
-- `--model` flag: explicit model/deployment name override
-- Python 3.9 compatibility fixes (`Optional[X]` instead of `X | None`)
+**Prompt caching:** The system prompt prefix (~29k tokens) is identical across every article in a run. Azure caches it automatically for gpt-4o-mini (>1024 token prefix). Cached tokens billed at 50% input rate. Savings logged at DEBUG level per call.
+
+**Per-call token budget (avg):**
+- Input: ~40,000 tokens (system 29k + few-shot 6.4k + article 4.4k)
+- Output: ~200 tokens (mix of `[]` and event objects)
+- Cost: ~$0.006 per article at gpt-4o-mini standard pricing
 
 ---
 
-## Pending Infrastructure (not yet set up)
+## Relevance Filter Notes
+
+- Default model: `cross-encoder/nli-deberta-v3-small` (184 MB, CPU)
+- Default threshold: `0.30` — conservative, prioritises recall over precision
+- Raise to `0.50` after GLOCON/ACLED validation confirms filter accuracy
+- If `transformers` is unavailable, falls back to keyword matching (no API needed)
+- Rejected articles are logged with their `_relevance_score` — inspect these to calibrate
+- `requirements-core.txt` includes `torch` and `transformers`; **note:** pin to CPU wheel in Dockerfile to avoid pulling 2 GB CUDA build (pending fix)
+
+---
+
+## Deduplication Notes
+
+The improved deduplicator in `processing.py` uses:
+1. Country (exact)
+2. Event type (exact)
+3. Date ±3 days (widened from ±2)
+4. City fuzzy match ≥0.70 — **only enforced when both cities are non-null** (previous version incorrectly allowed null-city merges across different cities)
+5. TF-IDF cosine similarity on claims ≥0.20 — prevents same-city/same-day events with different demands from merging
+
+`claims_similarity` is recorded in `duplicates_log.jsonl` for auditing.
+
+---
+
+## Annotation / Active Learning Workflow
+
+For building training data toward QLoRA fine-tuning (target: 200+ gold pairs):
+
+```bash
+# 1. Start Label Studio
+docker compose -f docker-compose.annotation.yml up -d
+# Open http://localhost:8080 — create account, create project
+# Settings → Labeling Interface → Code → paste src/annotation/labeling_config.xml
+
+# 2. Export highest-priority events (low/medium confidence first)
+python -m src.annotation.export_for_annotation \
+  --events data/raw/all_events.jsonl \
+  --output data/annotation/tasks_$(date +%Y%m%d).json \
+  --max-tasks 50
+
+# 3. In Label Studio: Import → upload the JSON file → annotate
+
+# 4. Export from Label Studio: Projects → Export → JSON
+
+# 5. Import corrections back
+python -m src.annotation.import_annotations \
+  --annotations data/annotation/label_studio_export.json \
+  --output-dir data/annotation/
+```
+
+**Known gap:** `import_annotations.py` builds training pairs from `event._article_text`, but the extractor does not currently write article text into event dicts. Training pairs will be empty until this field is backfilled. Pending fix.
+
+---
+
+## Validation
+
+```bash
+# GLOCON (awaiting data access — applied 2026-04-05)
+python -m src.validation.glocon_validator \
+  --glocon-dir path/to/glocon-dataset/data/south_africa/english \
+  --pea-events data/processed/events_consolidated.jsonl \
+  --output data/validation/recall_report.json
+
+# ACLED (pending: register at acleddata.com for API token)
+# acled_validator.py not yet built
+```
+
+Recall target: ≥60% against GLOCON/ACLED (GDELT source coverage is sparser than curated feeds).
+
+---
+
+## Pending Infrastructure
 
 | Item | Needed for |
 |---|---|
 | Anthropic API key recovery | `--provider claude` |
-| Azure Container Registry (ACR) + GitHub Secrets | Docker CI workflow |
+| Azure Container Registry + GitHub Secrets | Docker CI workflow |
 | Azure Storage Account | `--upload-to az://...` |
-| ACLED API token | Validation notebook |
+| ACLED API token | `acled_validator.py` validation |
+| GLOCON data access | `glocon_validator.py` (applied 2026-04-05) |
 
 ---
 
-## Production-Readiness Detail
+## Known Issues / Pending Code Fixes
+
+| Issue | File | Notes |
+|---|---|---|
+| `_article_text` not written to event dicts | `extractor.py`, `storage.py` | Breaks annotation training pair generation |
+| `torch` in requirements-core.txt pulls CUDA build | `Dockerfile` | Need to pin CPU wheel URL explicitly |
+| ACLED validator not yet built | `src/validation/` | Unblocked — ACLED token needed |
 
 ---
 
-### Improvement 1 — Dockerfile + .dockerignore
-
-**Why:** Everything in AWS (ECS/Fargate/Lambda container) and Azure (ACI/App Service/AKS) runs containers.
-
-**Files:** create `Dockerfile`, `.dockerignore`
-
-**Approach — multi-stage build:**
-```dockerfile
-# Stage 1: deps
-FROM python:3.11-slim AS builder
-WORKDIR /build
-COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
-
-# Stage 2: runtime (no build tools)
-FROM python:3.11-slim
-WORKDIR /app
-COPY --from=builder /install /usr/local
-COPY src/ ./src/
-COPY configs/ ./configs/
-ENV PYTHONUNBUFFERED=1
-ENTRYPOINT ["python", "-m", "src.acquisition.pipeline"]
-```
-
-`.dockerignore`: exclude `data/`, `tests/`, `docs/`, `*.pyc`, `.git`, `.env`
-
-> **Note:** `vllm` and `torch` in `requirements.txt` are GPU-only and bloat the image. Recommend splitting into `requirements-core.txt` (pipeline only) and `requirements-ml.txt` (vllm, torch, transformers). Dockerfile uses core only.
-
-**Verify:** `docker build -t pea . && docker run --env-file .env.dev pea --help`
-
----
-
-### Improvement 2 — Activate python-dotenv (2-line fix)
-
-**Why:** `python-dotenv` is already in `requirements.txt` but never called. Without it, `.env` files are silently ignored in local dev and CI.
-
-**Files:** `src/acquisition/pipeline.py` (entry point)
-
-**Change — add at top of `main()`:**
-```python
-from dotenv import load_dotenv
-load_dotenv()  # loads .env if present; no-op if not
-```
-
-Also create `.env.example` → `.env.dev` and `.env.prod` with appropriate values for a dev/prod config split.
-
-**Verify:** Create `.env` with a test key → confirm `os.environ.get("ANTHROPIC_API_KEY")` resolves.
-
----
-
-### Improvement 3 — Structured JSON Logging
-
-**Why:** CloudWatch Logs Insights (AWS) and Log Analytics (Azure Monitor) parse JSON logs natively. Text logs require regex parsing. JSON logs unlock filtering, dashboards, and alerting with zero extra config.
-
-**Files:** `src/acquisition/pipeline.py` (logging setup)
-
-**Change — replace `basicConfig` with a JSON formatter:**
-```python
-import json, logging
-
-class _JsonFormatter(logging.Formatter):
-    def format(self, record):
-        return json.dumps({
-            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
-            "level": record.levelname,
-            "logger": record.name,
-            "msg": record.getMessage(),
-            **({"exc": self.formatException(record.exc_info)} if record.exc_info else {}),
-        })
-
-handler = logging.StreamHandler(sys.stdout)
-handler.setFormatter(_JsonFormatter())
-logging.basicConfig(level=logging.INFO, handlers=[handler])
-```
-
-No new dependencies.
-
-**Verify:** Run pipeline with one article → confirm stdout is valid JSON lines.
-
----
-
-### Improvement 4 — Optional Cloud Storage Upload in storage.py
-
-**Why:** Writing to `data/raw/` only works if the container has a persistent volume. On ECS/Fargate or ACI (serverless containers) the local disk is ephemeral.
-
-**Files:** `src/acquisition/storage.py`, `requirements.txt`
-
-**Approach — add optional `upload_to` parameter to `save_results()`:**
-```python
-def save_results(events, output_dir, run_id, upload_to: str | None = None):
-    # ... existing write logic ...
-    if upload_to:
-        _upload_outputs(upload_to, [jsonl_path, csv_path, summary_path])
-
-def _upload_outputs(destination: str, paths: list[Path]):
-    """destination: 's3://bucket/prefix' or 'az://container/prefix'"""
-    if destination.startswith("s3://"):
-        import boto3
-        s3 = boto3.client("s3")
-        bucket, prefix = destination[5:].split("/", 1)
-        for p in paths:
-            s3.upload_file(str(p), bucket, f"{prefix}/{p.name}")
-    elif destination.startswith("az://"):
-        from azure.storage.blob import BlobServiceClient
-        # connection string from AZURE_STORAGE_CONNECTION_STRING env var
-        client = BlobServiceClient.from_connection_string(
-            os.environ["AZURE_STORAGE_CONNECTION_STRING"]
-        )
-        container, prefix = destination[5:].split("/", 1)
-        for p in paths:
-            blob = client.get_blob_client(container, f"{prefix}/{p.name}")
-            with open(p, "rb") as f:
-                blob.upload_blob(f, overwrite=True)
-```
-
-**Verify:** Run pipeline with `--upload-to s3://bucket/prefix` → check S3 console.
-
----
-
-### Improvement 5 — Checkpoint / Resume for Long Runs
-
-**Why:** A multi-hour pipeline run that fails at article 800/1000 currently loses all progress. A checkpoint file lets it resume from where it stopped.
-
-**Files:** `src/acquisition/pipeline.py`, `src/acquisition/storage.py`
-
-**Approach:**
-```python
-def _load_checkpoint(output_dir: Path, run_id: str) -> set[str]:
-    cp = output_dir / "checkpoint.txt"
-    return set(cp.read_text().splitlines()) if cp.exists() else set()
-
-def _save_checkpoint(output_dir: Path, url: str):
-    with open(output_dir / "checkpoint.txt", "a") as f:
-        f.write(url + "\n")
-```
-
-In the extraction loop (pipeline.py Stage 4):
-```python
-done_urls = _load_checkpoint(output_dir, run_id)
-scraped = [a for a in scraped if a.get("url") not in done_urls]
-# after each article:
-_save_checkpoint(output_dir, article["url"])
-```
-
-If `all_events.jsonl` is uploaded to S3/Blob (Improvement 4), the checkpoint file can also be uploaded there for durability across container restarts.
-
-**Verify:** Kill pipeline mid-run → restart → confirm processed URLs are skipped.
-
----
-
-### Improvement 6 — Dead-Letter File for Failed Articles
-
-**Why:** Articles that fail extraction (parse error, timeout, empty result) are currently silently logged and discarded. In production, a record is needed for manual review or reprocessing.
-
-**Files:** `src/acquisition/extractor.py`, `src/acquisition/storage.py`
-
-**Approach — `extract_events()` returns a secondary list of failures:**
-```python
-def extract_events(...) -> tuple[list[dict], list[dict]]:
-    ...
-    failures = []
-    # when all retries exhausted:
-    failures.append({
-        "url": article.get("url"),
-        "title": article.get("title"),
-        "reason": "extraction_failed",
-        "lang": lang
-    })
-    return all_events, failures
-```
-
-`save_results()` writes `failures_{run_id}.jsonl` alongside the events files.
-
-**Verify:** Pass a bad URL → confirm `failures_*.jsonl` is written with the entry.
-
----
-
-### Improvement 7 — GitHub Actions: Docker Build + Push to ECR or ACR
-
-**Why:** Extends the existing CI (tests + lint) with a deployment step. After merge to main, the image is built and pushed so it's always ready to deploy.
-
-**Files:** create `.github/workflows/docker.yml`
-
-**For AWS (ECR):**
-```yaml
-name: Docker Build & Push (ECR)
-on:
-  push:
-    branches: [main]
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-      - uses: aws-actions/amazon-ecr-login@v2
-      - name: Build and push
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        run: |
-          docker build -t $ECR_REGISTRY/pea:${{ github.sha }} .
-          docker push $ECR_REGISTRY/pea:${{ github.sha }}
-          docker tag $ECR_REGISTRY/pea:${{ github.sha }} $ECR_REGISTRY/pea:latest
-          docker push $ECR_REGISTRY/pea:latest
-```
-
-For Azure (ACR): swap ECR steps for `azure/docker-login@v1` with `ACR_LOGIN_SERVER`, `ACR_USERNAME`, `ACR_PASSWORD`.
-
-Secrets are stored in GitHub repo → Settings → Secrets.
-
-**Verify:** Push to main → check GitHub Actions → confirm image appears in ECR/ACR.
-
----
-
----
-
-## ACLED Validation Plan
-
-### Goal
-
-Verify that the PEA pipeline achieves acceptable **recall** against ACLED — i.e. events that ACLED recorded for the same countries and date window are also being captured by PEA. PEA finding events ACLED missed is expected and desirable (that's the project's contribution). The concern is the inverse: PEA *missing* events that ACLED found.
-
-Event type alignment is coarse by design. ACLED uses only two relevant top-level categories (`Protests`, `Riots`); PEA uses 8 finer-grained types. The crosswalk in `protest_codebook.yaml` maps all 8 PEA types back to one of those two ACLED categories, so matching ignores sub-type and focuses on event co-occurrence.
-
----
-
-### ACLED Event Type Crosswalk
-
-| PEA type | ACLED equivalent |
-|---|---|
-| `demonstration_march` | Protests |
-| `strike_boycott` | Protests |
-| `occupation_seizure` | Protests |
-| `confrontation` | Protests |
-| `petition_signature` | Protests |
-| `vigil` | Protests |
-| `hunger_strike` | Protests |
-| `riot` | Riots |
-
----
-
-### Step 1 — Obtain ACLED Data
-
-Register at acleddata.com to get an API key + registered email. Then pull protest/riot events for the same countries and date range as a PEA pipeline run:
-
-```python
-import requests, pandas as pd
-
-params = {
-    "key": "<ACLED_API_KEY>",
-    "email": "<REGISTERED_EMAIL>",
-    "country": "Nigeria|South Africa|Uganda|Algeria",
-    "event_type": "Protests|Riots",
-    "event_date": "2026-03-01|2026-03-28",
-    "event_date_where": "BETWEEN",
-    "fields": "event_date|country|admin1|location|event_type|sub_event_type|notes",
-    "limit": 5000,
-}
-resp = requests.get("https://api.acleddata.com/acled/read", params=params)
-acled = pd.DataFrame(resp.json()["data"])
-```
-
-Store the raw response to `data/validation/acled_{date_range}.json` for reproducibility.
-
----
-
-### Step 2 — Load PEA Output
-
-Load the events JSONL from the run you want to validate:
-
-```python
-import json, pandas as pd
-
-pea = pd.read_json("data/raw/events_{run_id}.jsonl", lines=True)
-pea["event_date"] = pd.to_datetime(pea["event_date"], errors="coerce")
-acled["event_date"] = pd.to_datetime(acled["event_date"], errors="coerce")
-```
-
----
-
-### Step 3 — Match Events
-
-Match each ACLED event to a PEA event using three criteria:
-1. **Country** — exact match (normalise to lowercase)
-2. **Date** — within ±2 days (accounts for article publication lag)
-3. **Location** — fuzzy city match using `difflib.SequenceMatcher` with threshold ≥ 0.6 on `city` / `location` fields
-
-```python
-from difflib import SequenceMatcher
-
-def location_match(a, b, threshold=0.6):
-    if not a or not b:
-        return True  # can't falsify without location — treat as ambiguous
-    return SequenceMatcher(None, a.lower(), b.lower()).ratio() >= threshold
-
-results = []
-for _, acled_row in acled.iterrows():
-    candidates = pea[
-        (pea["country"].str.lower() == acled_row["country"].lower()) &
-        (abs(pea["event_date"] - acled_row["event_date"]) <= pd.Timedelta(days=2))
-    ]
-    matched = any(
-        location_match(acled_row.get("location"), row.get("city"))
-        for _, row in candidates.iterrows()
-    )
-    results.append({
-        "acled_date": acled_row["event_date"],
-        "acled_country": acled_row["country"],
-        "acled_location": acled_row["location"],
-        "acled_type": acled_row["event_type"],
-        "matched": matched,
-    })
-
-df = pd.DataFrame(results)
-```
-
----
-
-### Step 4 — Calculate Recall
-
-```python
-recall = df["matched"].mean()
-print(f"Recall: {recall:.1%}  ({df['matched'].sum()} / {len(df)} ACLED events matched)")
-
-# Break down missed events by country and type
-missed = df[~df["matched"]]
-print(missed.groupby(["acled_country", "acled_type"]).size())
-```
-
-**Target threshold:** ≥ 60% recall is acceptable for a GDELT-sourced pipeline (GDELT covers far fewer sources per event than ACLED's curated network). Below 40% warrants investigation.
-
----
-
-### Step 5 — Diagnose Misses
-
-For each unmatched ACLED event, check:
-
-1. **Was the event in GDELT at all?** Query GDELT DOC API for the same country + date + keywords. If GDELT has no article, the miss is a GDELT coverage gap, not a PEA bug.
-2. **Was the article scraped but filtered?** Check `failures_{run_id}.jsonl` for the date/country.
-3. **Was the article scraped but rejected by the LLM?** This is harder to diagnose without per-article LLM output — a future improvement would be to log the raw LLM response for rejected articles.
-
-Document findings in `data/validation/recall_report_{run_id}.md`.
-
----
-
-### Step 6 — Precision Spot-Check
-
-PEA will extract events ACLED does not have. This is expected. However, spot-check a random sample of 20 PEA-only events (not matched to ACLED) and manually verify against the source article to confirm they are genuine protest events and not false positives.
-
-```python
-pea_only = pea[~pea["article_url"].isin(matched_urls)]
-sample = pea_only.sample(min(20, len(pea_only)), random_state=42)
-sample[["event_date", "country", "city", "event_type", "article_url"]].to_csv(
-    "data/validation/precision_sample.csv", index=False
-)
-```
-
----
-
-### Files for Validation
-
-| Path | Purpose |
-|------|---------|
-| `data/validation/acled_{date_range}.json` | Raw ACLED pull |
-| `data/validation/recall_report_{run_id}.md` | Recall results + diagnosis of misses |
-| `data/validation/precision_sample.csv` | Manual spot-check sample |
-| `notebooks/acled_validation.ipynb` | Notebook containing Steps 1–6 |
-
-> The `data/validation/` directory should be `.gitignore`d (same as `data/raw/`) to avoid committing large datasets.
-
----
-
-## Recommended Implementation Order
-
-| # | Improvement | Effort | Risk |
-|---|-------------|--------|------|
-| 1 | **Improvement 2** — Activate dotenv | 2 lines | Zero |
-| 2 | **Improvement 1** — Dockerfile | ~20 lines | Low |
-| 3 | **Improvement 3** — JSON logging | ~15 lines | Low |
-| 4 | **Improvement 6** — Dead-letter file | Medium | Low |
-| 5 | **Improvement 5** — Checkpoint/resume | Medium | Medium |
-| 6 | **Improvement 4** — Cloud storage upload | Medium | Low |
-| 7 | **Improvement 7** — CI deploy step | Medium | Low (needs ECR/ACR set up first) |
+## Improvement History
+
+| Date | What |
+|------|------|
+| 2026-03-28 | All 7 production-readiness improvements complete (Docker, dotenv, JSON logging, cloud storage, checkpoint/resume, dead-letter, CI) |
+| 2026-04-04 | Codebook v2.3: boundary negatives, decision rules, African context expansion, new state_response vocabulary, civic space confidence modifier |
+| 2026-04-04 | Codebook injection into SYSTEM_PROMPT (Steps 1–3) |
+| 2026-04-04 | Few-shot examples YAML + injection into USER_PROMPT (Steps 4–5) |
+| 2026-04-04 | Keywords moved to `configs/keywords.yaml`; per-country GDELT queries (Steps 6–7) |
+| 2026-04-05 | Prompt caching logging in `_call_azure` |
+| 2026-04-05 | ConfliBERT relevance filter (Stage 2.5) |
+| 2026-04-05 | Improved deduplicator (TF-IDF claims similarity, null-city fix, ±3 day window) |
+| 2026-04-05 | GLOCON validator (`src/validation/glocon_validator.py`) |
+| 2026-04-05 | Active learning annotation pipeline (Label Studio + export/import scripts) |

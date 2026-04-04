@@ -1,0 +1,290 @@
+"""
+Import Label Studio Annotations → Training Data
+================================================
+Reads a Label Studio export file (JSON), merges human corrections with
+the original PEA event data, and writes two outputs:
+
+  1. data/annotation/reviewed_events.jsonl
+     All reviewed events with human corrections applied.
+     Suitable for direct analysis of pipeline accuracy.
+
+  2. data/annotation/training_data.jsonl
+     Gold-standard (article_text → corrected_events JSON) pairs for
+     QLoRA fine-tuning or Anthropic Haiku fine-tuning.
+     Format: {"prompt": "<article text>", "completion": "<JSON array>"}
+
+Usage:
+    # Export from Label Studio: Project → Export → JSON
+    python -m src.annotation.import_annotations \\
+      --annotations data/annotation/label_studio_export.json \\
+      --output-dir data/annotation/
+
+    # Check how many gold pairs are ready for training
+    wc -l data/annotation/training_data.jsonl
+    # Target: 200+ before starting QLoRA fine-tuning
+
+Annotation interpretation rules:
+  - is_protest=no_*          → event is a false positive; excluded from training
+  - is_protest=yes           → genuine event; apply corrected_event_type + confidence
+  - extraction_errors present → flag the event for manual field correction
+  - annotation_notes          → preserved in output for manual review
+"""
+
+import argparse
+import json
+import logging
+from datetime import datetime
+from pathlib import Path
+
+log = logging.getLogger(__name__)
+
+# Mapping from Label Studio choice values to training-ready values
+_CONF_MAP = {"high": "high", "medium": "medium", "low": "low"}
+
+
+def _get_choice(annotation: dict, name: str) -> list[str]:
+    """Extract selected values for a named Choices widget."""
+    results = annotation.get("result", [])
+    for r in results:
+        if r.get("from_name") == name and r.get("type") == "choices":
+            return r.get("value", {}).get("choices", [])
+    return []
+
+
+def _get_text(annotation: dict, name: str) -> str:
+    """Extract text from a named TextArea widget."""
+    results = annotation.get("result", [])
+    for r in results:
+        if r.get("from_name") == name and r.get("type") == "textarea":
+            texts = r.get("value", {}).get("text", [])
+            return texts[0] if texts else ""
+    return ""
+
+
+def process_task(task: dict) -> dict | None:
+    """
+    Process a single Label Studio task with its annotation.
+
+    Returns a processed event dict, or None if the task was skipped
+    (no annotations) or marked as not-a-protest.
+    """
+    annotations = task.get("annotations", [])
+    if not annotations:
+        return None
+
+    # Use the most recent non-skipped annotation
+    annotation = None
+    for a in reversed(annotations):
+        if not a.get("was_cancelled", False) and not a.get("skipped", False):
+            annotation = a
+            break
+    if annotation is None:
+        return None
+
+    # Recover the original event dict
+    data = task.get("data", {})
+    source_event_raw = data.get("_source_event", "{}")
+    try:
+        event = json.loads(source_event_raw)
+    except json.JSONDecodeError:
+        log.warning(f"Could not parse _source_event for task {task.get('id')}")
+        return None
+
+    # Gate: is this a genuine protest event?
+    is_protest = _get_choice(annotation, "is_protest")
+    verdict = is_protest[0] if is_protest else "yes"  # default to yes if missing
+
+    if verdict != "yes":
+        event["_annotation_verdict"] = verdict
+        event["_is_false_positive"] = True
+        event["_annotation_notes"] = _get_text(annotation, "annotation_notes")
+        return event  # include in reviewed_events but exclude from training_data
+
+    # Apply corrections
+    corrected_type = _get_choice(annotation, "corrected_event_type")
+    if corrected_type:
+        event["event_type"] = corrected_type[0]
+        event["_type_corrected"] = True
+
+    corrected_conf = _get_choice(annotation, "corrected_confidence")
+    if corrected_conf:
+        event["confidence"] = corrected_conf[0]
+
+    errors = _get_choice(annotation, "extraction_errors")
+    if errors:
+        event["_extraction_errors"] = errors
+
+    notes = _get_text(annotation, "annotation_notes")
+    if notes:
+        event["_annotation_notes"] = notes
+
+    event["_annotation_verdict"] = "yes"
+    event["_is_false_positive"] = False
+    event["_reviewed_at"] = datetime.utcnow().isoformat()
+    event["_annotator_id"] = annotation.get("completed_by", {}).get("id")
+
+    return event
+
+
+def build_training_pair(event: dict) -> dict | None:
+    """
+    Build a (prompt, completion) pair for fine-tuning.
+    Only called for events where _is_false_positive=False.
+
+    The prompt mirrors the USER_PROMPT_TEMPLATE in extractor.py
+    (without the few-shot block, which will be added at training time).
+    The completion is the corrected event as a JSON array.
+    """
+    article_text = event.get("_article_text", "")
+    if not article_text:
+        # No article text available — can't make a useful training pair
+        return None
+
+    prompt = (
+        f"Article title: {event.get('article_title', 'Unknown')}\n"
+        f"Article URL: {event.get('article_url', '')}\n"
+        f"Article date: {event.get('article_date', '')}\n"
+        f"Source country: {event.get('source_country', '')}\n"
+        f"Original language: {event.get('source_language', 'en')}\n\n"
+        f"Article text:\n{article_text}\n\n"
+        f"Extract all protest events from this article and return a JSON array."
+    )
+
+    # Build the corrected event — strip annotation metadata fields
+    training_event = {
+        k: v for k, v in event.items()
+        if not k.startswith("_")
+    }
+
+    completion = json.dumps([training_event], ensure_ascii=False)
+
+    return {
+        "prompt":     prompt,
+        "completion": completion,
+        "event_type": event.get("event_type"),
+        "country":    event.get("country"),
+        "confidence": event.get("confidence"),
+        "source_url": event.get("article_url"),
+    }
+
+
+def import_annotations(
+    annotations_path: Path,
+    output_dir: Path,
+) -> dict:
+    """
+    Process a Label Studio export file and write output files.
+
+    Returns a summary dict.
+    """
+    with open(annotations_path, encoding="utf-8") as f:
+        tasks = json.load(f)
+    log.info(f"Loaded {len(tasks)} tasks from {annotations_path}")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    reviewed_events = []
+    training_pairs = []
+    stats = {
+        "total_tasks":      len(tasks),
+        "skipped":          0,
+        "genuine_protests": 0,
+        "false_positives":  0,
+        "type_corrected":   0,
+        "with_errors":      0,
+        "training_pairs":   0,
+    }
+
+    for task in tasks:
+        event = process_task(task)
+        if event is None:
+            stats["skipped"] += 1
+            continue
+
+        reviewed_events.append(event)
+
+        if event.get("_is_false_positive"):
+            stats["false_positives"] += 1
+        else:
+            stats["genuine_protests"] += 1
+            if event.get("_type_corrected"):
+                stats["type_corrected"] += 1
+            if event.get("_extraction_errors"):
+                stats["with_errors"] += 1
+            pair = build_training_pair(event)
+            if pair:
+                training_pairs.append(pair)
+                stats["training_pairs"] += 1
+
+    # Write reviewed events
+    reviewed_path = output_dir / "reviewed_events.jsonl"
+    with open(reviewed_path, "w", encoding="utf-8") as f:
+        for e in reviewed_events:
+            f.write(json.dumps(e, ensure_ascii=False) + "\n")
+
+    # Write training data
+    training_path = output_dir / "training_data.jsonl"
+    with open(training_path, "w", encoding="utf-8") as f:
+        for p in training_pairs:
+            f.write(json.dumps(p, ensure_ascii=False) + "\n")
+
+    # Write stats
+    stats_path = output_dir / "annotation_stats.json"
+    with open(stats_path, "w", encoding="utf-8") as f:
+        json.dump(stats, f, indent=2)
+
+    # Console summary
+    print("\n" + "=" * 55)
+    print("ANNOTATION IMPORT SUMMARY")
+    print("=" * 55)
+    print(f"Tasks processed:     {stats['total_tasks']}")
+    print(f"Skipped/cancelled:   {stats['skipped']}")
+    print(f"Genuine protests:    {stats['genuine_protests']}")
+    print(f"False positives:     {stats['false_positives']}")
+    print(f"Type corrections:    {stats['type_corrected']}")
+    print(f"Extraction errors:   {stats['with_errors']}")
+    print(f"Training pairs:      {stats['training_pairs']}")
+    fp_rate = (
+        stats["false_positives"] /
+        max(stats["genuine_protests"] + stats["false_positives"], 1)
+    )
+    print(f"False positive rate: {fp_rate:.1%}")
+    print(f"\nOutputs:")
+    print(f"  {reviewed_path}")
+    print(f"  {training_path}")
+    print(f"  {stats_path}")
+    target = 200
+    remaining = max(0, target - stats["training_pairs"])
+    if remaining > 0:
+        print(f"\nTraining data progress: {stats['training_pairs']}/{target} "
+              f"pairs ({remaining} more needed before QLoRA fine-tuning)")
+    else:
+        print(f"\n✓ {stats['training_pairs']} training pairs — ready for QLoRA fine-tuning")
+    print("=" * 55 + "\n")
+
+    return stats
+
+
+if __name__ == "__main__":
+    import logging as _logging
+    _logging.basicConfig(level=_logging.INFO, format="%(levelname)s %(message)s")
+
+    parser = argparse.ArgumentParser(
+        description="Import Label Studio annotations into PEA training data"
+    )
+    parser.add_argument(
+        "--annotations",
+        required=True,
+        help="Label Studio export JSON file",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default="data/annotation",
+        help="Directory for output files [default: data/annotation]",
+    )
+    args = parser.parse_args()
+
+    import_annotations(
+        annotations_path=Path(args.annotations),
+        output_dir=Path(args.output_dir),
+    )

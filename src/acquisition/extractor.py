@@ -312,6 +312,12 @@ def _call_azure(
     The model name is the deployment name in your Foundry project
     (e.g. 'gpt-4o-mini', 'claude-sonnet-4-6', 'gpt-5').
     Reads AZURE_OPENAI_ENDPOINT from the environment.
+
+    Prompt caching is automatic for gpt-4o-mini on Azure OpenAI when the
+    prompt prefix exceeds 1024 tokens. The system prompt + codebook injection
+    (~29k tokens) is an ideal cache target — all per-article variation is in
+    the user message, leaving the system prefix identical across a run.
+    Cached tokens are billed at 50% of the standard input rate.
     Returns the assistant response text, or None on failure.
     """
     try:
@@ -329,6 +335,21 @@ def _call_azure(
                 {"role": "user", "content": user},
             ],
         )
+
+        # Log prompt-caching savings when the API reports them.
+        # cached_tokens > 0 means the system prompt prefix was served from
+        # cache at 50% cost. Logged at DEBUG so it doesn't clutter INFO runs.
+        usage = getattr(response, "usage", None)
+        if usage:
+            details = getattr(usage, "prompt_tokens_details", None)
+            cached = getattr(details, "cached_tokens", 0) or 0
+            if cached:
+                saved_usd = cached * (0.150 / 1_000_000) * 0.50
+                log.debug(
+                    f"Prompt cache hit: {cached} cached tokens "
+                    f"(saved ~${saved_usd:.5f})"
+                )
+
         return response.choices[0].message.content
     except APIStatusError as e:
         log.warning(f"Azure API error {e.status_code}: {e.message}")
@@ -466,6 +487,11 @@ def extract_from_article(
                 event.setdefault("article_date", article.get("seendate", ""))
                 event.setdefault("source_country", article.get("sourcecountry", ""))
                 event.setdefault("source_language", article.get("text_lang", "unknown"))
+                # Store source text for annotation training pairs.
+                # Truncated to 12k chars (same as extraction limit) so JSONL
+                # files don't balloon. Prefixed with _ so it's stripped from
+                # the final CSV output and public-facing datasets.
+                event["_article_text"] = truncated_text
             return events
 
         log.warning(f"Parse failed (attempt {attempt + 1}), retrying...")

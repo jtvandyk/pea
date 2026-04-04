@@ -20,7 +20,9 @@ Outputs:
 
 import json
 import logging
+import math
 import os
+from collections import Counter
 from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -84,35 +86,117 @@ def _parse_event_date(date_str: str) -> Optional[datetime]:
 
 
 def _fuzzy_match(a: str, b: str, threshold: float = 0.7) -> bool:
-    """Return True if strings are similar enough (or either is empty)."""
+    """Return True if strings are similar enough."""
     if not a or not b:
-        return True  # can't falsify without both values
+        return False  # both must be present to make a positive match
     return (
         SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio() >= threshold
     )
 
 
-def _are_duplicates(a: dict, b: dict) -> bool:
+def _tokenise(text: str) -> list[str]:
+    """Lowercase, split on non-alpha, filter short tokens."""
+    import re
+    return [t for t in re.split(r"[^a-z]+", text.lower()) if len(t) > 2]
+
+
+def _tfidf_cosine(a_tokens: list[str], b_tokens: list[str], idf: dict) -> float:
     """
-    Deterministic duplicate check.
-    Criteria (all must pass):
-      - Same country (exact, case-insensitive)
-      - Same event_type
-      - Event dates within ±2 days (or either is missing)
-      - City names fuzzy-match at ≥0.7 (or either is missing)
+    Compute TF-IDF cosine similarity between two token lists.
+    idf is a pre-computed {token: idf_weight} dict.
+    Returns 0.0 if either token list is empty.
     """
+    if not a_tokens or not b_tokens:
+        return 0.0
+
+    def tfidf_vec(tokens: list[str]) -> dict:
+        tf = Counter(tokens)
+        n = len(tokens)
+        return {t: (tf[t] / n) * idf.get(t, 1.0) for t in tf}
+
+    va, vb = tfidf_vec(a_tokens), tfidf_vec(b_tokens)
+    shared = set(va) & set(vb)
+    if not shared:
+        return 0.0
+    dot = sum(va[t] * vb[t] for t in shared)
+    mag_a = math.sqrt(sum(v * v for v in va.values()))
+    mag_b = math.sqrt(sum(v * v for v in vb.values()))
+    if mag_a == 0 or mag_b == 0:
+        return 0.0
+    return dot / (mag_a * mag_b)
+
+
+def _build_idf(events: list[dict]) -> dict:
+    """
+    Build a simple IDF table from the claims fields of all events.
+    Used to down-weight common words (e.g. 'government', 'workers')
+    when comparing claims similarity.
+    """
+    n = len(events)
+    if n == 0:
+        return {}
+    df: Counter = Counter()
+    for event in events:
+        claims_tokens = set(
+            _tokenise(" ".join(event.get("claims") or []))
+        )
+        df.update(claims_tokens)
+    return {t: math.log(n / (1 + df[t])) + 1 for t in df}
+
+
+def _claims_similarity(a: dict, b: dict, idf: dict) -> float:
+    """TF-IDF cosine similarity between the claims arrays of two events."""
+    a_text = " ".join(a.get("claims") or [])
+    b_text = " ".join(b.get("claims") or [])
+    return _tfidf_cosine(_tokenise(a_text), _tokenise(b_text), idf)
+
+
+def _are_duplicates(a: dict, b: dict, idf: Optional[dict] = None) -> bool:
+    """
+    Improved duplicate check — two events are duplicates when they satisfy
+    ALL blocking criteria AND the claims similarity confirms the match.
+
+    Blocking criteria (hard gates, all must pass):
+      1. Same country (exact, case-insensitive)
+      2. Same event_type (exact)
+      3. Dates within ±3 days (widened from ±2 to handle prolonged events)
+      4. City fuzzy-match ≥ 0.7 — ONLY applied when BOTH cities are non-empty.
+         If either city is null the date + claims gate below must do the work.
+
+    Claims gate (soft, kicks in when both events have claims):
+      5. TF-IDF cosine similarity of claims ≥ 0.20.
+         A very low threshold — just enough to reject two clearly different
+         events in the same city on the same day (e.g. a labour strike and
+         a student march at the same university campus).
+         When either event has no claims this gate is skipped (null = unknown).
+    """
+    # Gate 1: country
     if (a.get("country") or "").lower() != (b.get("country") or "").lower():
         return False
+
+    # Gate 2: event type
     if a.get("event_type") != b.get("event_type"):
         return False
 
+    # Gate 3: date proximity (±3 days)
     date_a = _parse_event_date(a.get("event_date", ""))
     date_b = _parse_event_date(b.get("event_date", ""))
-    if date_a and date_b and abs((date_a - date_b).days) > 2:
+    if date_a and date_b and abs((date_a - date_b).days) > 3:
         return False
 
-    if not _fuzzy_match(a.get("city", ""), b.get("city", "")):
+    # Gate 4: city fuzzy match — only enforced when both cities are present.
+    city_a = (a.get("city") or "").strip()
+    city_b = (b.get("city") or "").strip()
+    if city_a and city_b and not _fuzzy_match(city_a, city_b, threshold=0.7):
         return False
+
+    # Gate 5: claims similarity — only enforced when both events have claims.
+    claims_a = a.get("claims") or []
+    claims_b = b.get("claims") or []
+    if claims_a and claims_b:
+        sim = _claims_similarity(a, b, idf or {})
+        if sim < 0.20:
+            return False
 
     return True
 
@@ -138,17 +222,23 @@ def filter_to_target_countries(
 
 def deduplicate(events: list) -> tuple:
     """
-    Remove duplicate events using deterministic matching.
+    Remove duplicate events using deterministic + claims-similarity matching.
     When duplicates are found, keeps the higher-confidence version.
+
+    Pre-computes a corpus-level IDF table from all events so that
+    _are_duplicates() can use TF-IDF cosine similarity on claims without
+    re-scanning the corpus on every comparison.
+
     Returns (deduplicated_events, duplicates_log).
     """
+    idf = _build_idf(events)
     kept = []
     duplicates_log = []
 
     for event in events:
         matched_idx = None
         for i, existing in enumerate(kept):
-            if _are_duplicates(event, existing):
+            if _are_duplicates(event, existing, idf=idf):
                 matched_idx = i
                 break
 
@@ -158,6 +248,7 @@ def deduplicate(events: list) -> tuple:
             existing = kept[matched_idx]
             event_score = _CONF_SCORE.get(event.get("confidence", ""), 0)
             existing_score = _CONF_SCORE.get(existing.get("confidence", ""), 0)
+            claims_sim = round(_claims_similarity(event, existing, idf), 3)
             duplicates_log.append(
                 {
                     "kept_url": existing.get("article_url"),
@@ -166,6 +257,7 @@ def deduplicate(events: list) -> tuple:
                     "city": event.get("city"),
                     "event_type": event.get("event_type"),
                     "event_date": event.get("event_date"),
+                    "claims_similarity": claims_sim,
                     "reason": "duplicate",
                 }
             )

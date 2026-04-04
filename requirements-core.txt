@@ -28,3 +28,11 @@ python-dotenv==1.0.0
 pyyaml==6.0
 tqdm==4.66.0
 requests==2.31.0
+
+# Relevance filter (ConfliBERT / zero-shot NLI)
+# torch is installed separately in the Dockerfile via the PyTorch CPU-only
+# index URL to avoid pulling the 2 GB CUDA build.
+# For local dev outside Docker, install manually:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   pip install transformers>=4.40.0
+transformers>=4.40.0
