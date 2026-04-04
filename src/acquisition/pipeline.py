@@ -36,6 +36,7 @@ from src.acquisition.scraper import scrape_articles
 from src.acquisition.geocoder import geocode_events
 from src.acquisition.translator import translate_articles
 from src.acquisition.extractor import extract_events
+from src.acquisition.relevance_filter import RelevanceFilter
 from src.acquisition.storage import (
     save_results,
     sync_checkpoint_from_blob,
@@ -92,6 +93,7 @@ def run_pipeline(
     source: str = "gdelt",
     geocode: bool = True,
     resume: bool = False,
+    relevance_threshold: float = 0.30,
 ):
     log.info("=== Protest Event Analysis Pipeline (codebook v2.2) ===")
     log.info(f"Query: '{query}' | Countries: {countries} | Days back: {days}")
@@ -156,6 +158,18 @@ def run_pipeline(
 
     if not scraped:
         log.warning("No articles could be scraped. Check network access.")
+        return []
+
+    # Stage 2.5: Relevance filter — rejects non-protest articles before LLM
+    log.info("--- Stage 2.5: Relevance Filter (ConfliBERT / keyword fallback) ---")
+    _rf = RelevanceFilter(threshold=relevance_threshold)
+    scraped, rf_rejected = _rf.filter(scraped)
+    log.info(
+        f"Relevance filter: {len(scraped)} kept, {len(rf_rejected)} rejected "
+        f"(saved ~${len(rf_rejected) * 0.00616:.2f} in LLM calls)"
+    )
+    if not scraped:
+        log.warning("All articles rejected by relevance filter. Lower --relevance-threshold?")
         return []
 
     # Stage 3: Translation (optional)
@@ -263,6 +277,16 @@ def main():
         help="Resume from checkpoint.txt — skip already-processed URLs",
     )
     parser.add_argument(
+        "--relevance-threshold",
+        type=float,
+        default=0.30,
+        help=(
+            "Minimum relevance score (0–1) for an article to proceed to LLM extraction. "
+            "Lower = higher recall (more noise passes). Default: 0.30. "
+            "Raise to 0.50 once GLOCON validation confirms filter accuracy."
+        ),
+    )
+    parser.add_argument(
         "--upload-to",
         default=None,
         help="Upload outputs after run: 's3://bucket/prefix' or 'az://container/prefix'",
@@ -304,6 +328,7 @@ def main():
             source=args.source,
             geocode=not args.no_geocode,
             resume=args.resume,
+            relevance_threshold=args.relevance_threshold,
         )
 
     if args.stage in ("process", "all"):

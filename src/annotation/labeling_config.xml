@@ -1,0 +1,121 @@
+<!--
+  Label Studio Labeling Configuration — PEA Protest Event Annotation
+  ==================================================================
+  Paste the contents of this file into Label Studio:
+    Project → Settings → Labeling Interface → Code
+
+  Task format: one task per extracted event (see export_for_annotation.py).
+  The annotator reviews the LLM extraction and corrects any errors.
+
+  Workflow:
+    1. Is this a genuine protest event? (binary gate)
+    2. If yes, correct the event_type classification
+    3. Flag confidence override if appropriate
+    4. Add free-text annotation notes
+
+  These reviewed tasks become the training corpus for QLoRA fine-tuning.
+-->
+<View>
+  <!-- Article context panel — read-only reference -->
+  <View style="padding:12px; background:#f8f9fa; border-radius:6px; margin-bottom:16px;">
+    <Header value="Source Article" size="3"/>
+    <Text name="article_title" value="$article_title" style="font-weight:bold;"/>
+    <Text name="article_date"  value="$article_date"  style="color:#666; font-size:0.9em;"/>
+    <HyperText name="article_url_display" value="$article_url" inline="true"/>
+    <Header value="Article Text (excerpt)" size="4" style="margin-top:12px;"/>
+    <Text name="article_text" value="$article_text"/>
+  </View>
+
+  <!-- LLM extraction panel — what the model extracted -->
+  <View style="padding:12px; background:#fff8e1; border-radius:6px; margin-bottom:16px;">
+    <Header value="LLM Extraction (to review)" size="3"/>
+    <View style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+      <View>
+        <Text name="lbl_type"       value="Event type:"        style="font-weight:bold;"/>
+        <Text name="extracted_type" value="$event_type"/>
+        <Text name="lbl_conf"       value="Confidence:"        style="font-weight:bold; margin-top:8px;"/>
+        <Text name="extracted_conf" value="$confidence"/>
+        <Text name="lbl_date"       value="Event date:"        style="font-weight:bold; margin-top:8px;"/>
+        <Text name="extracted_date" value="$event_date"/>
+        <Text name="lbl_org"        value="Organizer:"         style="font-weight:bold; margin-top:8px;"/>
+        <Text name="extracted_org"  value="$organizer"/>
+      </View>
+      <View>
+        <Text name="lbl_loc"    value="Location:"      style="font-weight:bold;"/>
+        <Text name="ext_loc"    value="$location_display"/>
+        <Text name="lbl_crowd"  value="Crowd size:"    style="font-weight:bold; margin-top:8px;"/>
+        <Text name="ext_crowd"  value="$crowd_size"/>
+        <Text name="lbl_state"  value="State response:" style="font-weight:bold; margin-top:8px;"/>
+        <Text name="ext_state"  value="$state_response"/>
+        <Text name="lbl_out"    value="Outcome:"       style="font-weight:bold; margin-top:8px;"/>
+        <Text name="ext_out"    value="$outcome"/>
+      </View>
+    </View>
+    <Text name="lbl_claims" value="Claims / demands:" style="font-weight:bold; margin-top:8px;"/>
+    <Text name="ext_claims" value="$claims_display"/>
+  </View>
+
+  <!-- Annotation decisions -->
+  <View style="padding:12px; background:#e8f5e9; border-radius:6px;">
+    <Header value="Your Annotation" size="3"/>
+
+    <!-- Gate 1: Is this a genuine protest event? -->
+    <Header value="1. Is this a genuine protest event?" size="4"/>
+    <Choices name="is_protest" toName="article_text"
+             choice="single" required="true"
+             showInline="true">
+      <Choice value="yes"                    alias="yes"     style="color:#2e7d32;"/>
+      <Choice value="no_not_a_protest"       alias="no_not"  style="color:#c62828;"/>
+      <Choice value="no_insufficient_info"   alias="no_info" style="color:#e65100;"/>
+    </Choices>
+
+    <!-- Gate 2: Correct event type (only shown when is_protest=yes) -->
+    <View visibleWhen="choice-selected" whenTagName="is_protest" whenChoiceValue="yes">
+      <Header value="2. Correct event type" size="4" style="margin-top:12px;"/>
+      <Choices name="corrected_event_type" toName="article_text"
+               choice="single" required="true"
+               showInline="false">
+        <Choice value="demonstration_march"  alias="demonstration_march"/>
+        <Choice value="strike_boycott"       alias="strike_boycott"/>
+        <Choice value="occupation_seizure"   alias="occupation_seizure"/>
+        <Choice value="confrontation"        alias="confrontation"/>
+        <Choice value="petition_signature"   alias="petition_signature"/>
+        <Choice value="vigil"                alias="vigil"/>
+        <Choice value="hunger_strike"        alias="hunger_strike"/>
+        <Choice value="riot"                 alias="riot"/>
+      </Choices>
+
+      <!-- Gate 3: Confidence override -->
+      <Header value="3. Confidence" size="4" style="margin-top:12px;"/>
+      <Choices name="corrected_confidence" toName="article_text"
+               choice="single" required="true"
+               showInline="true">
+        <Choice value="high"   alias="high"   style="color:#2e7d32;"/>
+        <Choice value="medium" alias="medium" style="color:#f57f17;"/>
+        <Choice value="low"    alias="low"    style="color:#c62828;"/>
+      </Choices>
+
+      <!-- Extraction quality flags -->
+      <Header value="4. Flag any extraction errors (optional)" size="4" style="margin-top:12px;"/>
+      <Choices name="extraction_errors" toName="article_text"
+               choice="multiple" showInline="false">
+        <Choice value="wrong_event_type"    alias="wrong_event_type"/>
+        <Choice value="wrong_date"          alias="wrong_date"/>
+        <Choice value="wrong_location"      alias="wrong_location"/>
+        <Choice value="wrong_organizer"     alias="wrong_organizer"/>
+        <Choice value="wrong_claims"        alias="wrong_claims"/>
+        <Choice value="wrong_state_response" alias="wrong_state_response"/>
+        <Choice value="missing_event"       alias="missing_event"
+                hint="Article contains another event not extracted"/>
+        <Choice value="hallucinated_field"  alias="hallucinated_field"
+                hint="LLM invented a detail not in the article"/>
+      </Choices>
+    </View>
+
+    <!-- Free text notes for any annotation -->
+    <Header value="Notes (optional)" size="4" style="margin-top:12px;"/>
+    <TextArea name="annotation_notes" toName="article_text"
+              placeholder="Corrections, edge cases, ambiguities..."
+              rows="3" maxSubmissions="1"/>
+  </View>
+</View>
