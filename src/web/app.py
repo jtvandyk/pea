@@ -347,13 +347,13 @@ with tab_launch:
         )
 
         model_defaults = {
-            "azure": "gpt-4o-mini",
+            "azure": "gpt-4.1",
             "claude": "claude-sonnet-4-6",
             "openai": "gpt-4o-mini",
         }
         model = st.text_input(
             "Model / deployment name",
-            value=model_defaults.get(provider, "gpt-4o-mini"),
+            value=model_defaults.get(provider, "gpt-4.1"),
             help="For Azure: deployment name in your Foundry project",
         )
 

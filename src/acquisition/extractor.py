@@ -510,7 +510,7 @@ _PROVIDER_ENV_VARS = {
 _PROVIDER_DEFAULT_MODELS = {
     "claude": "claude-sonnet-4-6",
     "openai": "gpt-4o-mini",
-    "azure": "gpt-4o-mini",
+    "azure": "gpt-4.1",
 }
 
 
