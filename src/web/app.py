@@ -150,12 +150,22 @@ def trigger_pipeline_job(pipeline_args: list) -> dict:
         f"?api-version=2023-05-01"
     )
 
+    container_name = os.environ.get("CONTAINER_APP_CONTAINER_NAME", "pea-pipeline")
     payload = {
         "template": {
             "containers": [
                 {
-                    "name": "pea-pipeline",
-                    "args": pipeline_args,
+                    "name": container_name,
+                    # Use `command` (not `args`) so the override replaces the full
+                    # container entrypoint+args rather than just the Docker CMD slot.
+                    # Without this, Azure ignores the override when the job template
+                    # was built with an ENTRYPOINT-only Dockerfile (no CMD).
+                    "command": [
+                        "python",
+                        "-m",
+                        "src.acquisition.pipeline",
+                    ]
+                    + pipeline_args,
                 }
             ]
         }
