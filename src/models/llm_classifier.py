@@ -1,6 +1,6 @@
 """
 LLM classifier for protest events.
-Supports local Llama (via Ollama) and can be extended to other providers.
+Supports Azure AI Foundry and local Llama (via Ollama).
 Model initialisation is deferred until the LLM setup stage.
 """
 
@@ -27,10 +27,8 @@ class LLMClassifier:
     Classify protest events using a language model.
 
     Supported model_name values:
-      - "llama"  : local Ollama endpoint (default, no API key required)
-
-    Additional providers (OpenAI, Anthropic) can be wired in later by
-    extending _init_model().
+      - "azure"  : Azure AI Foundry (default)
+      - "llama"  : local Ollama endpoint (no API key required)
     """
 
     def __init__(
@@ -53,11 +51,10 @@ class LLMClassifier:
         """Return a callable that accepts a prompt string and returns a string."""
         if self.model_name == "llama":
             return self._call_ollama
-        if self.model_name in ("claude", "openai", "azure"):
+        if self.model_name == "azure":
             return self._call_cloud
         raise ValueError(
-            f"Unknown model '{self.model_name}'. "
-            "Supported: 'claude', 'openai', 'azure', 'llama'."
+            f"Unknown model '{self.model_name}'. Supported: 'azure', 'llama'."
         )
 
     def _call_ollama(self, prompt: str) -> str:
@@ -73,7 +70,7 @@ class LLMClassifier:
         return response["response"]
 
     def _call_cloud(self, prompt: str) -> str:
-        """Send prompt to a cloud LLM (claude/openai/azure) via extractor._call_llm."""
+        """Send prompt to Azure AI Foundry via extractor._call_llm."""
         from src.acquisition.extractor import _call_llm
 
         result = _call_llm(

@@ -5,7 +5,7 @@
 Protest Event Analysis (PEA) pipeline. Discovers news articles via GDELT DOC 2.0 API and BBC Monitoring, scrapes + translates, filters for relevance, extracts structured protest events via an LLM backend, and stores results as JSONL/CSV.
 
 **Codebook version:** 2.3 (Halterman & Keith 2025, Type III)
-**LLM backend:** Configurable via `--provider` flag (default: azure / gpt-4o-mini)
+**LLM backend:** Azure AI Foundry only (`AZURE_FOUNDRY_API_KEY` + `AZURE_OPENAI_ENDPOINT`)
 **Target geography:** African countries (NG, ZA, UG, DZ)
 **Current branch:** `dev` (all recent improvements here; `main` is stable)
 **Python:** 3.9 (venv at `venv/`) — `X | Y` union syntax requires 3.10+, use `Optional[X]` instead

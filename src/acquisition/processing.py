@@ -398,7 +398,7 @@ def process_events(
         output_dir:       Output directory (default: data/processed/)
         target_countries: Set of lowercase country names to keep (default: Africa)
         recheck:          Whether to LLM-recheck medium/low confidence events
-        provider:         LLM provider for rechecking ('claude', 'openai', 'azure')
+        provider:         LLM provider for rechecking (always 'azure')
         model:            Model/deployment name for rechecking
         api_key:          API key (defaults to env var for provider)
         upload_to:        Optional az:// or s3:// destination for outputs

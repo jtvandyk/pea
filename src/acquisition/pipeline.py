@@ -2,16 +2,16 @@
 Protest Event Analysis Pipeline
 ================================
 End-to-end pipeline for Global South / non-Western protest event data collection,
-full-text retrieval, and LLM-based structured extraction.
+full-text retrieval, and LLM-based structured extraction via Azure AI Foundry.
 
 Stages:
   1. DISCOVERY   — query GDELT DOC API for candidate article URLs
   2. SCRAPING    — fetch full article text from source URLs
   3. TRANSLATION — detect and translate non-English text (optional)
-  4. EXTRACTION  — Claude (Anthropic API) extracts structured protest event fields
+  4. EXTRACTION  — Azure AI Foundry extracts structured protest event fields
   5. STORAGE     — save results to data/raw/ as JSONL + CSV
 
-Codebook version: 2.1
+Codebook version: 2.3
 
 Usage (from repo root):
     python -m src.acquisition.pipeline
@@ -19,7 +19,8 @@ Usage (from repo root):
     python -m src.acquisition.pipeline --help
 
 Requires:
-    ANTHROPIC_API_KEY environment variable (or pass --claude-api-key)
+    AZURE_FOUNDRY_API_KEY  environment variable
+    AZURE_OPENAI_ENDPOINT  environment variable
 """
 
 import argparse
@@ -86,7 +87,7 @@ def run_pipeline(
     output_dir: Path,
     max_articles: int = 100,
     translate: bool = True,
-    provider: str = "claude",
+    provider: str = "azure",
     model: Optional[str] = None,
     api_key: Optional[str] = None,
     upload_to: Optional[str] = None,
@@ -248,19 +249,19 @@ def main():
     )
     parser.add_argument(
         "--provider",
-        default="claude",
-        choices=["claude", "openai", "azure"],
-        help="LLM provider: 'claude' (default), 'openai', or 'azure' (Azure AI Foundry)",
+        default="azure",
+        choices=["azure"],
+        help="LLM provider: 'azure' (Azure AI Foundry)",
     )
     parser.add_argument(
         "--model",
         default=None,
-        help="Model ID — defaults to claude-sonnet-4-6 (claude) or gpt-4o-mini (openai)",
+        help="Deployment name in Azure AI Foundry project (default: gpt-4.1)",
     )
     parser.add_argument(
         "--api-key",
         default=None,
-        help="API key — defaults to ANTHROPIC_API_KEY or OPENAI_API_KEY env var",
+        help="API key — defaults to AZURE_FOUNDRY_API_KEY env var",
     )
     parser.add_argument(
         "--source",

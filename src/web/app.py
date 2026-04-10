@@ -350,21 +350,12 @@ with tab_launch:
     with col_right:
         st.subheader("Extraction")
 
-        provider = st.selectbox(
-            "LLM provider",
-            options=["azure", "claude", "openai"],
-            index=0,
-        )
+        provider = "azure"
 
-        model_defaults = {
-            "azure": "gpt-4.1",
-            "claude": "claude-sonnet-4-6",
-            "openai": "gpt-4o-mini",
-        }
         model = st.text_input(
             "Model / deployment name",
-            value=model_defaults.get(provider, "gpt-4.1"),
-            help="For Azure: deployment name in your Foundry project",
+            value="gpt-4.1",
+            help="Deployment name in your Azure AI Foundry project",
         )
 
         stage = st.selectbox(
