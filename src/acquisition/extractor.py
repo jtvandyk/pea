@@ -56,7 +56,7 @@ def _build_codebook_context(codebook_path: Path) -> str:
     if not event_types:
         return ""
 
-    lines = ["\n\n== FULL EVENT TYPE DEFINITIONS (Codebook v2.2) ==\n"]
+    lines = ["\n\n== FULL EVENT TYPE DEFINITIONS (Codebook v2.3) ==\n"]
     for event_type, details in event_types.items():
         lines.append(f"TYPE: {event_type.upper()}")
         definition = details.get("definition", "").strip()
@@ -301,16 +301,6 @@ def _call_azure(
         return None
 
 
-def _call_llm(
-    system: str,
-    user: str,
-    model: str,
-    api_key: str,
-    provider: str = "azure",
-) -> Optional[str]:
-    """Dispatch to the Azure AI Foundry backend."""
-    return _call_azure(system=system, user=user, model=model, api_key=api_key)
-
 
 def _clean_json(text: str) -> str:
     """Remove common LLM JSON formatting issues."""
@@ -362,7 +352,7 @@ def extract_from_article(
     article: dict,
     model: str,
     api_key: str,
-    provider: str = "claude",
+    provider: str = "azure",
     max_retries: int = 2,
 ) -> Optional[list[dict]]:
     """
@@ -390,12 +380,11 @@ def extract_from_article(
     )
 
     for attempt in range(max_retries + 1):
-        raw = _call_llm(
+        raw = _call_azure(
             system=SYSTEM_PROMPT,
             user=prompt,
             model=model,
             api_key=api_key,
-            provider=provider,
         )
 
         if raw == "__CONTENT_FILTERED__":

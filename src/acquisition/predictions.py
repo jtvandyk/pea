@@ -38,24 +38,73 @@ VALID_EVENT_TYPES = {
 }
 
 
-def _events_to_predictions(events: list) -> list:
-    """Convert raw event dicts to ProtestEventPrediction objects for PPI/QC."""
-    from src.models.schemas import ProtestEventPrediction
+def _estimate_prevalence(events: list, event_type: str, confidence_level: float = 0.95) -> dict:
+    """Binomial prevalence estimate with confidence interval for one event type."""
+    from scipy import stats
 
-    predictions = []
-    for event in events:
-        score = _CONF_TO_SCORE.get(event.get("confidence", ""), 0.60)
-        event_type = event.get("event_type", "UNCLASSIFIABLE")
-        predictions.append(
-            ProtestEventPrediction(
-                event_type=event_type,
-                confidence_score=score,
-                reasoning="",
-                schema_valid=(event_type in VALID_EVENT_TYPES and score >= 0.70),
-                key_indicators=[],
-            )
-        )
-    return predictions
+    n = len(events)
+    if n == 0:
+        return {"estimate": 0.0, "ci_lower": 0.0, "ci_upper": 0.0, "n_classified": 0, "total_n": 0}
+    correct = sum(1 for e in events if e.get("event_type") == event_type)
+    prevalence = correct / n
+    ci = stats.binom.interval(confidence_level, n, prevalence)
+    return {
+        "estimate": prevalence,
+        "ci_lower": ci[0] / n,
+        "ci_upper": ci[1] / n,
+        "n_classified": correct,
+        "total_n": n,
+    }
+
+
+def _confidence_breakdown(events: list) -> dict:
+    """Break down event counts by confidence band."""
+    scores = [_CONF_TO_SCORE.get(e.get("confidence", ""), 0.60) for e in events]
+    n = len(scores)
+    high = sum(1 for s in scores if s >= 0.8)
+    medium = sum(1 for s in scores if 0.6 <= s < 0.8)
+    low = sum(1 for s in scores if s < 0.6)
+    return {
+        "high_confidence": high,
+        "medium_confidence": medium,
+        "low_confidence": low,
+        "pct_high": high / n if n else 0,
+        "pct_medium": medium / n if n else 0,
+        "pct_low": low / n if n else 0,
+    }
+
+
+def _quality_report(events: list) -> dict:
+    """Schema validity + confidence distribution report."""
+    import numpy as np
+
+    n = len(events)
+    valid = sum(
+        1 for e in events
+        if e.get("event_type") in VALID_EVENT_TYPES
+        and _CONF_TO_SCORE.get(e.get("confidence", ""), 0.0) >= 0.70
+    )
+    scores = [_CONF_TO_SCORE.get(e.get("confidence", ""), 0.60) for e in events]
+    arr = np.array(scores) if scores else np.array([0.0])
+    return {
+        "schema_validity": {
+            "valid_schemas": valid,
+            "invalid_schemas": n - valid,
+            "validity_rate": valid / n if n else 0,
+            "flag_for_review": (n - valid) > n * 0.1,
+        },
+        "confidence_distribution": {
+            "mean_confidence": float(arr.mean()),
+            "median_confidence": float(np.median(arr)),
+            "std_confidence": float(arr.std()),
+            "min_confidence": float(arr.min()),
+            "max_confidence": float(arr.max()),
+            "percentile_25": float(np.percentile(arr, 25)),
+            "percentile_75": float(np.percentile(arr, 75)),
+        },
+        "total_predictions": n,
+        "timestamp": datetime.now().isoformat(),
+    }
 
 
 def run_predictions(
@@ -75,9 +124,6 @@ def run_predictions(
     Returns:
         Dict containing all computed estimates and reports.
     """
-    from src.models.ppi_estimator import PredictionPoweredInference
-    from src.models.quality_controller import QualityController
-
     root = Path(__file__).resolve().parents[2]
     if input_path is None:
         input_path = root / "data" / "processed" / "events_consolidated.jsonl"
@@ -98,26 +144,20 @@ def run_predictions(
         log.warning("No events to analyse")
         return {}
 
-    predictions = _events_to_predictions(events)
-
     # --- PPI: overall prevalence by event type ---
-    ppi = PredictionPoweredInference(predictions)
-    prevalence_by_type = {}
-    for event_type in VALID_EVENT_TYPES:
-        prevalence_by_type[event_type] = ppi.estimate_prevalence(event_type)
+    prevalence_by_type = {t: _estimate_prevalence(events, t) for t in VALID_EVENT_TYPES}
 
-    # --- PPI: prevalence by country (per-country PPI instance) ---
+    # --- PPI: prevalence by country ---
     countries = sorted(set(e.get("country", "unknown") for e in events))
     prevalence_by_country = {}
     for country in countries:
         country_events = [e for e in events if e.get("country") == country]
-        country_preds = _events_to_predictions(country_events)
-        country_ppi = PredictionPoweredInference(country_preds)
-        country_breakdown = {}
-        for event_type in VALID_EVENT_TYPES:
-            est = country_ppi.estimate_prevalence(event_type)
-            if est["n_classified"] > 0:
-                country_breakdown[event_type] = est
+        country_breakdown = {
+            t: est
+            for t in VALID_EVENT_TYPES
+            for est in [_estimate_prevalence(country_events, t)]
+            if est["n_classified"] > 0
+        }
         if country_breakdown:
             prevalence_by_country[country] = {
                 "total_events": len(country_events),
@@ -125,14 +165,13 @@ def run_predictions(
             }
 
     # --- Confidence breakdown ---
-    confidence_breakdown = ppi.estimate_by_confidence()
+    confidence_breakdown = _confidence_breakdown(events)
 
     # --- Quality control ---
-    qc = QualityController(predictions)
-    quality_report = qc.generate_quality_report()
+    quality_report = _quality_report(events)
 
     # --- Turmoil level distribution ---
-    turmoil_counts = {}
+    turmoil_counts: dict = {}
     for event in events:
         level = event.get("turmoil_level", "unknown")
         turmoil_counts[level] = turmoil_counts.get(level, 0) + 1
@@ -216,8 +255,10 @@ def run_predictions(
     # Upload
     if upload_to:
         from src.acquisition.storage import _upload_outputs
-
-        _upload_outputs(upload_to, [prev_path, conf_path, summary_path])
-        log.info(f"Stage 3 outputs uploaded to {upload_to}")
+        try:
+            _upload_outputs(upload_to, [prev_path, conf_path, summary_path])
+            log.info(f"Stage 3 outputs uploaded to {upload_to}")
+        except Exception as e:
+            log.warning(f"Stage 3 cloud upload failed (results saved locally): {e}")
 
     return predictions_summary

@@ -7,7 +7,7 @@ quality-controlled dataset in data/processed/.
 Steps:
   1. Load all raw events across runs
   2. Filter to target geography (remove noise from broken GDELT runs)
-  3. Deduplicate — deterministic rules: same country + city + date ±2 days + event_type
+  3. Deduplicate — deterministic rules: same country + city + date ±3 days + event_type
   4. Re-verify borderline events (medium/low confidence) using LLM chain-of-thought
   5. Run QualityController — schema validity + confidence distribution report
   6. Write data/processed/events_consolidated.jsonl + quality_report.json
@@ -275,32 +275,24 @@ def recheck_borderline(
     codebook_path: Optional[str] = None,
 ) -> list:
     """
-    Re-classify medium and low confidence events using chain-of-thought prompting.
+    Re-classify medium and low confidence events via Azure AI Foundry.
+    Uses the same SYSTEM_PROMPT (codebook v2.3) as the main extractor.
     Updates event_type and confidence in-place where the re-classification differs.
     Returns the updated events list.
     """
-    from src.models.llm_classifier import LLMClassifier
-    from src.utils.codebook_manager import CodebookManager
+    from src.acquisition.extractor import _call_azure, SYSTEM_PROMPT
 
-    if codebook_path is None:
-        codebook_path = str(
-            Path(__file__).resolve().parents[2] / "configs" / "protest_codebook.yaml"
-        )
-
-    codebook = CodebookManager(codebook_path)
-    classifier = LLMClassifier(
-        model_name=provider,
-        codebook_manager=codebook,
-        api_keys={provider: api_key},
-        ollama_model=model,
-    )
+    valid_types = {
+        "demonstration_march", "strike_boycott", "occupation_seizure",
+        "confrontation", "petition_signature", "vigil", "hunger_strike", "riot",
+    }
+    valid_types_str = ", ".join(sorted(valid_types))
 
     borderline = [e for e in events if e.get("confidence") in ("medium", "low")]
     log.info(f"Re-checking {len(borderline)} borderline events via {provider}/{model}")
 
     for event in borderline:
-        # Build a compact text summary of the event for re-classification
-        text = (
+        summary = (
             f"Country: {event.get('country')}. "
             f"City: {event.get('city')}. "
             f"Date: {event.get('event_date')}. "
@@ -310,22 +302,31 @@ def recheck_borderline(
             f"Outcome: {event.get('outcome')}. "
             f"Source headline: {event.get('article_title')}."
         )
+        user_msg = (
+            f"Re-evaluate this borderline protest event extract. "
+            f"Return ONLY a JSON object with keys 'event_type' (one of: {valid_types_str}) "
+            f"and 'confidence' (high/medium/low).\n\n{summary}"
+        )
         try:
-            prediction = classifier.classify_with_cot(text)
-            if prediction.event_type not in ("UNCLASSIFIABLE", event.get("event_type")):
+            raw = _call_azure(system=SYSTEM_PROMPT, user=user_msg, model=model, api_key=api_key)
+            if not raw:
+                continue
+            import json as _json, re as _re
+            # Extract JSON object from response
+            m = _re.search(r'\{[^{}]+\}', raw, _re.DOTALL)
+            if not m:
+                continue
+            data = _json.loads(m.group())
+            new_type = data.get("event_type", "")
+            new_conf = data.get("confidence", "")
+            if new_type in valid_types and new_type != event.get("event_type"):
                 log.info(
-                    f"  Re-classified: {event.get('event_type')} → {prediction.event_type} "
-                    f"(confidence {prediction.confidence_score:.2f})"
+                    f"  Re-classified: {event.get('event_type')} → {new_type}"
                 )
-                event["event_type"] = prediction.event_type
+                event["event_type"] = new_type
                 event["_reclassified"] = True
-            # Map numeric confidence back to string tier
-            if prediction.confidence_score >= 0.8:
-                event["confidence"] = "high"
-            elif prediction.confidence_score >= 0.6:
-                event["confidence"] = "medium"
-            else:
-                event["confidence"] = "low"
+            if new_conf in ("high", "medium", "low"):
+                event["confidence"] = new_conf
         except Exception as e:
             log.warning(
                 f"Re-classification failed for event ({event.get('article_url')}): {e}"
@@ -335,12 +336,8 @@ def recheck_borderline(
 
 
 def run_quality_control(events: list) -> dict:
-    """
-    Run QualityController and return a quality report dict.
-    Converts raw event dicts to ProtestEventPrediction objects for the controller.
-    """
-    from src.models.schemas import ProtestEventPrediction
-    from src.models.quality_controller import QualityController
+    """Return schema validity + confidence distribution report for a list of events."""
+    import numpy as np
 
     _CONF_TO_SCORE = {"high": 0.85, "medium": 0.70, "low": 0.50}
     valid_types = {
@@ -354,24 +351,35 @@ def run_quality_control(events: list) -> dict:
         "riot",
     }
 
-    predictions = []
-    for event in events:
-        score = _CONF_TO_SCORE.get(event.get("confidence", ""), 0.60)
-        event_type = event.get("event_type", "UNCLASSIFIABLE")
-        predictions.append(
-            ProtestEventPrediction(
-                event_type=event_type,
-                confidence_score=score,
-                reasoning="",
-                schema_valid=(event_type in valid_types and score >= 0.70),
-                key_indicators=[],
-            )
-        )
+    n = len(events)
+    valid = sum(
+        1 for e in events
+        if e.get("event_type") in valid_types
+        and _CONF_TO_SCORE.get(e.get("confidence", ""), 0.0) >= 0.70
+    )
+    scores = [_CONF_TO_SCORE.get(e.get("confidence", ""), 0.60) for e in events]
+    arr = np.array(scores) if scores else np.array([0.0])
 
-    qc = QualityController(predictions)
-    report = qc.generate_quality_report()
-    report["events_by_country"] = {}
-    report["events_by_type"] = {}
+    report = {
+        "schema_validity": {
+            "valid_schemas": valid,
+            "invalid_schemas": n - valid,
+            "validity_rate": valid / n if n else 0,
+            "flag_for_review": (n - valid) > n * 0.1,
+        },
+        "confidence_distribution": {
+            "mean_confidence": float(arr.mean()),
+            "median_confidence": float(np.median(arr)),
+            "std_confidence": float(arr.std()),
+            "min_confidence": float(arr.min()),
+            "max_confidence": float(arr.max()),
+            "percentile_25": float(np.percentile(arr, 25)),
+            "percentile_75": float(np.percentile(arr, 75)),
+        },
+        "total_predictions": n,
+        "events_by_country": {},
+        "events_by_type": {},
+    }
     for event in events:
         c = event.get("country", "unknown")
         t = event.get("event_type", "unknown")
@@ -508,7 +516,10 @@ def process_events(
         paths = [consolidated_path, quality_path]
         if duplicates_log:
             paths.append(output_dir / "duplicates_log.jsonl")
-        _upload_outputs(upload_to, paths)
-        log.info(f"Stage 2 outputs uploaded to {upload_to}")
+        try:
+            _upload_outputs(upload_to, paths)
+            log.info(f"Stage 2 outputs uploaded to {upload_to}")
+        except Exception as e:
+            log.warning(f"Stage 2 cloud upload failed (results saved locally): {e}")
 
     return events

@@ -182,8 +182,8 @@ def run_pipeline(
             a["text_en"] = a.get("text")
             a["text_lang"] = "unknown"
 
-    # Stage 4: LLM Extraction via Claude
-    log.info("--- Stage 4: LLM Event Extraction (Claude API) ---")
+    # Stage 4: LLM Extraction via Azure AI Foundry
+    log.info("--- Stage 4: LLM Event Extraction (Azure AI Foundry) ---")
     checkpoint_path = str(output_dir / "checkpoint.txt")
     events, failures = extract_events(
         scraped,
@@ -223,7 +223,7 @@ def main():
     load_dotenv()
 
     parser = argparse.ArgumentParser(
-        description="Protest Event Analysis Pipeline — Global South focus (codebook v2.1)"
+        description="Protest Event Analysis Pipeline — Global South focus (codebook v2.3)"
     )
     parser.add_argument(
         "--query",

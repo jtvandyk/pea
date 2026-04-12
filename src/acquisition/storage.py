@@ -192,18 +192,11 @@ def _upload_outputs(destination: str, paths: list[Path]) -> None:
             log.info(f"Uploaded to s3://{bucket}/{key}")
 
     elif destination.startswith("az://"):
-        try:
-            from azure.storage.blob import BlobServiceClient
-        except ImportError:
-            raise ImportError(
-                "azure-storage-blob is required for Azure upload: "
-                "pip install azure-storage-blob"
-            )
         conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
         if not conn_str:
             raise ValueError("AZURE_STORAGE_CONNECTION_STRING env var not set")
         container, prefix = destination[5:].split("/", 1)
-        client = BlobServiceClient.from_connection_string(conn_str)
+        client = _az_client(conn_str)
         for p in paths:
             blob_name = f"{prefix}/{p.name}"
             blob = client.get_blob_client(container, blob_name)
@@ -327,8 +320,11 @@ def save_results(
         if checkpoint_path.exists():
             upload_paths.append(checkpoint_path)
         log.info(f"Uploading {len(upload_paths)} files to {upload_to} ...")
-        _upload_outputs(upload_to, upload_paths)
-        log.info("Cloud upload complete")
+        try:
+            _upload_outputs(upload_to, upload_paths)
+            log.info("Cloud upload complete")
+        except Exception as e:
+            log.warning(f"Cloud upload failed (results saved locally): {e}")
 
     return output_dir
 
