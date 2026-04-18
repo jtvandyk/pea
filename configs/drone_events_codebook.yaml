@@ -14,7 +14,8 @@
 metadata:
   title: "Comprehensive Drone Event Codebook for LLM Classification"
   version: "1.0"
-  date: "April 2026"
+  last_updated: "April 2026"
+  llm_backend: "Azure AI Foundry (gpt-4o-mini)"
   description: >
     Type III stipulative definitions for zero-shot LLM event classification
     of drone/UAV incidents. Designed for extraction from unstructured news
@@ -46,24 +47,6 @@ metadata:
     - "Drone propaganda as distinct event type (Oakley & Rogg 2024)"
     - "Autonomy level field for loitering munitions (Bode & Watts 2023)"
     - "Civilian_harm coding aligned to Airwars five-tier grading"
-  intensity_level_derivation:
-    description: >
-      Derived field (compute post-extraction in storage.py) parallel to the
-      protest codebook's turmoil_level. Classifies drone events by kinetic
-      intensity and casualty profile.
-    non_kinetic: >
-      event_type IN [drone_surveillance_isr, drone_propaganda_documentation,
-      drone_supply_logistics]
-      AND no_kinetic_effect = true
-    kinetic_low: >
-      event_type IN [drone_strike_attack, loitering_munition_attack]
-      AND fatalities = 0 OR fatalities IS NULL
-      AND civilian_harm_grade IN [none, unverified]
-    kinetic_high: >
-      event_type IN [drone_strike_attack, loitering_munition_attack, swarm_attack]
-      AND (fatalities > 0 OR civilian_harm_grade IN [confirmed, fair])
-    counter_drone: >
-      event_type = drone_interception_shootdown
 
 # =============================================================================
 # SECTION 1: GENERAL EXTRACTION RULES
@@ -132,6 +115,61 @@ general_rules:
     or a state strike clearly outside IHL precepts, IS a potential
     terrorism event. Code both in actor_type and event_legal_context fields;
     do not exclude either from the dataset.
+
+# =============================================================================
+# MINIMUM CRITERIA — ALL must be satisfied before any event is coded
+# =============================================================================
+#
+# Before assigning any event type, verify ALL of the following:
+#
+minimum_criteria:
+  1_drone_confirmed: "At least one drone/UAV is explicitly identified or strongly implied in the text"
+  2_event_occurred: "The drone event is reported as past or ongoing — not a proposal, plan, or procurement announcement"
+  3_political_or_military_context: "The event occurs in a political, military, conflict, or security context (not purely recreational or commercial)"
+  4_location_identifiable: "At least an approximate location can be inferred from the article"
+  5_not_manned_aircraft: "The platform is a UAV, not a manned aircraft, cruise missile, or ballistic missile"
+
+  disqualify_immediately:
+    - "Article describes a manned aircraft airstrike (F-16, Apache, Sukhoi, etc.) with no drone component"
+    - "Article describes a cruise missile, ballistic missile, or rocket attack with no drone terminology"
+    - "Article describes a purely policy or procurement event (government orders drones, signs drone regulation)"
+    - "Article describes a recreational drone hobbyist, aerial photography, or film production event"
+    - "Article describes a commercial delivery drone making a routine non-political delivery"
+    - "Article describes a drone mishap or accident with no hostile action or political significance"
+    - "Article describes a drone airspace intrusion with no attribution and no kinetic action — unless politically salient (airport closure, nuclear site, NATO airspace)"
+    - "Article is analysis, commentary, or academic discussion about drone warfare generally — not reporting a specific event"
+
+# ============================================================================
+# TYPE ALIASES
+# ============================================================================
+#
+# Accepted synonyms during extraction — normalised to canonical keys downstream.
+#
+type_aliases:
+  "drone strike": "drone_strike_attack"
+  "armed drone attack": "drone_strike_attack"
+  "UAV strike": "drone_strike_attack"
+  "kamikaze drone": "loitering_munition_attack"
+  "suicide drone": "loitering_munition_attack"
+  "one-way attack drone": "loitering_munition_attack"
+  "OWA drone": "loitering_munition_attack"
+  "loitering munition": "loitering_munition_attack"
+  "drone recon": "drone_surveillance_isr"
+  "drone reconnaissance": "drone_surveillance_isr"
+  "UAV surveillance": "drone_surveillance_isr"
+  "drone ISR": "drone_surveillance_isr"
+  "drone footage": "drone_propaganda_documentation"
+  "drone video": "drone_propaganda_documentation"
+  "drone spotting": "drone_c2_facilitation"
+  "drone targeting": "drone_c2_facilitation"
+  "drone interception": "drone_interception_shootdown"
+  "shoot down": "drone_interception_shootdown"
+  "shot down": "drone_interception_shootdown"
+  "drone delivery": "drone_supply_logistics"
+  "drone resupply": "drone_supply_logistics"
+  "drone swarm": "swarm_attack"
+  "swarm": "swarm_attack"
+  "saturation attack": "swarm_attack"
 
 # =============================================================================
 # SECTION 2: IMPLICIT EVENT SIGNALS
@@ -270,10 +308,11 @@ event_types:
   drone_strike_attack:
   # ---------------------------------------------------------------------------
     name: "Drone Strike or Armed UAV Attack"
-    acled_equivalent: "Air/drone strike (explosive engagement subtype)"
-    gttac_equivalent: "Weapon_type: UAV/drone (kinetic incident)"
-    gtd_equivalent: "Weapon type: Vehicle (aerial, UAV)"
-    airwars_equivalent: "Strike (kinetic action with casualty allegation)"
+    codebook_equivalents:
+      acled: "Air/drone strike (explosive engagement subtype)"
+      gttac: "Weapon_type: UAV/drone (kinetic incident)"
+      gtd: "Weapon type: Vehicle (aerial, UAV)"
+      airwars: "Strike (kinetic action with casualty allegation)"
 
     definition: >
       Kinetic event in which a reusable armed UAV delivers an explosive
@@ -316,14 +355,17 @@ event_types:
       - platform_type
       - date
 
+    # confidence_threshold values are used by Stage 2 (processing.py recheck_borderline()),
+    # NOT injected into the LLM prompt. Do not remove or rename this field.
     confidence_threshold: 0.80
 
   # ---------------------------------------------------------------------------
   loitering_munition_attack:
   # ---------------------------------------------------------------------------
     name: "Loitering Munition or One-Way Attack Drone"
-    acled_equivalent: "Air/drone strike (loitering munition subtype)"
-    gttac_equivalent: "Weapon_type: UAV/drone (single-use explosive)"
+    codebook_equivalents:
+      acled: "Air/drone strike (loitering munition subtype)"
+      gttac: "Weapon_type: UAV/drone (single-use explosive)"
 
     definition: >
       Kinetic event in which an expendable, single-use UAV is flown to a
@@ -376,8 +418,9 @@ event_types:
   drone_surveillance_isr:
   # ---------------------------------------------------------------------------
     name: "Drone Surveillance, Reconnaissance, or ISR"
-    acled_equivalent: "Non-violent action by state forces / Not coded (gap)"
-    gttac_equivalent: "Not typically coded (coverage gap)"
+    codebook_equivalents:
+      acled: "Non-violent action by state forces / Not coded (gap)"
+      gttac: "Not typically coded (coverage gap)"
 
     definition: >
       Non-kinetic event in which a drone/UAV conducts intelligence,
@@ -422,8 +465,9 @@ event_types:
   drone_propaganda_documentation:
   # ---------------------------------------------------------------------------
     name: "Drone Propaganda or Documentation Event"
-    acled_equivalent: "Not coded (coverage gap)"
-    gttac_equivalent: "Not coded (coverage gap)"
+    codebook_equivalents:
+      acled: "Not coded (coverage gap)"
+      gttac: "Not coded (coverage gap)"
 
     definition: >
       Event in which a drone captures footage that is subsequently published
@@ -473,7 +517,8 @@ event_types:
   drone_c2_facilitation:
   # ---------------------------------------------------------------------------
     name: "Drone Command-and-Control or Fire Adjustment"
-    acled_equivalent: "Not separately coded (rolled into battle events)"
+    codebook_equivalents:
+      acled: "Not separately coded (rolled into battle events)"
 
     definition: >
       Event in which a drone provides command, control, communication,
@@ -511,7 +556,8 @@ event_types:
   drone_interception_shootdown:
   # ---------------------------------------------------------------------------
     name: "Drone Interception, Shootdown, or Counter-UAS Event"
-    acled_equivalent: "Air/drone strike (counter-action subtype)"
+    codebook_equivalents:
+      acled: "Air/drone strike (counter-action subtype)"
 
     definition: >
       Counter-drone event in which a drone is neutralised via kinetic
@@ -591,7 +637,8 @@ event_types:
   swarm_attack:
   # ---------------------------------------------------------------------------
     name: "Drone Swarm or Saturation Attack"
-    acled_equivalent: "Air/drone strike (aggregated)"
+    codebook_equivalents:
+      acled: "Air/drone strike (aggregated)"
 
     definition: >
       Coordinated simultaneous deployment of ≥5 drones against the same
@@ -627,6 +674,37 @@ event_types:
       - date
 
     confidence_threshold: 0.80
+
+# =============================================================================
+# INTENSITY LEVEL DERIVATION
+# Derived field — compute post-extraction in storage.py, parallel to
+# the protest codebook's turmoil_level.
+# =============================================================================
+
+intensity_level_derivation:
+  description: |
+    Derived field (compute post-extraction in storage.py) parallel to the
+    protest codebook's turmoil_level. Classifies drone events by kinetic
+    intensity and casualty profile.
+
+    Evaluate in order:
+    1. IF event_type IN [drone_strike_attack, loitering_munition_attack, swarm_attack]
+       AND (fatalities > 0 OR civilian_harm_grade IN [confirmed, fair])
+       → intensity_level = kinetic_high
+    2. ELSE IF event_type IN [drone_strike_attack, loitering_munition_attack]
+       AND fatalities = 0 OR fatalities IS NULL
+       AND civilian_harm_grade IN [none, unverified]
+       → intensity_level = kinetic_low
+    3. ELSE IF event_type = drone_interception_shootdown
+       → intensity_level = counter_drone
+    4. ELSE IF event_type IN [drone_surveillance_isr, drone_propaganda_documentation,
+       drone_supply_logistics] AND no_kinetic_effect = true
+       → intensity_level = non_kinetic
+
+  non_kinetic: "event_type IN [drone_surveillance_isr, drone_propaganda_documentation, drone_supply_logistics] AND no kinetic effect"
+  kinetic_low: "event_type IN [drone_strike_attack, loitering_munition_attack] AND fatalities = 0 AND civilian_harm_grade IN [none, unverified]"
+  kinetic_high: "event_type IN [drone_strike_attack, loitering_munition_attack, swarm_attack] AND (fatalities > 0 OR civilian_harm_grade IN [confirmed, fair])"
+  counter_drone: "event_type = drone_interception_shootdown"
 
 # =============================================================================
 # SECTION 4: PURPOSE / MISSION TAXONOMY
@@ -886,13 +964,13 @@ target_typology:
 # SECTION 8: STATE RESPONSE / COUNTER-DRONE RESPONSE TYPOLOGY
 # =============================================================================
 
-state_response:
+state_response_vocabulary:
   description: >
     Code the most significant counter-drone response, if any. Distinct from
     the protest codebook's state_response field because drone events involve
     counter-drone measures rather than protest suppression tactics.
 
-  counter_drone_types:
+  values:
     none: "No counter-drone response described"
     air_defence_alert: "Air defence on alert but not engaged"
     kinetic_intercept_ground: "Ground-launched kinetic intercept (SAM, AAA, laser, net)"
@@ -950,8 +1028,13 @@ civilian_harm_grading:
 # SECTION 10: OUTCOME TYPOLOGY
 # =============================================================================
 
-outcome_typology:
-  types:
+outcome_vocabulary:
+  description: |
+    Allowed values for the outcome field. Select the best description of how the
+    event concluded based on information in the article. Use 'unknown' only when
+    the article provides no outcome information.
+    If you add or rename a value here, update extractor.py to match.
+  values:
     target_destroyed_confirmed: "Target destroyed; confirmed by multiple sources or BDA"
     target_damaged: "Target damaged but not destroyed"
     target_missed: "Drone engaged but target not hit"
@@ -1099,44 +1182,44 @@ edge_cases:
 # =============================================================================
 
 non_events:
-  - type: "Manned aircraft airstrike"
+  - category: "Manned aircraft airstrike"
     description: "F-16, Sukhoi, Apache helicopter, etc. delivers ordnance"
     reason: "Not a drone event; code in separate airstrike dataset"
 
-  - type: "Cruise missile strike"
+  - category: "Cruise missile strike"
     description: "Kalibr, Tomahawk, or other cruise missile (jet-propelled, not UAV in this codebook's sense)"
     reason: "Not coded as drone; see ambiguous_drone_vs_missile edge case"
 
-  - type: "Ballistic missile strike"
+  - category: "Ballistic missile strike"
     description: "Iskander, Scud, or ballistic missile"
     reason: "Not a drone"
 
-  - type: "Artillery or rocket strike (ground-launched)"
+  - category: "Artillery or rocket strike (ground-launched)"
     description: "HIMARS, Grad, mortar, tube artillery"
     reason: "Not aerial drone; may be coded in broader conflict dataset"
 
-  - type: "Commercial drone delivery (non-political)"
+  - category: "Commercial drone delivery (non-political)"
     description: "Amazon Prime Air, Zipline medical delivery, DoorDash drone"
     reason: "Not political or military; out of scope"
 
-  - type: "Recreational or civilian drone use"
+  - category: "Recreational or civilian drone use"
     description: "Hobbyist flight, aerial photography, film production"
     reason: "Not political or military event"
 
-  - type: "Drone mishap or accident"
+  - category: "Drone mishap or accident"
     description: "Drone crashed due to mechanical failure, weather, pilot error with no hostile action"
     reason: "Not a political event; exclude unless event has political significance (e.g., intrusion into sensitive airspace)"
 
-  - type: "Drone airspace intrusion without identified actor"
+  - category: "Drone airspace intrusion without identified actor"
     description: "Unidentified drone enters airspace but no attribution and no kinetic action"
     reason: "Borderline; code as drone_surveillance_isr with attribution_confidence = unknown only if intrusion is politically salient"
     exception: "Airport closures, nuclear site overflights, or NATO airspace violations are coded events"
 
-  - type: "Drone-related policy announcement"
+  - category: "Drone-related policy announcement"
     description: "Government announces new drone regulations; military announces drone procurement"
     reason: "Policy event, not operational drone event"
 
-  - type: "Drone used in crime without political context"
+  - category: "Drone used in crime without political context"
     description: "Drone used in robbery, drone voyeurism, drone harassment of individuals"
     reason: "Criminal event, not political drone event"
     exception: "Cartel-vs-cartel drone warfare IS coded (political violence context)"
@@ -1215,26 +1298,53 @@ confidence_guidance:
     contested: "Two or more sources make conflicting attributions"
     unattributed: "No credible attribution made"
 
+  civic_space_downgrade:
+    meaning: >
+      Drone events in authoritarian or conflict-prone states are systematically
+      under-reported and attribution is frequently contested. Apply an automatic
+      confidence downgrade when CIVICUS Monitor rates the country as 'Repressed'
+      or 'Closed', or when an active armed conflict suppresses independent
+      journalism (e.g., Myanmar, Yemen, Syria, Libya, Sudan post-2023).
+    action: |
+      - Max confidence = medium when: single official source in Repressed/Closed country
+      - Max confidence = low when: single source in active conflict zone with suppressed press
+      - Raise confidence only when Airwars two-source rule is met (two independent credible sources)
+      - Apply the Airwars attribution caution: government denial of civilian harm in contested zones
+        should NOT automatically reduce civilian_harm_grade below 'fair'
+    repressed_or_conflict_contexts:
+      - "Myanmar (Closed — CIVICUS 2024; active civil conflict)"
+      - "Yemen (Repressed; active conflict)"
+      - "Syria (Closed; active conflict remnants)"
+      - "Libya (Repressed; fragmented conflict)"
+      - "Sudan (Repressed; active conflict post-2023)"
+      - "Ethiopia (Repressed; CIVICUS 2024)"
+      - "Somalia (Closed; active conflict)"
+      - "Afghanistan (Closed; Taliban governance)"
+
 # =============================================================================
 # SECTION 14: QUALITY CONTROL CHECKLIST
 # =============================================================================
 
 qc_checklist:
-  - "Does the text describe a drone/UAV as the means of action?"
-  - "Is the drone event distinguishable from manned aircraft, cruise missile, or artillery?"
-  - "Is there an attributed_actor (or explicit unattributed)?"
-  - "Can I identify target_category?"
-  - "Can I identify location (even approximate)?"
-  - "Can I identify date or time period?"
-  - "Does this match any NEGATIVE example?"
-  - "Is this in the NON-EVENTS list?"
-  - "Have I correctly distinguished drone_strike_attack (reusable) from loitering_munition_attack (expendable)?"
-  - "Should this ISR event be linked via parent_event_id to a subsequent strike?"
-  - "If footage was published as propaganda, is there a SECOND event to code for the propaganda publication?"
-  - "For swarm events, do ≥5 drones + shared window + shared target zone all apply?"
-  - "If civilian casualties alleged, have I applied the Airwars five-tier grading?"
-  - "Have I recorded platform_identification_confidence separately from event_confidence?"
-  - "For non-state actors, have I coded actor_maturity_level (experimental/tactical/strategic)?"
-  - "Does civic space context suggest a confidence downgrade (CIVICUS repressed/closed country)?"
-  - "Have I applied the two-source rule for contested attributions?"
-  - "Is the event_legal_context (IHL vs terrorism vs contested) coded?"
+  mandatory:
+    - "Does the text describe a drone/UAV as the means of action?"
+    - "Is the drone event distinguishable from manned aircraft, cruise missile, or artillery?"
+    - "Is there an attributed_actor (or explicit unattributed)?"
+    - "Can I identify target_category?"
+    - "Can I identify location (even approximate)?"
+    - "Can I identify date or time period?"
+    - "Does this match any NEGATIVE example?"
+    - "Is this in the NON-EVENTS list?"
+    - "Does the event satisfy ALL minimum_criteria? If not, return []"
+  quality:
+    - "Have I correctly distinguished drone_strike_attack (reusable) from loitering_munition_attack (expendable)?"
+    - "Should this ISR event be linked via parent_event_id to a subsequent strike?"
+    - "If footage was published as propaganda, is there a SECOND event to code for the propaganda publication?"
+    - "For swarm events, do ≥5 drones + shared window + shared target zone all apply?"
+    - "If civilian casualties alleged, have I applied the Airwars five-tier grading?"
+    - "Have I recorded platform_identification_confidence separately from event_confidence?"
+    - "For non-state actors, have I coded actor_maturity_level (experimental/tactical/strategic)?"
+    - "Does civic space context suggest a confidence downgrade (CIVICUS repressed/closed country)?"
+    - "Have I applied the two-source rule for contested attributions?"
+    - "Is the event_legal_context (IHL vs terrorism vs contested) coded?"
+    - "Have I correctly derived intensity_level from the extracted fields?"

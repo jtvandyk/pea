@@ -1,1275 +1,343 @@
 # =============================================================================
-# DRONE EVENT CODEBOOK — SUPPLEMENTAL EXAMPLES (v1.0)
+# DRONE EVENT CODEBOOK — FEW-SHOT EXTRACTION EXAMPLES (v1.0)
 # =============================================================================
-# Companion file to drone_codebook_v10.yaml. Provides worked examples of
-# real-world drone events coded per the codebook to demonstrate decision
-# rules, edge case handling, and field population.
+# Companion to drone_events_codebook.yaml.
+# Injected into every user prompt by _build_few_shot_examples() in extractor.py.
 #
-# Each example includes:
-#   (a) source_text: Representative news article excerpt
-#   (b) coded_event: Full JSON-equivalent coded output
-#   (c) coding_rationale: Explanation of decisions made
-#   (d) codebook_references: Sections consulted
+# FORMAT REQUIREMENT: top-level key must be 'examples:' (list).
+# Each entry: id, description, rationale, article_snippet, extracted_events (list).
 #
-# Geographic coverage: Ukraine, Myanmar, Yemen, Pakistan, Nigeria, Syria,
-# Somalia, Israel/Gaza, Ethiopia, Mexico, plus multi-actor edge cases.
+# Selected 6 of 25 available examples to cover:
+#   ex_01 — drone_strike_attack (state UCAV, counterterrorism, high confidence)
+#   ex_02 — drone_surveillance_isr + loitering_munition_attack (paired, parent_event_id)
+#   ex_03 — drone_interception_shootdown (counter-drone, multi-platform)
+#   ex_04 — drone_surveillance_isr (civic surveillance, CIVICUS repressed, medium confidence)
+#   ex_05 — drone_supply_logistics (criminal context, border smuggling)
+#   ex_06 — drone_strike_attack (civilian harm, contested attribution, Africa, IDP camp)
 # =============================================================================
 
-metadata:
-  title: "Drone Event Codebook — Supplemental Worked Examples"
-  version: "1.0"
-  date: "April 2026"
-  companion_to: "drone_codebook_v10.yaml"
-  purpose: >
-    Training and validation material. Each example covers one or more
-    decision rules or edge cases in the main codebook. Use as positive
-    examples for fine-tuning, as inter-coder reliability reference,
-    or as LLM prompt few-shot examples.
-  example_count: 25
-
-# =============================================================================
-# SECTION 1: BASELINE EVENT TYPE EXAMPLES (one per event type)
-# =============================================================================
-
-baseline_examples:
+examples:
 
   # ---------------------------------------------------------------------------
-  example_01_drone_strike_attack_state_ucav:
-  # ---------------------------------------------------------------------------
-    label: "Baseline drone_strike_attack — State UCAV counterterrorism"
-    source_text: >
-      "A U.S. drone strike in northeastern Afghanistan on Tuesday killed three
-      suspected al-Qaeda operatives, including a senior planner, a U.S. defense
-      official said. The MQ-9 Reaper fired two Hellfire missiles at a compound
-      in Kunar province, the official said. There were no reports of civilian
-      casualties."
-    coded_event:
-      event_type: "drone_strike_attack"
-      primary_purpose: "kinetic_attack_personnel"
-      secondary_purposes: []
-      attributed_actor: "United States military"
-      actor_category: "state_military"
-      actor_maturity_level: "strategic"
-      named_unit: null
-      platform_class: "ucav_male"
-      platform_model: "MQ-9 Reaper"
-      platform_identification_confidence: "tier_4_single_source_claimed"
-      autonomy_level: "level_2"
-      target_category: "named_individual"
-      target_status: "legitimate_military"
-      target_location:
-        country: "Afghanistan"
-        admin_region: "Kunar province"
-        specific: "compound (named in source)"
-      weapon_delivered: "2x AGM-114 Hellfire missiles"
-      casualties:
-        killed_combatants_min: 3
-        killed_combatants_max: 3
-        killed_civilians_min: 0
-        killed_civilians_max: 0
-      civilian_harm_grade: "none"
-      state_response: "none"
-      outcome: "target_destroyed_confirmed"
-      event_legal_context: "ihl_armed_conflict"
-      event_confidence: "high"
-      attribution_confidence: "confirmed"
-      parent_event_id: null
-      date: "2024-xx-xx"
-    coding_rationale: >
-      Clear state_military UCAV strike (MQ-9 Reaper, reusable platform,
-      delivers Hellfire munitions). Coded drone_strike_attack (not
-      loitering_munition_attack) because platform is reusable. Named
-      platform = Tier 4 single-source confidence since only one official
-      cites the Reaper specifically. Target = named individuals (senior
-      planner + 2 others). No civilian casualties alleged so civilian_harm_grade
-      = none, not unverified.
-    codebook_references: ["event_types.drone_strike_attack", "platform_classification.ucav_male"]
+  - id: "ex_01"
+    description: "drone_strike_attack — US MQ-9 counterterrorism strike, Afghanistan, high confidence"
+    rationale: |
+      Baseline kinetic example: reusable UCAV delivers munitions and returns to base →
+      drone_strike_attack (not loitering_munition_attack). Platform named explicitly in
+      official statement → tier_4_single_source_claimed (only one official cited, no
+      corroborating source identifies the specific model). No civilian casualties →
+      civilian_harm_grade = 'none' (not 'unverified'). Date absent from article →
+      date field null. State counterterrorism in active IHL conflict = ihl_armed_conflict.
+    article_snippet: |
+      A U.S. drone strike in northeastern Afghanistan on Tuesday killed three suspected
+      al-Qaeda operatives, including a senior planner, a U.S. defense official said.
+      The MQ-9 Reaper fired two Hellfire missiles at a compound in Kunar province.
+      There were no reports of civilian casualties.
+    extracted_events:
+      - event_type: "drone_strike_attack"
+        primary_purpose: "kinetic_attack_personnel"
+        secondary_purposes: []
+        attributed_actor: "United States military"
+        actor_category: "state_military"
+        actor_maturity_level: "strategic"
+        named_unit: null
+        platform_class: "ucav_male"
+        platform_model: "MQ-9 Reaper"
+        platform_identification_confidence: "tier_4_single_source_claimed"
+        autonomy_level: "level_2"
+        target_category: "named_individual"
+        target_status: "legitimate_military"
+        target_location:
+          country: "Afghanistan"
+          admin_region: "Kunar province"
+          specific: null
+        weapon_delivered: "2x AGM-114 Hellfire missiles"
+        casualties:
+          killed_combatants_min: 3
+          killed_combatants_max: 3
+          killed_civilians_min: 0
+          killed_civilians_max: 0
+        civilian_harm_grade: "none"
+        civilian_harm_cause: null
+        state_response: "none"
+        outcome: "target_destroyed_confirmed"
+        event_legal_context: "ihl_armed_conflict"
+        event_confidence: "high"
+        attribution_confidence: "confirmed"
+        civic_space_rating: null
+        parent_event_id: null
+        child_event_ids: []
+        date: null
 
   # ---------------------------------------------------------------------------
-  example_02_loitering_munition_shahed_strategic:
-  # ---------------------------------------------------------------------------
-    label: "Baseline loitering_munition_attack — Shahed strategic strike"
-    source_text: >
-      "Russia launched 87 Shahed-136 drones at Kyiv overnight, targeting
-      energy infrastructure, the Ukrainian air force said on Friday.
-      Ukrainian air defences shot down 75 of the drones. The remaining
-      12 struck a substation in Darnytskyi district, cutting power to
-      200,000 residents. One civilian was killed by falling debris."
-    coded_event:
-      event_type: "swarm_attack"
-      primary_purpose: "kinetic_attack_infrastructure"
-      secondary_purposes: ["kinetic_attack_civilian"]
-      attributed_actor: "Russian Federation military"
-      actor_category: "state_military"
-      actor_maturity_level: "strategic"
-      named_unit: "Russia Unmanned Systems Forces"
-      platform_class: "loitering_munition_strategic"
-      platform_model: "Shahed-136 (aka Geran-2)"
-      platform_identification_confidence: "tier_3_multi_source_attributed"
-      autonomy_level: "level_2"
-      swarm_size: 87
-      target_category: "dual_use_infrastructure"
-      target_status: "ambiguous_dual_use"
-      target_zone:
-        country: "Ukraine"
-        admin_region: "Kyiv"
-        specific: "Darnytskyi district substation"
-      coordination_method: "pre_programmed_waypoints"
-      casualties:
-        killed_combatants_min: 0
-        killed_combatants_max: 0
-        killed_civilians_min: 1
-        killed_civilians_max: 1
-      civilian_harm_grade: "fair"
-      civilian_harm_cause: "intercept_debris"
-      state_response: "kinetic_intercept_ground"
-      outcome: "target_damaged"
-      event_legal_context: "ihl_armed_conflict"
-      event_confidence: "high"
-      attribution_confidence: "two_source_attributed"
-      parent_event_id: null
-      date: "2025-xx-xx"
-    coding_rationale: >
-      Coded as swarm_attack (not individual loitering_munition_attack events)
-      because ≥5 drones + shared operational window (overnight) + shared
-      target zone (Kyiv energy infrastructure). swarm_size = 87 drones total
-      including intercepted. civilian_harm_cause = intercept_debris because
-      the single civilian killed was struck by falling wreckage from an
-      intercepted drone, not by direct impact. This is an important
-      Airwars-aligned distinction. state_response includes both kinetic
-      intercept (AD engaged) and civilian harm from debris.
-    codebook_references: ["event_types.swarm_attack", "edge_cases.civilian_casualties_from_intercept_debris",
-                          "civilian_harm_grading"]
-
-  # ---------------------------------------------------------------------------
-  example_03_drone_surveillance_isr_state:
-  # ---------------------------------------------------------------------------
-    label: "Baseline drone_surveillance_isr — Ethiopian government surveillance"
-    source_text: >
-      "An Ethiopian reconnaissance drone has been spotted circling over the
-      Mai Aini refugee camp in Tigray region for the past three days,
-      according to humanitarian workers. The camp hosts approximately 25,000
-      Eritrean refugees. No kinetic action has been reported. The Ethiopian
-      government has not commented."
-    coded_event:
-      event_type: "drone_surveillance_isr"
-      primary_purpose: "isr_civic_surveillance"
-      secondary_purposes: []
-      attributed_actor: "Ethiopian military (attribution contested)"
-      actor_category: "state_military"
-      actor_maturity_level: "tactical"
-      named_unit: null
-      platform_class: "unknown_platform"
-      platform_model: null
-      platform_identification_confidence: "tier_5_unknown"
-      autonomy_level: null
-      surveillance_target_category: "civilian_population"
-      target_status: "protected_civilian"
-      location:
-        country: "Ethiopia"
-        admin_region: "Tigray region"
-        specific: "Mai Aini refugee camp"
-      duration: "3 days observed"
-      state_response: "diplomatic_protest"
-      outcome: "ongoing_operation"
-      event_legal_context: "ihl_disputed"
-      event_confidence: "medium"
-      attribution_confidence: "single_source_claimed"
-      civic_space_rating: "repressed"
-      parent_event_id: null
-      date: "2025-xx-xx (multi-day)"
-    coding_rationale: >
-      Surveillance of a refugee camp = primary_purpose is isr_civic_surveillance
-      (not pre_attack or standalone). Platform unknown (described only as
-      "reconnaissance drone"), so platform_class = unknown_platform and
-      platform_identification_confidence = tier_5_unknown. Ethiopia is rated
-      "repressed" by CIVICUS Monitor, so civic_space_rating is recorded.
-      event_legal_context = ihl_disputed because refugee camp is a protected
-      civilian site but Ethiopian sovereignty over its airspace is not
-      contested. No kinetic action so state_response = diplomatic_protest
-      (humanitarian workers reported to authorities, no kinetic response).
-    codebook_references: ["event_types.drone_surveillance_isr",
-                          "purpose_taxonomy.isr_civic_surveillance",
-                          "edge_cases.platform_unidentified_but_drone_confirmed"]
-
-  # ---------------------------------------------------------------------------
-  example_04_drone_propaganda_documentation:
-  # ---------------------------------------------------------------------------
-    label: "Baseline drone_propaganda_documentation — HTS Telegram footage"
-    source_text: >
-      "Hay'at Tahrir al-Sham's Al-Shaheen Brigade published drone footage on
-      its Telegram channel showing an FPV strike that killed Syrian regime
-      military security commander Uday Ghossah in Hama last week. The
-      2-minute video, set to music, shows the drone approaching Ghossah's
-      vehicle before impact. The post had 45,000 views within 24 hours."
-    coded_event:
-      event_type: "drone_propaganda_documentation"
-      primary_purpose: "propaganda_institutional"
-      secondary_purposes: []
-      attributed_actor: "Hay'at Tahrir al-Sham (HTS)"
-      actor_category: "non_state_organized"
-      actor_maturity_level: "tactical"
-      named_unit: "Al-Shaheen Brigade"
-      platform_class: null
-      platform_model: null
-      platform_identification_confidence: null
-      publishing_platform: "Telegram"
-      target_audience_geography:
-        primary: "Arabic-speaking supporters"
-        secondary: "international observers"
-      publication_reach: "45,000 views in 24 hours"
-      production_quality: "high (music, edited)"
-      state_response: "none"
-      outcome: "ongoing_operation"
-      event_confidence: "high"
-      attribution_confidence: "confirmed"
-      parent_event_id: "example_04_KINETIC_EVENT_GHOSSAH_STRIKE"
-      date: "2024-xx-xx (publication date)"
-    coding_rationale: >
-      Publication event coded separately from the underlying kinetic event.
-      parent_event_id references the strike event (a loitering_munition_attack
-      with civilian_harm_grade depending on Ghossah's status). Named unit
-      is the Al-Shaheen Brigade (HTS specialised drone unit per CTC West
-      Point 2025 documentation). production_quality = high because source
-      describes music and editing, indicating institutional propaganda
-      production rather than informal soldier posting. Platform fields are
-      null on the propaganda event because the drone is captured in the
-      linked parent event.
-    codebook_references: ["event_types.drone_propaganda_documentation",
-                          "edge_cases.strike_event_and_propaganda_event",
-                          "actor_typology.named_unit_field"]
-
-  # ---------------------------------------------------------------------------
-  example_05_drone_c2_facilitation:
-  # ---------------------------------------------------------------------------
-    label: "Baseline drone_c2_facilitation — Ukrainian Mavic + HIMARS"
-    source_text: >
-      "A Ukrainian reconnaissance drone spotted the Russian command post and
-      relayed coordinates to HIMARS operators, who destroyed the target with
-      a precision strike 15 minutes later, the Ukrainian military said.
-      The DJI Mavic 3 remained on station to confirm the strike's success."
-    coded_event:
-      event_type: "drone_c2_facilitation"
-      primary_purpose: "c2_fire_adjustment"
-      secondary_purposes: ["isr_battle_damage_assessment"]
-      attributed_actor: "Ukrainian military"
-      actor_category: "state_military"
-      actor_maturity_level: "strategic"
-      named_unit: null
-      platform_class: "commercial_multirotor"
-      platform_model: "DJI Mavic 3"
-      platform_identification_confidence: "tier_4_single_source_claimed"
-      autonomy_level: "level_1"
-      supported_weapon_system: "HIMARS (M142)"
-      target_category: "hard_military_installation"
-      target_status: "legitimate_military"
-      target_location:
-        country: "Ukraine (occupied territory)"
-        admin_region: "not specified"
-      outcome: "target_destroyed_confirmed"
-      event_legal_context: "ihl_armed_conflict"
-      event_confidence: "high"
-      attribution_confidence: "confirmed"
-      parent_event_id: null
-      date: "2024-xx-xx"
-    coding_rationale: >
-      Drone did not deliver kinetic payload itself, but directed HIMARS
-      strike and conducted BDA. Primary purpose is c2_fire_adjustment;
-      secondary_purposes includes isr_battle_damage_assessment because
-      the same drone stayed on station post-strike. Note: the HIMARS
-      strike is coded in a separate artillery/HIMARS dataset, not in
-      this drone pipeline. Only the drone's C2 role is captured here.
-    codebook_references: ["event_types.drone_c2_facilitation",
-                          "purpose_taxonomy.c2_fire_adjustment"]
-
-  # ---------------------------------------------------------------------------
-  example_06_drone_interception_shootdown:
-  # ---------------------------------------------------------------------------
-    label: "Baseline drone_interception_shootdown — Ukrainian air defence"
-    source_text: >
-      "Ukrainian air defences shot down 35 Shahed-136 drones and 8 Lancet
-      drones overnight during Russia's largest drone attack of the month,
-      the air force command said. Two of the Shaheds were intercepted by
-      mobile gun teams in the Kyiv region. The rest were destroyed by Gepard
-      anti-aircraft systems and Stinger missiles."
-    coded_event:
-      event_type: "drone_interception_shootdown"
-      primary_purpose: "counter_drone"
-      secondary_purposes: []
-      intercepting_actor: "Ukrainian military (Air Force Command)"
-      intercepting_actor_category: "state_military"
-      intercepted_drone_actor: "Russian Federation military"
-      intercepted_drone_actor_category: "state_military"
-      intercepted_platform_class: ["loitering_munition_strategic", "loitering_munition_tactical"]
-      intercepted_platform_models: ["Shahed-136", "Lancet"]
-      intercepted_drone_count: 43
-      interceptor_method: "kinetic_intercept_ground"
-      interceptor_systems: ["Gepard", "Stinger", "mobile gun teams"]
-      location:
-        country: "Ukraine"
-        admin_region: "multiple regions including Kyiv"
-      outcome: "drone_intercepted"
-      event_legal_context: "ihl_armed_conflict"
-      event_confidence: "high"
-      attribution_confidence: "confirmed"
-      parent_event_id: null
-      date: "2024-xx-xx"
-    coding_rationale: >
-      43 drones intercepted = single interception event (not 43 events)
-      because they share operational window (overnight) and intercepting
-      actor. Multiple intercepted_platform_class entries because both Shahed
-      and Lancet were engaged. interceptor_method = kinetic_intercept_ground
-      (primary method, majority of intercepts). Note this does NOT auto-create
-      43 corresponding attack events; the attack events (original drone
-      launches) would be coded separately if they were reported as having
-      attempted to reach specific targets.
-    codebook_references: ["event_types.drone_interception_shootdown",
-                          "state_response.kinetic_intercept_ground"]
-
-  # ---------------------------------------------------------------------------
-  example_07_drone_supply_logistics:
-  # ---------------------------------------------------------------------------
-    label: "Baseline drone_supply_logistics — Border smuggling"
-    source_text: >
-      "Indian Border Security Force shot down a drone carrying 4.5 kg of
-      heroin and two 9mm pistols along the India-Pakistan border in Amritsar
-      sector, officials said. The drone, believed to be a modified commercial
-      quadcopter, was the fifth such interception this month."
-    coded_event:
-      event_type: "drone_supply_logistics"
-      primary_purpose: "logistics_smuggling"
-      secondary_purposes: []
-      attributed_actor: "unknown (Pakistan-origin smuggling network)"
-      actor_category: "criminal_organization"
-      actor_maturity_level: null
-      named_unit: null
-      platform_class: "commercial_multirotor"
-      platform_model: null
-      platform_identification_confidence: "tier_5_unknown"
-      cargo_category: "contraband (narcotics + firearms)"
-      cargo_details:
-        narcotics_kg: 4.5
-        firearms_count: 2
-      destination_location:
-        country: "India"
-        admin_region: "Punjab"
-        specific: "Amritsar sector border"
-      state_response: "kinetic_intercept_ground"
-      outcome: "drone_intercepted"
-      event_legal_context: "domestic_criminal"
-      event_confidence: "high"
-      attribution_confidence: "unattributed"
-      parent_event_id: null
-      date: "2024-xx-xx"
-    coding_rationale: >
-      Coded as drone_supply_logistics (not drone_strike_attack) because
-      cargo is contraband, not munitions for attack. actor_category =
-      criminal_organization though the specific network is unnamed.
-      event_legal_context = domestic_criminal (not ihl or terrorism).
-      This is a distinct category from purely commercial delivery because
-      it is political-criminal (smuggling operation across contested border).
-      Includes because non-state drone use even in criminal context informs
-      capability trajectory (Haugstvedt 2023, CTC 2025 DJI capability analysis).
-    codebook_references: ["event_types.drone_supply_logistics",
-                          "purpose_taxonomy.logistics_smuggling",
-                          "non_events.drone_used_in_crime (exception)"]
-
-  # ---------------------------------------------------------------------------
-  example_08_swarm_attack_state_saturation:
-  # ---------------------------------------------------------------------------
-    label: "Baseline swarm_attack — Iran's April 2024 Israel attack"
-    source_text: >
-      "Iran launched more than 170 drones, cruise missiles, and ballistic
-      missiles at Israel overnight in retaliation for the Damascus consulate
-      strike, the IDF said. Approximately 120 of the aerial weapons were
-      Shahed-series one-way attack drones. Israeli and allied air defences
-      intercepted 99% of incoming drones and missiles. Minor damage was
-      reported at Nevatim airbase; one Bedouin child was wounded by shrapnel."
-    coded_event:
-      event_type: "swarm_attack"
-      primary_purpose: "kinetic_attack_military"
-      secondary_purposes: []
-      attributed_actor: "Iran (Islamic Revolutionary Guard Corps)"
-      actor_category: "state_military"
-      actor_maturity_level: "strategic"
-      named_unit: "IRGC Aerospace Force"
-      platform_class: "loitering_munition_strategic"
-      platform_model: "Shahed-series (mixed 136/131/101)"
-      platform_identification_confidence: "tier_2_video_identified"
-      autonomy_level: "level_2"
-      swarm_size: 120  # (excluding cruise/ballistic missiles from drone count)
-      coordination_method: "pre_programmed_waypoints"
-      target_category: "hard_military_installation"
-      target_zone:
-        country: "Israel"
-        admin_region: "nationwide, airbases"
-        specific: "Nevatim airbase primarily hit"
-      target_status: "legitimate_military"
-      casualties:
-        killed_combatants_min: 0
-        killed_combatants_max: 0
-        killed_civilians_min: 0
-        killed_civilians_max: 0
-        wounded_civilians: 1
-      civilian_harm_grade: "fair"
-      civilian_harm_cause: "intercept_debris"
-      state_response: "kinetic_intercept_ground"
-      outcome: "target_damaged"
-      event_legal_context: "ihl_disputed"
-      event_confidence: "high"
-      attribution_confidence: "confirmed"
-      parent_event_id: null
-      date: "2024-04-14"
-    coding_rationale: >
-      Coded as swarm_attack meeting all criteria: ≥5 drones (120 Shaheds
-      + 50 missiles), shared operational window (overnight), shared target
-      zone (Israel). Note the 50 cruise/ballistic missiles are NOT coded
-      in this drone event — they go in a separate missile strike dataset.
-      swarm_size reflects ONLY drones. civilian_harm_cause = intercept_debris
-      because the Bedouin child was wounded by falling intercepted-munition
-      shrapnel, not direct drone impact. This aligns with Airwars convention.
-      event_legal_context = ihl_disputed (retaliation doctrine is contested
-      under jus ad bellum).
-    codebook_references: ["event_types.swarm_attack",
-                          "edge_cases.swarm_vs_individual_strikes",
-                          "purpose_taxonomy.kinetic_attack_military"]
-
-# =============================================================================
-# SECTION 2: PAIRED AND LINKED EVENT EXAMPLES
-# =============================================================================
-
-paired_event_examples:
-
-  # ---------------------------------------------------------------------------
-  example_09_paired_orlan_and_lancet:
-  # ---------------------------------------------------------------------------
-    label: "Paired ISR+Strike — Russian Orlan-10 → Lancet-3"
-    source_text: >
-      "A Russian Orlan-10 reconnaissance drone circled over a Ukrainian
-      artillery position near Bakhmut for approximately 40 minutes, spotting
-      a camouflaged M777 howitzer. Ten minutes after the Orlan departed,
-      a Lancet-3 loitering munition struck and destroyed the howitzer. The
-      Orlan returned 15 minutes later to confirm the strike via video feed
-      back to the operator."
-    coded_events:
-      event_A_parent:
-        event_id: "EX09_A"
+  - id: "ex_02"
+    description: "Paired ISR+Strike — Russian Orlan-10 (parent) → Lancet-3 loitering munition (child)"
+    rationale: |
+      One article = TWO events linked via parent_event_id. The Orlan-10 ISR overflight
+      is the PARENT (occurred first, enabled the strike). The Lancet-3 is the CHILD
+      (references the Orlan via parent_event_id). Lancet-3 = loitering_munition_attack
+      (not drone_strike_attack) because the platform is expendable — it strikes the
+      target and is destroyed on impact. The Orlan's secondary_purpose includes
+      isr_battle_damage_assessment because it returned post-strike to confirm.
+      Both events must be coded; coding only the strike loses the ISR context.
+    article_snippet: |
+      A Russian Orlan-10 reconnaissance drone circled over a Ukrainian artillery position
+      near Bakhmut for approximately 40 minutes, spotting a camouflaged M777 howitzer.
+      Ten minutes after the Orlan departed, a Lancet-3 loitering munition struck and
+      destroyed the howitzer. The Orlan returned 15 minutes later to confirm the strike
+      via video feed back to the operator.
+    extracted_events:
+      - event_id: "EX02_A"
         event_type: "drone_surveillance_isr"
         primary_purpose: "isr_pre_attack"
         secondary_purposes: ["isr_battle_damage_assessment"]
         attributed_actor: "Russian Federation military"
         actor_category: "state_military"
+        actor_maturity_level: "strategic"
+        named_unit: null
         platform_class: "fixed_wing_small"
         platform_model: "Orlan-10"
         platform_identification_confidence: "tier_3_multi_source_attributed"
-        target_category: "hard_military_equipment"
+        autonomy_level: null
+        surveillance_target_category: "hard_military_equipment"
+        target_status: "legitimate_military"
+        location:
+          country: "Ukraine (contested territory)"
+          admin_region: "Donetsk region"
+          specific: "near Bakhmut"
         duration: "40 minutes initial + 15 minutes post-strike BDA"
-        parent_event_id: null
-        child_event_ids: ["EX09_B"]
+        state_response: null
+        outcome: "ongoing_operation"
         event_legal_context: "ihl_armed_conflict"
         event_confidence: "high"
+        attribution_confidence: "two_source_attributed"
+        civic_space_rating: null
+        parent_event_id: null
+        child_event_ids: ["EX02_B"]
+        date: null
 
-      event_B_child:
-        event_id: "EX09_B"
+      - event_id: "EX02_B"
         event_type: "loitering_munition_attack"
         primary_purpose: "kinetic_attack_military"
+        secondary_purposes: []
         attributed_actor: "Russian Federation military"
         actor_category: "state_military"
+        actor_maturity_level: "strategic"
+        named_unit: null
         platform_class: "loitering_munition_tactical"
         platform_model: "Lancet-3"
         platform_identification_confidence: "tier_3_multi_source_attributed"
         autonomy_level: "level_2"
         target_category: "hard_military_equipment"
-        target_details: "M777 howitzer (camouflaged)"
-        parent_event_id: "EX09_A"
-        outcome: "target_destroyed_confirmed"
-        event_legal_context: "ihl_armed_conflict"
-        event_confidence: "high"
-    coding_rationale: >
-      TWO events, linked via parent_event_id. The Orlan-10 ISR mission is
-      the PARENT event (occurred first, enabled the strike). The Lancet-3
-      strike is the CHILD event (references Orlan-10 via parent_event_id).
-      The Orlan's secondary_purpose includes isr_battle_damage_assessment
-      because it returned post-strike to confirm. This is the standard
-      Russian ISR+strike pattern documented in CEPA 2024. Both events are
-      needed for a complete picture; coding only the strike loses the
-      intelligence-enablement context.
-    codebook_references: ["edge_cases.paired_isr_and_strike",
-                          "event_types.drone_surveillance_isr",
-                          "event_types.loitering_munition_attack"]
-
-  # ---------------------------------------------------------------------------
-  example_10_strike_then_propaganda:
-  # ---------------------------------------------------------------------------
-    label: "Strike + Propaganda — Ukrainian White Wolves Telegram"
-    source_text: >
-      "On Tuesday, the Ukrainian 72nd Mechanized Brigade's White Wolves unit
-      destroyed a Russian BMP-3 infantry fighting vehicle near Avdiivka using
-      an FPV kamikaze drone. The unit's Telegram channel published the
-      2-minute drone-POV strike video on Thursday, garnering over 120,000
-      views within 48 hours. The video was set to music and included the
-      unit's logo."
-    coded_events:
-      event_A_parent_kinetic:
-        event_id: "EX10_A"
-        event_type: "loitering_munition_attack"
-        primary_purpose: "kinetic_attack_military"
-        attributed_actor: "Ukrainian 72nd Mechanized Brigade"
-        actor_category: "state_military"
-        named_unit: "White Wolves"
-        platform_class: "fpv_racing"
-        platform_model: "modified FPV kamikaze (unspecified model)"
-        platform_identification_confidence: "tier_2_video_identified"
-        autonomy_level: "level_1"
-        target_category: "hard_military_equipment"
-        target_details: "Russian BMP-3 IFV"
+        target_status: "legitimate_military"
         target_location:
           country: "Ukraine (contested territory)"
-          specific: "near Avdiivka"
-        parent_event_id: null
-        child_event_ids: ["EX10_B"]
+          admin_region: "Donetsk region"
+          specific: "near Bakhmut — M777 howitzer position"
+        casualties:
+          killed_combatants_min: 0
+          killed_combatants_max: 0
+          killed_civilians_min: 0
+          killed_civilians_max: 0
+        civilian_harm_grade: "none"
+        civilian_harm_cause: null
+        state_response: "none"
         outcome: "target_destroyed_confirmed"
         event_legal_context: "ihl_armed_conflict"
         event_confidence: "high"
-        date: "Tuesday"
+        attribution_confidence: "two_source_attributed"
+        civic_space_rating: null
+        parent_event_id: "EX02_A"
+        child_event_ids: []
+        date: null
 
-      event_B_child_propaganda:
-        event_id: "EX10_B"
-        event_type: "drone_propaganda_documentation"
-        primary_purpose: "propaganda_institutional"
-        attributed_actor: "Ukrainian 72nd Mechanized Brigade"
-        actor_category: "state_military"
-        named_unit: "White Wolves"
-        publishing_platform: "Telegram"
-        production_quality: "high"
-        publication_reach: "120,000 views in 48 hours"
-        target_audience_geography:
-          primary: "Ukrainian domestic supporters"
-          secondary: "international donors, Russian-speaking demoralisation audience"
-        parent_event_id: "EX10_A"
+  # ---------------------------------------------------------------------------
+  - id: "ex_03"
+    description: "drone_interception_shootdown — Ukrainian air defence, 43 mixed drones, kinetic intercept"
+    rationale: |
+      43 drones intercepted in one operational window at one intercepting actor =
+      ONE interception event (not 43 events). Multiple intercepted_platform_class
+      values because both Shahed (strategic OWA) and Lancet (tactical loitering) were
+      engaged. interceptor_method = kinetic_intercept_ground (primary method used by
+      most intercepts in the article). This event does NOT automatically generate 43
+      corresponding attack events — the launch events would be coded separately if
+      the article reported specific targets. High confidence: official military statement
+      with named platforms and specific counts.
+    article_snippet: |
+      Ukrainian air defences shot down 35 Shahed-136 drones and 8 Lancet drones overnight
+      during Russia's largest drone attack of the month, the air force command said.
+      Two of the Shaheds were intercepted by mobile gun teams in the Kyiv region. The rest
+      were destroyed by Gepard anti-aircraft systems and Stinger missiles.
+    extracted_events:
+      - event_type: "drone_interception_shootdown"
+        primary_purpose: "counter_drone"
+        secondary_purposes: []
+        intercepting_actor: "Ukrainian military (Air Force Command)"
+        intercepting_actor_category: "state_military"
+        intercepted_drone_actor: "Russian Federation military"
+        intercepted_drone_actor_category: "state_military"
+        intercepted_platform_class: ["loitering_munition_strategic", "loitering_munition_tactical"]
+        intercepted_platform_models: ["Shahed-136", "Lancet"]
+        intercepted_drone_count: 43
+        interceptor_method: "kinetic_intercept_ground"
+        interceptor_systems: ["Gepard", "Stinger", "mobile gun teams"]
+        location:
+          country: "Ukraine"
+          admin_region: "multiple regions including Kyiv"
+          specific: null
+        state_response: null
+        outcome: "drone_intercepted"
+        event_legal_context: "ihl_armed_conflict"
         event_confidence: "high"
-        date: "Thursday"
-    coding_rationale: >
-      TWO events with strict temporal ordering. Kinetic strike on Tuesday =
-      parent event. Propaganda publication on Thursday = child event. This
-      is the pattern documented in Oakley & Rogg (2024) and the Newsweek/
-      Heuston analysis (2023) tracing Ukrainian adoption of the ISIS-pioneered
-      drone-propaganda format. Coding only the kinetic event loses the
-      information-operations dimension, which is strategically important.
-      Note: production_quality = high because music and unit logo indicate
-      institutional production, not informal soldier posting.
-    codebook_references: ["edge_cases.strike_event_and_propaganda_event",
-                          "event_types.drone_propaganda_documentation"]
-
-# =============================================================================
-# SECTION 3: AFRICA-SPECIFIC EXAMPLES (VNSA and State)
-# =============================================================================
-
-africa_examples:
+        attribution_confidence: "confirmed"
+        civic_space_rating: null
+        parent_event_id: null
+        child_event_ids: []
+        date: null
 
   # ---------------------------------------------------------------------------
-  example_11_iswap_isr_precursor:
-  # ---------------------------------------------------------------------------
-    label: "ISWAP ISR precursor to ambush — Nigeria Sahel"
-    source_text: >
-      "Five members of the Civilian Joint Task Force (CJTF) were killed in an
-      ISWAP attack in Gubio town, Borno state, on Thursday. Survivors said
-      they had observed a drone hovering over their position for approximately
-      20 minutes about an hour before the attack. Security sources confirmed
-      the drone was operated by ISWAP and relayed positional data to the
-      ground attack team."
-    coded_events:
-      event_A_parent_isr:
-        event_id: "EX11_A"
-        event_type: "drone_surveillance_isr"
-        primary_purpose: "isr_pre_attack"
-        attributed_actor: "Islamic State West Africa Province (ISWAP)"
-        actor_category: "non_state_organized"
+  - id: "ex_04"
+    description: "drone_surveillance_isr — Ethiopian civilian surveillance of refugee camp, CIVICUS repressed, medium confidence"
+    rationale: |
+      Surveillance of a refugee camp → primary_purpose = isr_civic_surveillance (not
+      isr_pre_attack, because no kinetic action followed). Platform unspecified →
+      platform_class = unknown_platform, platform_identification_confidence = tier_5_unknown.
+      Ethiopia is CIVICUS-rated 'repressed' → civic_space_rating = 'repressed' → automatic
+      confidence cap at 'medium' (per civic_space_downgrade rule in confidence_guidance).
+      event_confidence = medium not high: single informal source (humanitarian workers),
+      Ethiopian government silent, no independent corroboration. No kinetic action so
+      state_response = diplomatic_protest (humanitarian workers reported to authorities).
+    article_snippet: |
+      An Ethiopian reconnaissance drone has been spotted circling over the Mai Aini refugee
+      camp in Tigray region for the past three days, according to humanitarian workers. The
+      camp hosts approximately 25,000 Eritrean refugees. No kinetic action has been reported.
+      The Ethiopian government has not commented.
+    extracted_events:
+      - event_type: "drone_surveillance_isr"
+        primary_purpose: "isr_civic_surveillance"
+        secondary_purposes: []
+        attributed_actor: "Ethiopian military"
+        actor_category: "state_military"
         actor_maturity_level: "tactical"
+        named_unit: null
+        platform_class: "unknown_platform"
+        platform_model: null
+        platform_identification_confidence: "tier_5_unknown"
+        autonomy_level: null
+        surveillance_target_category: "civilian_population"
+        target_status: "protected_civilian"
+        location:
+          country: "Ethiopia"
+          admin_region: "Tigray region"
+          specific: "Mai Aini refugee camp"
+        duration: "3 days observed"
+        state_response: "diplomatic_protest"
+        outcome: "ongoing_operation"
+        event_legal_context: "ihl_disputed"
+        event_confidence: "medium"
+        attribution_confidence: "single_source_claimed"
+        civic_space_rating: "repressed"
+        parent_event_id: null
+        child_event_ids: []
+        date: null
+
+  # ---------------------------------------------------------------------------
+  - id: "ex_05"
+    description: "drone_supply_logistics — India-Pakistan border smuggling, criminal context, unattributed actor"
+    rationale: |
+      Coded as drone_supply_logistics (not drone_strike_attack) because cargo is contraband
+      (narcotics + firearms), not munitions for an attack. actor_category = criminal_organization
+      even though the specific network is unnamed. event_legal_context = domestic_criminal
+      (not ihl or non_state_potential_terrorism — smuggling across a contested border is
+      criminal, not political violence). The interception by BSF = state_response =
+      kinetic_intercept_ground. Included in the drone dataset because non-state drone
+      logistics informs capability trajectory (Haugstvedt 2023). actor_maturity_level = null
+      because the actor is an unnamed criminal network, not a documented VEO program.
+    article_snippet: |
+      Indian Border Security Force shot down a drone carrying 4.5 kg of heroin and two
+      9mm pistols along the India-Pakistan border in Amritsar sector, officials said. The
+      drone, believed to be a modified commercial quadcopter, was the fifth such interception
+      this month.
+    extracted_events:
+      - event_type: "drone_supply_logistics"
+        primary_purpose: "logistics_smuggling"
+        secondary_purposes: []
+        attributed_actor: "unknown (Pakistan-origin smuggling network)"
+        actor_category: "criminal_organization"
+        actor_maturity_level: null
+        named_unit: null
         platform_class: "commercial_multirotor"
         platform_model: null
         platform_identification_confidence: "tier_5_unknown"
-        target_category: "hard_military_personnel"
-        target_location:
-          country: "Nigeria"
-          admin_region: "Borno state"
-          specific: "Gubio town CJTF position"
-        duration: "approximately 20 minutes"
+        autonomy_level: null
+        cargo_category: "contraband"
+        cargo_details:
+          narcotics_kg: 4.5
+          firearms_count: 2
+        destination_location:
+          country: "India"
+          admin_region: "Punjab"
+          specific: "Amritsar sector border"
+        state_response: "kinetic_intercept_ground"
+        outcome: "drone_intercepted"
+        event_legal_context: "domestic_criminal"
+        event_confidence: "high"
+        attribution_confidence: "unattributed"
+        civic_space_rating: null
         parent_event_id: null
-        child_event_ids: ["EX11_B"]
-        event_legal_context: "non_state_potential_terrorism"
-        event_confidence: "medium"
-        civic_space_rating: "obstructed"
-        date: "2022-07-xx"
-
-      event_B_child_ground_attack:
-        event_id: "EX11_B"
-        event_type: null  # NOT A DRONE EVENT
-        note: >
-          The subsequent ground ambush that killed 5 CJTF members is NOT a
-          drone event per this codebook. It is a ground attack coded in
-          ACLED as a Battle or Violence Against Civilians event. Only the
-          drone ISR event is captured in THIS pipeline. The parent_event_id
-          linking applies only within the drone dataset; cross-dataset
-          linking to the ground attack should be via external_event_id.
-    coding_rationale: >
-      This is the archetypal African VNSA ISR-to-kinetic pattern documented
-      by Okpaleke (2024). Only the ISR overflight is a drone event; the
-      subsequent ground attack is not a drone event and is coded in ACLED.
-      However, the drone pipeline should flag this as linked to a non-drone
-      ground event via an external_event_id field (to be added in v1.1).
-      platform_class = commercial_multirotor (default for unspecified
-      African VNSA drones per commercial_drone_modification_ambiguity edge
-      case). actor_maturity_level = tactical because ISWAP has documented
-      regular drone use by 2022 per CTC/GNET analysis.
-    codebook_references: ["edge_cases.paired_isr_and_strike",
-                          "edge_cases.commercial_drone_modification_ambiguity",
-                          "actor_typology.actor_maturity_level.tactical"]
+        child_event_ids: []
+        date: null
 
   # ---------------------------------------------------------------------------
-  example_12_ethiopian_tb2_strike_against_tplf:
-  # ---------------------------------------------------------------------------
-    label: "State UCAV strike — Ethiopian Bayraktar against TPLF"
-    source_text: >
-      "An Ethiopian National Defense Force (ENDF) airstrike killed at least
-      56 civilians at a camp for internally displaced persons in Dedebit,
-      Tigray region, the United Nations said. The Ethiopian government
-      denied targeting civilians. Satellite imagery analysts identified
-      the strike as having been conducted by a Turkish-made Bayraktar TB2
-      drone based on fragment markings."
-    coded_event:
-      event_type: "drone_strike_attack"
-      primary_purpose: "kinetic_attack_civilian"
-      secondary_purposes: []
-      attributed_actor: "Ethiopian National Defense Force (ENDF)"
-      actor_category: "state_military"
-      actor_maturity_level: "tactical"
-      platform_class: "ucav_male"
-      platform_model: "Bayraktar TB2"
-      platform_identification_confidence: "tier_1_sensor_confirmed"
-      autonomy_level: "level_2"
-      target_category: "civilian_population"
-      target_status: "protected_civilian"
-      target_details: "IDP camp (approximately 200 shelters)"
-      target_location:
-        country: "Ethiopia"
-        admin_region: "Tigray region"
-        specific: "Dedebit IDP camp"
-      casualties:
-        killed_combatants_min: 0
-        killed_combatants_max: 0
-        killed_civilians_min: 56
-        killed_civilians_max: 59
-      civilian_harm_grade: "fair_contested"
-      civilian_harm_cause: "direct_strike"
-      state_response: "none"
-      outcome: "target_destroyed_confirmed"
-      event_legal_context: "ihl_disputed"
-      event_confidence: "high"
-      attribution_confidence: "contested"
-      civic_space_rating: "repressed"
-      parent_event_id: null
-      date: "2022-xx-xx"
-    coding_rationale: >
-      High-confidence platform identification (tier_1_sensor_confirmed) via
-      satellite imagery + fragment analysis. civilian_harm_grade =
-      fair_contested because UN and independent sources corroborate
-      civilian deaths but Ethiopian government contests the attribution.
-      attribution_confidence = contested for same reason. Ethiopia is
-      CIVICUS-rated "repressed," so civic_space_rating is recorded — this
-      applies a downstream confidence downgrade for aggregate analysis.
-      event_legal_context = ihl_disputed because the strike on a protected
-      civilian site is presumptively unlawful under IHL but Ethiopia claims
-      military necessity (combatants present among IDPs).
-    codebook_references: ["event_types.drone_strike_attack",
-                          "civilian_harm_grading.fair_contested",
-                          "edge_cases.contested_attribution",
-                          "target_typology.protected_civilian"]
-
-  # ---------------------------------------------------------------------------
-  example_13_al_shabaab_surveillance:
-  # ---------------------------------------------------------------------------
-    label: "VEO surveillance drone — al-Shabaab"
-    source_text: >
-      "Kenyan Defence Forces soldiers at a forward operating base in Lamu
-      county reported a small commercial-type drone hovering over their
-      position for 15 minutes before withdrawing. The drone was believed
-      to be operated by al-Shabaab. No attack followed. A similar drone
-      was observed the previous week. Soldiers fired small arms at the
-      drone but did not hit it."
-    coded_event:
-      event_type: "drone_surveillance_isr"
-      primary_purpose: "isr_standalone"
-      secondary_purposes: []
-      attributed_actor: "al-Shabaab"
-      actor_category: "non_state_organized"
-      actor_maturity_level: "tactical"
-      platform_class: "commercial_multirotor"
-      platform_model: null
-      platform_identification_confidence: "tier_5_unknown"
-      surveillance_target_category: "hard_military_installation"
-      target_status: "legitimate_military"
-      location:
-        country: "Kenya"
-        admin_region: "Lamu county"
-      duration: "15 minutes"
-      state_response: "kinetic_intercept_ground (failed)"
-      outcome: "drone_lost_en_route"  # actually: drone_departed_without_outcome
-      event_legal_context: "non_state_potential_terrorism"
-      event_confidence: "medium"
-      attribution_confidence: "single_source_claimed"
-      parent_event_id: null
-      date: "2024-xx-xx"
-    coding_rationale: >
-      isr_standalone (not isr_pre_attack) because no attack followed and
-      no follow-on event is reported. Aguilera (2023) documents that
-      al-Shabaab drone use is currently predominantly surveillance and
-      propaganda, not direct attack. Small arms fire at the drone counts
-      as state_response = kinetic_intercept_ground (failed); outcome is
-      drone_lost_en_route not applicable since drone departed successfully
-      — may need new outcome value "drone_departed_intact" in v1.1.
-      platform_class = commercial_multirotor per default rule for unspecified
-      non-state actor drones.
-    codebook_references: ["event_types.drone_surveillance_isr",
-                          "edge_cases.commercial_drone_modification_ambiguity",
-                          "actor_typology.non_state_organized"]
-
-# =============================================================================
-# SECTION 4: CONTESTED ATTRIBUTION AND CIVILIAN HARM CASES
-# =============================================================================
-
-contested_cases:
-
-  # ---------------------------------------------------------------------------
-  example_14_hospital_strike_contested:
-  # ---------------------------------------------------------------------------
-    label: "Contested attribution — hospital strike"
-    source_text: >
-      "A children's hospital in Kharkiv was hit by an aerial weapon overnight,
-      killing 3 civilians including 2 children. Ukrainian officials blamed a
-      Russian drone strike; Russian officials claimed the damage was caused
-      by a Ukrainian air defence missile falling back to earth after
-      intercepting a Russian weapon. Fragments recovered at the site are
-      undergoing technical analysis by Ukrainian prosecutors and an ICC team."
-    coded_event:
-      event_type: "drone_strike_attack"
-      primary_purpose: "kinetic_attack_civilian"
-      attributed_actor: "contested"
-      actor_category: "state_military (either side)"
-      primary_attribution: "Russian Federation military"
-      alternative_attributions:
-        - actor: "Russian drone strike"
-          source: "Ukrainian government"
-        - actor: "Ukrainian air defence intercept debris"
-          source: "Russian government"
-      platform_class: "unknown_platform"
-      platform_model: null
-      platform_identification_confidence: "tier_5_unknown"
-      target_category: "civilian_infrastructure"
-      target_status: "protected_civilian"
-      target_details: "children's hospital"
-      target_location:
-        country: "Ukraine"
-        admin_region: "Kharkiv"
-      casualties:
-        killed_civilians_min: 3
-        killed_civilians_max: 3
-        killed_children_min: 2
-        killed_children_max: 2
-      civilian_harm_grade: "fair_contested"
-      civilian_harm_cause: "contested (direct_strike vs intercept_debris)"
-      state_response: "legal_prosecution_operator"  # ICC investigation
-      outcome: "civilian_casualty_controversy"
-      event_legal_context: "ihl_disputed"
-      event_confidence: "medium"
-      attribution_confidence: "contested"
-      parent_event_id: null
-      date: "2024-xx-xx"
-    coding_rationale: >
-      Classic contested_attribution edge case. Both attributions recorded
-      in alternative_attributions field with source. primary_attribution
-      set to most widely reported (Russian strike per international media)
-      but attribution_confidence = contested. civilian_harm_cause also
-      contested; record as such rather than forcing a choice. event_type
-      remains drone_strike_attack because a drone-weapon hit the target
-      regardless of which belligerent; if the Russian version is correct,
-      the event is technically a drone_interception_shootdown with
-      civilian_harm_cause = intercept_debris. This ambiguity is intrinsic
-      to contested conflicts and should be preserved in coding rather than
-      resolved arbitrarily. ICC investigation coded as legal_prosecution_operator
-      in state_response.
-    codebook_references: ["edge_cases.contested_attribution",
-                          "edge_cases.civilian_casualties_from_intercept_debris",
-                          "civilian_harm_grading.fair_contested"]
-
-  # ---------------------------------------------------------------------------
-  example_15_airwars_grading_discounted:
-  # ---------------------------------------------------------------------------
-    label: "Discounted civilian harm — later identified as combatants"
-    source_text: >
-      "Initial reports suggested a US drone strike in Somalia killed 7 civilians
-      at a wedding gathering in Jubaland. US Africa Command rejected the claim
-      and released surveillance footage showing the individuals were armed
-      al-Shabaab members engaged in operational planning. Local NGO Somalia
-      Civil Society Forum initially reported civilian casualties but later
-      retracted after reviewing AFRICOM evidence."
-    coded_event:
-      event_type: "drone_strike_attack"
-      primary_purpose: "kinetic_attack_personnel"
-      attributed_actor: "US Africa Command (AFRICOM)"
-      actor_category: "state_military"
-      actor_maturity_level: "strategic"
-      platform_class: "ucav_male"
-      platform_model: null
-      platform_identification_confidence: "tier_5_unknown"
-      target_category: "named_individual"  # or hard_military_personnel
-      target_status: "legitimate_military"  # after reassessment
-      target_details: "al-Shabaab operational planning meeting (7 killed)"
-      target_location:
-        country: "Somalia"
-        admin_region: "Jubaland"
-      casualties:
-        killed_combatants_min: 7
-        killed_combatants_max: 7
-        killed_civilians_min: 0
-        killed_civilians_max: 0
-      civilian_harm_grade: "discounted"
-      civilian_harm_cause: null
-      initial_civilian_casualty_allegation: 7
-      discount_source: "AFRICOM surveillance footage + retraction by local NGO"
-      state_response: "none"
-      outcome: "target_destroyed_confirmed"
-      event_legal_context: "ihl_armed_conflict"
-      event_confidence: "high"
-      attribution_confidence: "confirmed"
-      parent_event_id: null
-      date: "2024-xx-xx"
-    coding_rationale: >
-      Demonstrates Airwars "discounted" civilian_harm_grade. Initial
-      allegation was 7 civilians; subsequent evidence from belligerent
-      (AFRICOM footage) and retraction by initial-reporting NGO together
-      meet Airwars discount criteria. Both the initial allegation and the
-      discount source are recorded for transparency (initial_civilian_casualty_allegation,
-      discount_source fields). Do NOT delete the initial allegation; preserve
-      for audit trail. target_status upgraded to legitimate_military after
-      reassessment. This pattern is common and exists to avoid both overcoding
-      and undercoding civilian harm.
-    codebook_references: ["civilian_harm_grading.discounted",
-                          "general_rules.attribution_caution"]
-
-# =============================================================================
-# SECTION 5: EDGE CASE EXAMPLES
-# =============================================================================
-
-edge_case_examples:
-
-  # ---------------------------------------------------------------------------
-  example_16_ambiguous_drone_or_missile:
-  # ---------------------------------------------------------------------------
-    label: "Ambiguous drone vs cruise missile — exclusion case"
-    source_text: >
-      "A Russian Kalibr cruise missile struck the Ukrainian power plant
-      overnight, the energy minister said. The missile travelled at high
-      subsonic speed and was not intercepted."
-    coded_event: null  # EXCLUDED
-    exclusion_reason: >
-      Source text explicitly identifies the weapon as a Kalibr cruise missile
-      with jet propulsion. No drone/UAV terminology is used. Per codebook
-      edge case ambiguous_drone_vs_missile: "If 'missile' terminology used
-      with no drone signals → NOT a drone event." This event would be
-      coded in a separate missile strike dataset, not the drone pipeline.
-    codebook_references: ["edge_cases.ambiguous_drone_vs_missile",
-                          "non_events.cruise_missile_strike"]
-
-  # ---------------------------------------------------------------------------
-  example_17_shahed_vs_cruise_missile_included:
-  # ---------------------------------------------------------------------------
-    label: "Shahed-136 loitering behaviour — INCLUDED as drone event"
-    source_text: >
-      "An Iranian-designed long-range kamikaze drone struck a substation in
-      Odesa at 2am local time. Ukrainian air defence tracked the Shahed-136
-      for 40 minutes as it followed a circular approach pattern before
-      diving onto the target."
-    coded_event:
-      event_type: "loitering_munition_attack"
-      primary_purpose: "kinetic_attack_infrastructure"
-      attributed_actor: "Russian Federation military"
-      actor_category: "state_military"
-      platform_class: "loitering_munition_strategic"
-      platform_model: "Shahed-136 (Iranian-designed, Russian-operated)"
-      platform_identification_confidence: "tier_3_multi_source_attributed"
-      autonomy_level: "level_2"
-      target_category: "dual_use_infrastructure"
-      target_details: "Odesa substation"
-      target_status: "ambiguous_dual_use"
-      target_location:
-        country: "Ukraine"
-        admin_region: "Odesa"
-      loitering_duration: "40 minutes"
-      outcome: "target_damaged"
-      event_legal_context: "ihl_armed_conflict"
-      event_confidence: "high"
-      attribution_confidence: "confirmed"
-      date: "2024-xx-xx"
-    coding_rationale: >
-      Despite the Shahed-136 being technically a propeller-driven cruise-
-      missile-equivalent, source text describes loitering behaviour (40-minute
-      circular approach) and uses drone terminology ("kamikaze drone,"
-      "Shahed-136"). Per edge case ambiguous_drone_vs_missile part (c):
-      "loitering/terminal-guidance behaviour described → code as drone event."
-      Shahed-136 is explicitly listed in platform_descriptors.loitering_munition
-      in the codebook. INCLUDED in drone pipeline.
-    codebook_references: ["edge_cases.ambiguous_drone_vs_missile",
-                          "platform_classification.loitering_munition_strategic"]
-
-  # ---------------------------------------------------------------------------
-  example_18_airport_intrusion_unattributed:
-  # ---------------------------------------------------------------------------
-    label: "Airspace intrusion — unattributed drone over NATO base"
-    source_text: >
-      "Polish military confirmed that 19 drones crossed into Polish airspace
-      overnight. The drones were tracked by NATO radar and most were downed
-      by Polish and allied aircraft. Initial assessment suggests the drones
-      originated from Russia or Belarus but attribution has not been
-      confirmed. Poland has invoked NATO Article 4 for urgent consultations."
-    coded_event:
-      event_type: "drone_interception_shootdown"
-      primary_purpose: "counter_drone"
-      intercepting_actor: "Polish Armed Forces + NATO allies"
-      intercepted_drone_actor: "unknown (Russia or Belarus suspected)"
-      intercepted_drone_actor_category: "unknown_unattributed"
-      intercepted_drone_count: 19
-      intercepted_platform_class: "unknown_platform"
-      interceptor_method: "kinetic_intercept_air"
-      location:
-        country: "Poland"
-      state_response: "diplomatic_protest"  # Article 4 invocation
-      outcome: "drone_intercepted"
-      event_legal_context: "airspace_violation"
-      event_confidence: "high"
-      attribution_confidence: "unattributed"
-      parent_event_id: null
-      date: "2025-xx-xx"
-    coding_rationale: >
-      Airspace intrusion with kinetic intercept is a coded event per
-      non_events.drone_airspace_intrusion_without_identified_actor exception
-      (airport closures, nuclear site overflights, or NATO airspace violations
-      are coded events). Primary event type = drone_interception_shootdown
-      because the kinetic action is the interception. intercepted_drone_actor
-      remains unknown_unattributed until Polish/NATO formal attribution.
-      state_response includes Article 4 invocation coded as diplomatic_protest.
-    codebook_references: ["non_events.drone_airspace_intrusion.exception",
-                          "edge_cases.commercial_drone_modification_ambiguity"]
-
-  # ---------------------------------------------------------------------------
-  example_19_swarm_fails_swarm_criteria:
-  # ---------------------------------------------------------------------------
-    label: "Multiple drones but NOT a swarm — coded as separate events"
-    source_text: >
-      "In overnight operations, Ukrainian forces struck three separate
-      Russian targets using FPV kamikaze drones: a T-72 tank near Bakhmut,
-      an ammunition dump in Luhansk region, and a Russian BTR-80 near
-      Zaporizhzhia. Each strike used a single FPV drone."
-    coded_events:
-      - event_id: "EX19_A"
-        event_type: "loitering_munition_attack"
-        target_details: "T-72 tank near Bakhmut"
-      - event_id: "EX19_B"
-        event_type: "loitering_munition_attack"
-        target_details: "ammunition dump in Luhansk region"
-      - event_id: "EX19_C"
-        event_type: "loitering_munition_attack"
-        target_details: "BTR-80 near Zaporizhzhia"
-    coding_rationale: >
-      Three separate events, not one swarm_attack event. Fails swarm criteria:
-      <5 drones total, different target zones (three different locations).
-      Per edge case swarm_vs_individual_strikes: "If any test fails, code
-      as separate individual drone events rather than swarm_attack."
-      Each gets its own event ID, attributed_actor, and target details.
-      Shared operational window (overnight) is not sufficient alone to
-      trigger swarm coding.
-    codebook_references: ["edge_cases.swarm_vs_individual_strikes",
-                          "event_types.swarm_attack.decision_rules"]
-
-  # ---------------------------------------------------------------------------
-  example_20_individual_soldier_post_not_institutional:
-  # ---------------------------------------------------------------------------
-    label: "Individual soldier drone post — NOT coded as propaganda event"
-    source_text: >
-      "A Ukrainian soldier named 'Oleh' posted a low-quality smartphone
-      video on his personal TikTok account showing a Russian tank being
-      destroyed by an FPV drone. The video had 8,000 views and no
-      accompanying organisational branding or messaging."
-    coded_event:
-      event_type: null  # Only the underlying kinetic event is coded
-      note: >
-        Per edge case strike_event_and_propaganda_event: "Institutional
-        production (unit account, military ministry) is distinct from
-        individual soldier posting." This is an individual soldier post
-        on a personal account without institutional branding or sustained
-        audience targeting. The underlying drone strike should be coded
-        (if discoverable) but the posting itself is NOT a distinct
-        drone_propaganda_documentation event. Rationale: individual soldier
-        social media posts are ubiquitous in high-intensity conflicts and
-        coding each as propaganda would flood the dataset with low-signal
-        events and conflate personal with organisational information operations.
-    codebook_references: ["event_types.drone_propaganda_documentation.decision_rules",
-                          "edge_cases.strike_event_and_propaganda_event"]
-
-# =============================================================================
-# SECTION 6: GENRE AND MATURITY EDGE CASES
-# =============================================================================
-
-maturity_examples:
-
-  # ---------------------------------------------------------------------------
-  example_21_experimental_vnsa_failed_attack:
-  # ---------------------------------------------------------------------------
-    label: "Experimental VNSA — failed drone attack"
-    source_text: >
-      "Mexican authorities said members of a criminal organisation attempted
-      to drop an improvised explosive from a commercial quadcopter onto a
-      rival cartel safe house in Michoacán. The explosive failed to detonate
-      and was recovered by police. No casualties were reported. The cartel
-      had reportedly attempted drone-delivered bombs three times previously
-      with limited success."
-    coded_event:
-      event_type: "drone_strike_attack"  # attempted
-      attempted_only: true
-      primary_purpose: "kinetic_attack_personnel"
-      attributed_actor: "Mexican criminal organisation (unnamed)"
-      actor_category: "criminal_organization"
-      actor_maturity_level: "experimental"
-      platform_class: "commercial_multirotor"
-      platform_model: null
-      platform_identification_confidence: "tier_5_unknown"
-      autonomy_level: "level_0"
-      target_category: "soft_military_logistics"  # rival cartel members
-      target_status: "ambiguous_dual_use"
-      target_location:
-        country: "Mexico"
-        admin_region: "Michoacán"
-        specific: "rival cartel safe house"
-      casualties:
-        killed_combatants_min: 0
-        killed_combatants_max: 0
-        killed_civilians_min: 0
-        killed_civilians_max: 0
-      civilian_harm_grade: "none"
-      state_response: "physical_capture_intact"
-      outcome: "target_missed"
-      event_legal_context: "domestic_criminal"
-      event_confidence: "high"
-      attribution_confidence: "single_source_claimed"
-      parent_event_id: null
-      date: "2024-xx-xx"
-    coding_rationale: >
-      Demonstrates experimental actor_maturity_level: the cartel has
-      attempted drone-IED operations 3+ times with "limited success,"
-      indicating no dedicated logistics or sustained successful operations.
-      attempted_only flag true because explosive did not detonate. event_type
-      remains drone_strike_attack (attempted) — do not demote to supply_logistics
-      or surveillance because the intent was clearly kinetic. state_response
-      = physical_capture_intact (police recovered the drone and unexploded
-      device). event_legal_context = domestic_criminal (Mexico cartel vs
-      cartel, not IHL armed conflict, not terrorism in US sense).
-    codebook_references: ["actor_typology.actor_maturity_level.experimental",
-                          "event_types.drone_strike_attack",
-                          "event_legal_context.domestic_criminal"]
-
-  # ---------------------------------------------------------------------------
-  example_22_strategic_non_state_houthi:
-  # ---------------------------------------------------------------------------
-    label: "Strategic VNSA program — Houthi Red Sea drone campaign"
-    source_text: >
-      "Houthi forces launched three Samad-3 long-range attack drones against
-      commercial shipping in the southern Red Sea on Thursday, striking a
-      Greek-owned tanker and damaging two others. This is the 47th Houthi
-      drone attack on Red Sea shipping this year. The Houthi Ansar Allah
-      drone unit has been operating continuously since 2019."
-    coded_event:
-      event_type: "loitering_munition_attack"
-      primary_purpose: "kinetic_attack_infrastructure"
-      attributed_actor: "Houthi Ansar Allah / Yemen Armed Forces"
-      actor_category: "non_state_proxy"
-      actor_maturity_level: "strategic"
-      named_unit: "Houthi Ansar Allah drone unit"
-      platform_class: "loitering_munition_strategic"
-      platform_model: "Samad-3"
-      platform_identification_confidence: "tier_3_multi_source_attributed"
-      autonomy_level: "level_2"
-      swarm_size: 3
-      coordination_method: "operator_coordinated"
-      target_category: "maritime_vessel"
-      target_status: "ambiguous_dual_use"  # commercial shipping may carry military goods
-      target_location:
-        country: "international waters"
-        admin_region: "southern Red Sea"
-      casualties:
-        killed_civilians_min: 0
-        killed_civilians_max: 0
-      civilian_harm_grade: "none"
-      outcome: "target_damaged"
-      event_legal_context: "ihl_disputed"
-      event_confidence: "high"
-      attribution_confidence: "confirmed"
-      sponsor_actor: "Iran (documented transfers)"
-      parent_event_id: null
-      date: "2024-xx-xx"
-    coding_rationale: >
-      Strategic actor_maturity_level per ICCT (2024) criteria: "integrated
-      drone capability with institutional infrastructure, dedicated unit,
-      external state sponsorship, and doctrinal integration." 47 attacks
-      YTD + dedicated drone unit + Iranian sponsorship + continuous operations
-      since 2019 all support Tier 1 Strategic. actor_category = non_state_proxy
-      because documented Iranian state sponsorship distinguishes from pure
-      non_state_organized. sponsor_actor field captures Iran. 3 drones + 
-      same target zone + same window → below swarm_size threshold of 5,
-      so code as loitering_munition_attack with swarm_size=3 rather than
-      swarm_attack.
-    codebook_references: ["actor_typology.actor_maturity_level.strategic",
-                          "actor_typology.actor_categories.non_state_proxy",
-                          "event_types.swarm_attack.decision_rules"]
-
-  # ---------------------------------------------------------------------------
-  example_23_isr_civic_surveillance_belarus:
-  # ---------------------------------------------------------------------------
-    label: "ISR civic surveillance — protest monitoring"
-    source_text: >
-      "Belarusian security forces deployed drones over opposition protest
-      gatherings in Minsk on Sunday, state media reported. The drones
-      captured facial recognition footage that officials said would be
-      used to identify 'unauthorised assembly participants.' Protest
-      organisers documented at least three drones hovering over the
-      crowd for approximately 2 hours."
-    coded_event:
-      event_type: "drone_surveillance_isr"
-      primary_purpose: "isr_civic_surveillance"
-      secondary_purposes: []
-      attributed_actor: "Belarusian security services (KGB)"
-      actor_category: "state_intelligence"
-      actor_maturity_level: "tactical"
-      platform_class: "commercial_multirotor"
-      platform_model: null
-      platform_identification_confidence: "tier_5_unknown"
-      surveillance_target_category: "civil_society"
-      target_details: "opposition protest participants (facial recognition)"
-      target_status: "protected_civilian"
-      location:
-        country: "Belarus"
-        admin_region: "Minsk"
-      duration: "approximately 2 hours"
-      drone_count: 3
-      state_response: "legal_prosecution_operator"  # intent to prosecute identified participants
-      outcome: "ongoing_operation"
-      event_legal_context: "domestic_civic_repression"
-      event_confidence: "high"
-      attribution_confidence: "confirmed"
-      civic_space_rating: "closed"
-      cross_pipeline_flag: "protest_pipeline_linked"
-      parent_event_id: null
-      date: "2024-xx-xx"
-    coding_rationale: >
-      Primary purpose = isr_civic_surveillance (state drone surveillance of
-      civil society). cross_pipeline_flag = protest_pipeline_linked because
-      this drone event is coincident with a protest event that should be
-      coded separately in the protest pipeline. civic_space_rating = closed
-      (Belarus CIVICUS rating) triggers downstream confidence downgrades.
-      event_legal_context = domestic_civic_repression (new category value
-      not in v1.0 — candidate for v1.1 addition).
-    codebook_references: ["purpose_taxonomy.isr_civic_surveillance",
-                          "event_types.drone_surveillance_isr"]
-
-  # ---------------------------------------------------------------------------
-  example_24_counter_propaganda_captured_footage:
-  # ---------------------------------------------------------------------------
-    label: "Counter-propaganda — captured enemy drone footage republished"
-    source_text: >
-      "Ukrainian intelligence services released footage captured from a
-      downed Russian reconnaissance drone showing Russian military positions
-      near Kharkiv. The footage was published on official Ukrainian defence
-      ministry channels with commentary identifying the Russian unit and
-      questioning Russian operational security."
-    coded_event:
-      event_type: "drone_propaganda_documentation"
-      primary_purpose: "propaganda_institutional"
-      subtype: "counter_propaganda"
-      attributed_actor: "Ukrainian Ministry of Defence"
-      actor_category: "state_military"
-      publishing_platform: "Ukrainian MoD official channels"
-      target_audience_geography:
-        primary: "Russian-speaking Russian audience (demoralisation)"
-        secondary: "Ukrainian domestic supporters"
-      production_quality: "high"
-      source_of_footage: "captured Russian drone"
-      captured_drone_actor: "Russian Federation military"
-      captured_drone_platform_class: "fixed_wing_small"
-      state_response: "none"
-      outcome: "ongoing_operation"
-      event_confidence: "high"
-      attribution_confidence: "confirmed"
-      parent_event_id: null  # original Russian drone event may be separately coded
-      date: "2024-xx-xx"
-    coding_rationale: >
-      Drone propaganda subtype = counter_propaganda per codebook definition:
-      "Republishing captured enemy drone footage." The publication is an
-      institutional Ukrainian MoD action, so propaganda_institutional.
-      captured_drone_actor and captured_drone_platform_class fields are
-      added to capture the origin of the footage. If the original Russian
-      reconnaissance drone event (ISR over Kharkiv) was independently coded,
-      it would have its own event_id with no parent_event_id linking because
-      the counter-propaganda event has a different actor (Ukraine, not
-      Russia) and different purpose.
-    codebook_references: ["event_types.drone_propaganda_documentation.subtypes.counter_propaganda"]
-
-# =============================================================================
-# SECTION 7: NEGATIVE / EXCLUSION EXAMPLE
-# =============================================================================
-
-negative_example:
-
-  # ---------------------------------------------------------------------------
-  example_25_commercial_delivery_excluded:
-  # ---------------------------------------------------------------------------
-    label: "Commercial drone delivery — EXCLUDED"
-    source_text: >
-      "Zipline announced it has delivered its millionth package via drone
-      in East Africa, with medical supplies reaching rural clinics in Rwanda,
-      Ghana, Kenya, and Nigeria. The autonomous fixed-wing drones cover an
-      average range of 80 km per delivery."
-    coded_event: null  # EXCLUDED
-    exclusion_reason: >
-      Commercial humanitarian drone delivery with no political or military
-      context. Per non_events.commercial_drone_delivery_non_political: "Not
-      political or military; out of scope." This is routine commercial
-      activity, not a political drone event. Do not include in the drone
-      events pipeline regardless of the scale or geography.
-    codebook_references: ["non_events.commercial_drone_delivery"]
-
-# =============================================================================
-# SECTION 8: QUALITY CONTROL NOTES
-# =============================================================================
-
-qc_notes:
-  inter_coder_reliability:
-    description: >
-      These examples are recommended for inter-coder reliability testing.
-      Expected Cohen's Kappa for event_type classification: ≥0.80 across
-      trained coders. Expected Kappa for civilian_harm_grade: ≥0.70 given
-      the inherent ambiguity in contested attribution cases.
-  common_coding_errors_to_avoid:
-    - "Coding reusable UCAV strikes as loitering_munition_attack (distinguishing error)"
-    - "Treating soldier-posted drone videos as institutional propaganda events"
-    - "Coding swarm_attack when <5 drones are involved"
-    - "Forgetting to apply parent_event_id for paired ISR+strike operations"
-    - "Applying tier_1_sensor_confirmed platform identification based solely on official actor statement"
-    - "Coding civilian_harm_grade = confirmed based on one side's claim rather than belligerent acceptance of responsibility"
-    - "Excluding intercept-debris civilian casualties (they should be coded with civilian_harm_cause = intercept_debris)"
-    - "Coding cartel drone operations as non_state_organized when criminal_organization is the correct actor_category"
-  recommended_coder_training:
-    - "Read drone_codebook_v10.yaml in full before coding"
-    - "Review all 25 examples in this file"
-    - "Practice on 20 validation articles before production coding"
-    - "Cross-reference platform identifications with Bard College Proliferated Drones Database"
-    - "Cross-reference attributions with CNAS Drone Proliferation Dataset for plausibility"
-    - "For civilian harm cases, review Airwars civilian harm grading methodology in full"
+  - id: "ex_06"
+    description: "drone_strike_attack — Ethiopian TB2 kills 56+ civilians at IDP camp, contested attribution, Africa, CIVICUS repressed"
+    rationale: |
+      Africa-specific example: civilian harm, contested attribution, CIVICUS repressed country.
+      platform_identification_confidence = tier_1_sensor_confirmed (satellite imagery + fragment
+      analysis, strongest possible evidence level). civilian_harm_grade = fair_contested: UN and
+      independent sources corroborate civilian deaths (= 'fair') but Ethiopia contests the
+      attribution (= 'contested'). attribution_confidence = contested: government denial with
+      corroborating independent evidence. Ethiopia = CIVICUS 'repressed' → civic_space_rating
+      recorded. event_legal_context = ihl_disputed: strike on a protected civilian site is
+      presumptively unlawful but Ethiopia claims military necessity. Confidence HIGH despite
+      repressed context because sensor-confirmed evidence overrides single-source limitation.
+    article_snippet: |
+      An Ethiopian National Defense Force airstrike killed at least 56 civilians at a camp for
+      internally displaced persons in Dedebit, Tigray region, the United Nations said. The
+      Ethiopian government denied targeting civilians. Satellite imagery analysts identified the
+      strike as having been conducted by a Turkish-made Bayraktar TB2 drone based on fragment
+      markings. Casualty counts from on-the-ground humanitarian monitors ranged from 56 to 59.
+    extracted_events:
+      - event_type: "drone_strike_attack"
+        primary_purpose: "kinetic_attack_civilian"
+        secondary_purposes: []
+        attributed_actor: "Ethiopian National Defense Force (ENDF)"
+        actor_category: "state_military"
+        actor_maturity_level: "tactical"
+        named_unit: null
+        platform_class: "ucav_male"
+        platform_model: "Bayraktar TB2"
+        platform_identification_confidence: "tier_1_sensor_confirmed"
+        autonomy_level: "level_2"
+        target_category: "civilian_population"
+        target_status: "protected_civilian"
+        target_location:
+          country: "Ethiopia"
+          admin_region: "Tigray region"
+          specific: "Dedebit IDP camp"
+        casualties:
+          killed_combatants_min: 0
+          killed_combatants_max: 0
+          killed_civilians_min: 56
+          killed_civilians_max: 59
+        civilian_harm_grade: "fair_contested"
+        civilian_harm_cause: "direct_strike"
+        state_response: "none"
+        outcome: "target_destroyed_confirmed"
+        event_legal_context: "ihl_disputed"
+        event_confidence: "high"
+        attribution_confidence: "contested"
+        civic_space_rating: "repressed"
+        parent_event_id: null
+        child_event_ids: []
+        date: null
