@@ -15,11 +15,16 @@ import csv
 import json
 import logging
 import os
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 log = logging.getLogger(__name__)
+
+# Protects the cumulative all_events.jsonl append when extract_events() uses
+# multiple worker threads and save_results() is called concurrently.
+_cumulative_lock = threading.Lock()
 
 # CSV columns in display order
 CSV_COLUMNS = [
@@ -217,19 +222,26 @@ def save_results(
     run_id: str,
     failures: Optional[list] = None,
     upload_to: Optional[str] = None,
+    domain: str = "protest",
 ) -> Path:
     """
     Save events to JSONL, CSV, and a run summary file.
+
+    domain: subdirectory namespace ('protest' or 'drone'). All files are written
+    under output_dir/domain/ so multiple codebook runs never share checkpoints or
+    cumulative files. E.g. data/raw/protest/ and data/raw/drone/.
+
     If failures are provided, writes them to failures_{run_id}.jsonl.
     If upload_to is set, uploads all output files to S3 or Azure Blob after writing.
 
     Derives turmoil_level for each event before writing.
-    Returns the path to the output directory.
+    Returns the path to the effective output directory (output_dir/domain/).
     """
     if not events:
         log.warning("No events to save.")
-        return output_dir
+        return output_dir / domain
 
+    output_dir = output_dir / domain
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Derive turmoil_level for every event (in-place)
@@ -252,11 +264,13 @@ def save_results(
             writer.writerow(flatten_for_csv(event))
     log.info(f"CSV saved: {csv_path}")
 
-    # 3. Also append to a cumulative all_events.jsonl for long-running use
+    # 3. Also append to a cumulative all_events.jsonl for long-running use.
+    # Lock protects concurrent appends when multiple domains run in one process.
     cumulative_path = output_dir / "all_events.jsonl"
-    with open(cumulative_path, "a", encoding="utf-8") as f:
-        for event in events:
-            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+    with _cumulative_lock:
+        with open(cumulative_path, "a", encoding="utf-8") as f:
+            for event in events:
+                f.write(json.dumps(event, ensure_ascii=False) + "\n")
     log.info(f"Appended to cumulative: {cumulative_path}")
 
     # 4. Dead-letter file for failed extractions

@@ -30,25 +30,41 @@ import yaml
 
 log = logging.getLogger(__name__)
 
-# Labels used for zero-shot classification.
-# The "protest" score is compared against _REJECTION_LABEL.
-_PROTEST_LABELS = ["protest or political unrest event"]
-_REJECTION_LABEL = "unrelated news or institutional meeting"
-_ALL_LABELS = _PROTEST_LABELS + [_REJECTION_LABEL]
-
 _KEYWORDS_PATH = Path(__file__).parent.parent.parent / "configs" / "keywords.yaml"
 
+# Per-domain NLI label config.  Each domain maps to a positive hypothesis
+# and a rejection label used in the zero-shot classifier.
+_DOMAIN_CONFIG: dict = {
+    "protest": {
+        "positive_labels": ["protest or political unrest event"],
+        "rejection_label": "unrelated news or institutional meeting",
+        "keyword_key": "protest_signals",
+        "keyword_fallback": {
+            "protest", "demonstration", "strike", "march", "riot",
+            "unrest", "rally", "uprising", "blockade", "clashes",
+        },
+    },
+    "drone": {
+        "positive_labels": ["drone or unmanned aerial vehicle (UAV) operation"],
+        "rejection_label": "unrelated news with no drone or UAV involvement",
+        "keyword_key": "drone_signals",
+        "keyword_fallback": {
+            "drone", "uav", "unmanned", "quadcopter", "bayraktar", "shahed",
+            "reaper", "mq-9", "tb2", "fpv", "loitering munition", "airstrike",
+        },
+    },
+}
 
-def _load_protest_signals(path: Path) -> set[str]:
+
+def _load_domain_signals(path: Path, domain: str) -> set[str]:
+    cfg = _DOMAIN_CONFIG.get(domain, _DOMAIN_CONFIG["protest"])
     try:
         with open(path) as f:
             kw = yaml.safe_load(f) or {}
-        return set(kw.get("protest_signals", []))
+        signals = set(kw.get(cfg["keyword_key"], []))
+        return signals if signals else cfg["keyword_fallback"]
     except Exception:
-        return {
-            "protest", "demonstration", "strike", "march", "riot",
-            "unrest", "rally", "uprising", "blockade", "clashes",
-        }
+        return cfg["keyword_fallback"]
 
 
 class RelevanceFilter:
@@ -68,22 +84,27 @@ class RelevanceFilter:
         model_name: str = "cross-encoder/nli-deberta-v3-small",
         threshold: float = 0.30,
         device: str = "cpu",
+        domain: str = "protest",
     ):
         """
         Args:
             model_name: HuggingFace model for zero-shot classification.
-                        To use ConfliBERT once a classification head is
-                        trained, swap this to the fine-tuned model path.
-            threshold:  Articles with protest score below this are rejected.
-                        0.30 is conservative (high recall, some noise passes).
-                        Raise to 0.50+ once GLOCON validation confirms accuracy.
-            device:     'cpu' (default) or 'cuda' if GPU available.
+            threshold:  Articles below this score are rejected.
+                        0.30 = conservative (high recall). Raise to 0.50+ after GLOCON validation.
+            device:     'cpu' or 'cuda'.
+            domain:     'protest' or 'drone' — selects the NLI hypothesis and keyword set.
         """
+        if domain not in _DOMAIN_CONFIG:
+            raise ValueError(f"Unknown domain '{domain}'. Valid: {list(_DOMAIN_CONFIG)}")
         self.threshold = threshold
         self.model_name = model_name
+        self.domain = domain
         self._classifier = None
-        self._protest_signals = _load_protest_signals(_KEYWORDS_PATH)
+        self._domain_signals = _load_domain_signals(_KEYWORDS_PATH, domain)
         self._model_available = False
+        self._positive_labels = _DOMAIN_CONFIG[domain]["positive_labels"]
+        self._rejection_label = _DOMAIN_CONFIG[domain]["rejection_label"]
+        self._all_labels = self._positive_labels + [self._rejection_label]
 
         self._try_load_model(model_name, device)
 
@@ -107,25 +128,23 @@ class RelevanceFilter:
             )
 
     def _score_with_model(self, text: str) -> float:
-        """Return protest relevance score [0, 1] using the NLI classifier."""
-        # Truncate to 512 chars — sufficient for title + first paragraph
+        """Return domain relevance score [0, 1] using the NLI classifier."""
         snippet = text[:512]
         try:
-            result = self._classifier(snippet, _ALL_LABELS, multi_label=False)
+            result = self._classifier(snippet, self._all_labels, multi_label=False)
             label_scores = dict(zip(result["labels"], result["scores"]))
-            return label_scores.get(_PROTEST_LABELS[0], 0.0)
+            return label_scores.get(self._positive_labels[0], 0.0)
         except Exception as e:
             log.debug(f"Model scoring failed: {e} — using keyword fallback")
             return self._score_with_keywords(text)
 
     def _score_with_keywords(self, text: str) -> float:
         """
-        Keyword-based fallback scorer. Returns 1.0 if any protest signal
-        is found in the text, 0.0 otherwise. Intentionally binary so that
-        the threshold comparison below still makes sense.
+        Keyword-based fallback scorer. Returns 1.0 if any domain signal
+        is found in the text, 0.0 otherwise.
         """
         lower = text.lower()
-        if any(sig in lower for sig in self._protest_signals):
+        if any(sig in lower for sig in self._domain_signals):
             return 1.0
         return 0.0
 
@@ -167,7 +186,7 @@ class RelevanceFilter:
 
         source = "model" if self._model_available else "keyword fallback"
         log.info(
-            f"RelevanceFilter ({source}, threshold={self.threshold}): "
+            f"RelevanceFilter (domain={self.domain}, {source}, threshold={self.threshold}): "
             f"kept {len(kept)}, rejected {len(rejected)} "
             f"of {len(articles)} articles"
         )

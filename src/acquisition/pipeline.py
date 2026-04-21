@@ -95,19 +95,28 @@ def run_pipeline(
     geocode: bool = True,
     resume: bool = False,
     relevance_threshold: float = 0.30,
+    domain: str = "protest",
+    codebook_path: Optional[Path] = None,
+    examples_path: Optional[Path] = None,
+    workers: int = 1,
+    rpm_limit: int = 450,
 ):
     log.info("=== Protest Event Analysis Pipeline (codebook v2.3) ===")
     log.info(f"Query: '{query}' | Countries: {countries} | Days back: {days}")
     log.info(
-        f"LLM provider: {provider} | model: {model or 'default'} | source: {source}"
+        f"LLM provider: {provider} | model: {model or 'default'} | source: {source} | domain: {domain}"
     )
+    if workers > 1:
+        log.info(f"Concurrent extraction: {workers} workers, rpm_limit={rpm_limit}")
 
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # Checkpoint and output files live under output_dir/domain/ for isolation.
+    effective_output_dir = output_dir / domain
+    effective_output_dir.mkdir(parents=True, exist_ok=True)
     run_id = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
 
     # Sync checkpoint from blob before reading it (enables resume after container restart)
     if resume and upload_to:
-        sync_checkpoint_from_blob(upload_to, output_dir)
+        sync_checkpoint_from_blob(upload_to, effective_output_dir)
 
     # Stage 1: Discovery
     articles = []
@@ -161,9 +170,9 @@ def run_pipeline(
         log.warning("No articles could be scraped. Check network access.")
         return []
 
-    # Stage 2.5: Relevance filter — rejects non-protest articles before LLM
-    log.info("--- Stage 2.5: Relevance Filter (ConfliBERT / keyword fallback) ---")
-    _rf = RelevanceFilter(threshold=relevance_threshold)
+    # Stage 2.5: Relevance filter — rejects non-domain articles before LLM
+    log.info(f"--- Stage 2.5: Relevance Filter (domain={domain}) ---")
+    _rf = RelevanceFilter(threshold=relevance_threshold, domain=domain)
     scraped, rf_rejected = _rf.filter(scraped)
     log.info(
         f"Relevance filter: {len(scraped)} kept, {len(rf_rejected)} rejected "
@@ -184,7 +193,7 @@ def run_pipeline(
 
     # Stage 4: LLM Extraction via Azure AI Foundry
     log.info("--- Stage 4: LLM Event Extraction (Azure AI Foundry) ---")
-    checkpoint_path = str(output_dir / "checkpoint.txt")
+    checkpoint_path = str(effective_output_dir / "checkpoint.txt")
     events, failures = extract_events(
         scraped,
         model=model,
@@ -192,9 +201,13 @@ def run_pipeline(
         provider=provider,
         checkpoint_path=checkpoint_path,
         upload_to=upload_to,
+        codebook_path=codebook_path,
+        examples_path=examples_path,
+        workers=workers,
+        rpm_limit=rpm_limit,
     )
     log.info(
-        f"Extracted {len(events)} protest events ({len(failures)} extraction failures)"
+        f"Extracted {len(events)} events ({len(failures)} extraction failures)"
     )
 
     # Stage 4.5: Geocoding
@@ -210,11 +223,185 @@ def run_pipeline(
         run_id=run_id,
         failures=failures,
         upload_to=upload_to,
+        domain=domain,
     )
     log.info(f"Results saved to {out_path}")
 
     log.info("=== Pipeline complete ===")
     return events
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# Maps domain name → default codebook, examples, and GDELT query.
+# Override individual fields via --codebook / --examples / --query CLI flags.
+DOMAIN_CONFIGS: dict = {
+    "protest": {
+        "codebook": _REPO_ROOT / "configs" / "protest_codebook.yaml",
+        "examples": _REPO_ROOT / "configs" / "extraction_examples.yaml",
+        "query": "protest demonstration strike rally march",
+    },
+    "drone": {
+        "codebook": _REPO_ROOT / "configs" / "drone_events_codebook.yaml",
+        "examples": _REPO_ROOT / "configs" / "drone_extraction_examples.yaml",
+        "query": "drone UAV airstrike unmanned aircraft",
+    },
+}
+
+
+def run_pipeline_multi_codebook(
+    domains: list,
+    countries: list,
+    days: int,
+    output_dir: Path,
+    max_articles: int = 100,
+    translate: bool = True,
+    provider: str = "azure",
+    model: Optional[str] = None,
+    api_key: Optional[str] = None,
+    upload_to: Optional[str] = None,
+    source: str = "gdelt",
+    geocode: bool = True,
+    resume: bool = False,
+    relevance_threshold: float = 0.30,
+    workers: int = 1,
+    rpm_limit: int = 450,
+) -> dict:
+    """
+    Scrape and translate once, then run each domain's relevance filter and
+    extractor independently. An article qualifies for multiple domains if it
+    passes each domain's relevance threshold (e.g., a protest dispersed with
+    a surveillance drone passes both).
+
+    Returns {domain: [events]} for all requested domains.
+    """
+    from src.acquisition.scraper import scrape_articles
+    from src.acquisition.translator import translate_articles
+
+    log.info(f"=== Multi-codebook pipeline: domains={domains} ===")
+
+    # --- Stage 1: Discovery (merge GDELT queries across all active domains) ---
+    all_query_terms: set[str] = set()
+    for d in domains:
+        cfg = DOMAIN_CONFIGS.get(d, {})
+        all_query_terms.update(cfg.get("query", "").split())
+    merged_query = " ".join(sorted(all_query_terms))
+    log.info(f"Merged GDELT query: '{merged_query}'")
+
+    articles: list = []
+    if source in ("gdelt", "both"):
+        log.info("--- Stage 1a: GDELT Discovery (merged query) ---")
+        gdelt_articles = _gdelt.discover_articles(
+            query=merged_query, countries=countries, days=days, max_results=max_articles
+        )
+        log.info(f"GDELT: {len(gdelt_articles)} candidate articles")
+        articles.extend(gdelt_articles)
+
+    if source in ("bbc", "both"):
+        log.info("--- Stage 1b: BBC Monitoring Discovery ---")
+        bbc_articles = _bbc.discover_articles(
+            query=merged_query,
+            countries=countries,
+            days=days,
+            max_results=max_articles,
+            fetch_full_text=True,
+        )
+        log.info(f"BBC Monitoring: {len(bbc_articles)} candidate articles")
+        articles.extend(bbc_articles)
+
+    if source == "both":
+        seen: set = set()
+        deduped = []
+        for a in articles:
+            if a["url"] not in seen:
+                seen.add(a["url"])
+                deduped.append(a)
+        articles = deduped
+
+    if not articles:
+        log.warning("No articles found.")
+        return {d: [] for d in domains}
+
+    # --- Stage 2: Scraping (shared — happens once for all domains) ---
+    log.info("--- Stage 2: Full-text Scraping (shared) ---")
+    articles = scrape_articles(articles)
+    scraped = [a for a in articles if a.get("text")]
+    log.info(f"Successfully scraped {len(scraped)}/{len(articles)} articles")
+
+    if not scraped:
+        log.warning("No articles could be scraped.")
+        return {d: [] for d in domains}
+
+    # --- Stage 3: Translation (shared) ---
+    if translate:
+        log.info("--- Stage 3: Translation (shared) ---")
+        scraped = translate_articles(scraped)
+    else:
+        for a in scraped:
+            a["text_en"] = a.get("text")
+            a["text_lang"] = "unknown"
+
+    # --- Stages 2.5 + 4 + 4.5 + 5: Per-domain in series (preserves prompt caching) ---
+    results: dict = {}
+    run_id = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+
+    for domain in domains:
+        cfg = DOMAIN_CONFIGS.get(domain, {})
+        log.info(f"=== Domain: {domain} ===")
+
+        # Stage 2.5: Domain-specific relevance filter
+        log.info(f"--- Stage 2.5: Relevance Filter (domain={domain}) ---")
+        _rf = RelevanceFilter(threshold=relevance_threshold, domain=domain)
+        domain_articles, rf_rejected = _rf.filter(scraped)
+        log.info(
+            f"  {len(domain_articles)} kept, {len(rf_rejected)} rejected"
+        )
+        if not domain_articles:
+            log.warning(f"  No articles passed relevance filter for domain '{domain}'")
+            results[domain] = []
+            continue
+
+        # Stage 4: LLM extraction (all articles for this domain before switching)
+        log.info(f"--- Stage 4: Extraction (domain={domain}) ---")
+        effective_output_dir = output_dir / domain
+        effective_output_dir.mkdir(parents=True, exist_ok=True)
+        checkpoint_path = str(effective_output_dir / "checkpoint.txt")
+
+        if resume and upload_to:
+            sync_checkpoint_from_blob(upload_to, effective_output_dir)
+
+        events, failures = extract_events(
+            domain_articles,
+            model=model,
+            api_key=api_key,
+            provider=provider,
+            checkpoint_path=checkpoint_path,
+            upload_to=upload_to,
+            codebook_path=cfg.get("codebook"),
+            examples_path=cfg.get("examples"),
+            workers=workers,
+            rpm_limit=rpm_limit,
+        )
+        log.info(f"  Extracted {len(events)} events ({len(failures)} failures)")
+
+        # Stage 4.5: Geocoding
+        if geocode and events:
+            log.info(f"--- Stage 4.5: Geocoding (domain={domain}) ---")
+            events = geocode_events(events)
+
+        # Stage 5: Storage
+        save_results(
+            events,
+            output_dir=output_dir,
+            run_id=run_id,
+            failures=failures,
+            upload_to=upload_to,
+            domain=domain,
+        )
+        results[domain] = events
+
+    log.info(f"=== Multi-codebook pipeline complete: {list(results.keys())} ===")
+    return results
 
 
 def main():
@@ -304,33 +491,131 @@ def main():
             "'all' — run all three stages in sequence"
         ),
     )
+    parser.add_argument(
+        "--domains",
+        default="protest",
+        help=(
+            "Comma-separated codebook domains to run (default: 'protest'). "
+            "Use 'protest,drone' to run both in one invocation: articles are scraped "
+            "once and routed through each domain's relevance filter and extractor. "
+            "Output is isolated under data/raw/<domain>/."
+        ),
+    )
+    parser.add_argument(
+        "--codebook",
+        default=None,
+        help="Path to a codebook YAML (overrides the domain default; single-domain only)",
+    )
+    parser.add_argument(
+        "--examples",
+        default=None,
+        help="Path to an extraction examples YAML (overrides the domain default; single-domain only)",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help=(
+            "Concurrent extraction workers (default 1 = sequential). "
+            "Recommended: 4–8 for backfill runs. All workers share one system prompt "
+            "so Azure prompt caching is maximised."
+        ),
+    )
+    parser.add_argument(
+        "--rpm-limit",
+        type=int,
+        default=450,
+        help="Azure OpenAI RPM ceiling for the rate limiter (default 450; ~10%% headroom under 500 RPM limit)",
+    )
+    parser.add_argument(
+        "--backfill-from",
+        default=None,
+        help="Start date for historical backfill mode: YYYY-MM-DD",
+    )
+    parser.add_argument(
+        "--backfill-to",
+        default=None,
+        help="End date for historical backfill mode: YYYY-MM-DD (default: today)",
+    )
+    parser.add_argument(
+        "--backfill-window-days",
+        type=int,
+        default=30,
+        help="Window size in days for date-range GDELT queries during backfill (default 30)",
+    )
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
+    domains = [d.strip() for d in args.domains.split(",") if d.strip()]
 
     if args.stage in ("acquire", "all"):
-        # Clear checkpoint on fresh acquire run
-        checkpoint = output_dir / "checkpoint.txt"
-        if not args.resume and checkpoint.exists():
-            checkpoint.unlink()
-            log.info("Fresh run — cleared existing checkpoint")
+        if len(domains) > 1:
+            # Multi-domain: scrape once, route to each codebook.
+            # --codebook / --examples CLI overrides are not supported in multi-domain mode.
+            if args.codebook or args.examples:
+                parser.error("--codebook and --examples cannot be used with multiple --domains")
+            run_pipeline_multi_codebook(
+                domains=domains,
+                countries=args.countries.split(","),
+                days=args.days,
+                output_dir=output_dir,
+                max_articles=args.max_articles,
+                translate=not args.no_translate,
+                provider=args.provider,
+                model=args.model,
+                api_key=args.api_key,
+                upload_to=args.upload_to,
+                source=args.source,
+                geocode=not args.no_geocode,
+                resume=args.resume,
+                relevance_threshold=args.relevance_threshold,
+                workers=args.workers,
+                rpm_limit=args.rpm_limit,
+            )
+        else:
+            domain = domains[0] if domains else "protest"
+            # Resolve codebook/examples: explicit CLI flag > domain default > module default
+            domain_cfg = DOMAIN_CONFIGS.get(domain, {})
+            codebook_path = (
+                Path(args.codebook) if args.codebook
+                else domain_cfg.get("codebook")
+            )
+            examples_path = (
+                Path(args.examples) if args.examples
+                else domain_cfg.get("examples")
+            )
+            # Use domain-specific default query if user didn't supply --query
+            query = args.query
+            if query == "protest demonstration strike rally march" and domain != "protest":
+                query = domain_cfg.get("query", args.query)
 
-        run_pipeline(
-            query=args.query,
-            countries=args.countries.split(","),
-            days=args.days,
-            output_dir=output_dir,
-            max_articles=args.max_articles,
-            translate=not args.no_translate,
-            provider=args.provider,
-            model=args.model,
-            api_key=args.api_key,
-            upload_to=args.upload_to,
-            source=args.source,
-            geocode=not args.no_geocode,
-            resume=args.resume,
-            relevance_threshold=args.relevance_threshold,
-        )
+            # Clear checkpoint on fresh acquire run (domain-namespaced)
+            checkpoint = output_dir / domain / "checkpoint.txt"
+            if not args.resume and checkpoint.exists():
+                checkpoint.unlink()
+                log.info(f"Fresh run — cleared existing checkpoint for domain '{domain}'")
+
+            run_pipeline(
+                query=query,
+                countries=args.countries.split(","),
+                days=args.days,
+                output_dir=output_dir,
+                max_articles=args.max_articles,
+                translate=not args.no_translate,
+                provider=args.provider,
+                model=args.model,
+                api_key=args.api_key,
+                upload_to=args.upload_to,
+                source=args.source,
+                geocode=not args.no_geocode,
+                resume=args.resume,
+                relevance_threshold=args.relevance_threshold,
+                domain=domain,
+                codebook_path=codebook_path,
+                examples_path=examples_path,
+                workers=args.workers,
+                rpm_limit=args.rpm_limit,
+            )
 
     if args.stage in ("process", "all"):
         log.info("=== Stage 2: Processing and Consolidation ===")

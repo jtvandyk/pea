@@ -13,7 +13,9 @@ For the Global South focus, this module:
 
 import logging
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional
 
 import requests
 import yaml
@@ -114,45 +116,58 @@ ISO2_TO_FIPS = {
 }
 
 
-def build_gdelt_query(query: str, countries: list, days: int) -> dict:
+def build_gdelt_query(
+    query: str,
+    countries: list,
+    days: int = 7,
+    start_dt: Optional[datetime] = None,
+    end_dt: Optional[datetime] = None,
+) -> dict:
     """
     Build GDELT DOC API query parameters.
 
     Args:
-        query: keyword search string (space = AND, pipe = OR in GDELT)
+        query:    keyword search string (space = AND, pipe = OR in GDELT)
         countries: list of ISO2 country codes to filter source country
-        days: number of days back to search (GDELT max is ~3 months for DOC API)
+        days:     number of days back to search (used when start_dt/end_dt not given)
+        start_dt: explicit window start (GDELT startdatetime param)
+        end_dt:   explicit window end   (GDELT enddatetime param)
 
     Returns:
         dict of query parameters
     """
-    # GDELT DOC API only accepts specific timespan values — arbitrary day counts fail silently.
-    # Valid values: 15min, 1hour, 4hours, 1day, 7days, 1month, 3months, 6months, 1year
-    if days <= 1:
-        timespan = "1day"
-    elif days <= 7:
-        timespan = "7days"
-    elif days <= 31:
-        timespan = "1month"
-    elif days <= 92:
-        timespan = "3months"
-    elif days <= 183:
-        timespan = "6months"
-    else:
-        timespan = "1year"
-
     # Build keyword query — GDELT requires OR'd terms to be wrapped in ()
     keyword_parts = [f'"{term}"' if " " in term else term for term in query.split()]
     keyword_query = "(" + " OR ".join(keyword_parts) + ")"
 
     params = {
         "query": keyword_query,
-        "mode": "ArtList",  # return article list (not timeline)
-        "maxrecords": 250,  # max per request
-        "timespan": timespan,
+        "mode": "ArtList",
+        "maxrecords": 250,
         "format": "json",
         "sort": "DateDesc",
     }
+
+    if start_dt and end_dt:
+        # Explicit date range — overrides timespan.
+        # GDELT DOC API format: YYYYMMDDHHMMSS
+        params["startdatetime"] = start_dt.strftime("%Y%m%d%H%M%S")
+        params["enddatetime"] = end_dt.strftime("%Y%m%d%H%M%S")
+    else:
+        # Relative timespan — GDELT only accepts specific values.
+        if days <= 1:
+            timespan = "1day"
+        elif days <= 7:
+            timespan = "7days"
+        elif days <= 31:
+            timespan = "1month"
+        elif days <= 92:
+            timespan = "3months"
+        elif days <= 183:
+            timespan = "6months"
+        else:
+            timespan = "1year"
+        params["timespan"] = timespan
 
     # GDELT sourcecountry requires FIPS codes, not ISO2.
     # The parameter only accepts a single country — for multiple countries we
@@ -274,6 +289,100 @@ def _fetch_for_country(query: str, country: str, days: int) -> list[dict]:
         log.info(f"Fallback for {country} returned {len(articles)} articles")
 
     return articles
+
+
+def discover_articles_date_range(
+    query: str,
+    countries: list,
+    start_date: datetime,
+    end_date: datetime,
+    max_results_per_window: int = 250,
+    window_days: int = 30,
+) -> list[dict]:
+    """
+    Backfill discovery over an arbitrary historical date range.
+
+    Chunks the range into `window_days`-sized windows (iterated newest-first)
+    and calls discover_articles() per window.  Deduplicates by URL across all
+    windows.  Use this instead of discover_articles() when `--backfill-from`
+    is set; it bypasses GDELT's 1-year `timespan` ceiling.
+
+    Args:
+        query:                  keyword search string
+        countries:              list of ISO2 country codes
+        start_date:             beginning of historical window (inclusive)
+        end_date:               end of historical window (inclusive)
+        max_results_per_window: GDELT maxrecords per sub-query (≤250)
+        window_days:            size of each chunk in days (default 30)
+
+    Returns:
+        deduplicated list of article dicts across all windows
+    """
+    seen_urls: dict[str, dict] = {}
+    window_end = end_date
+    total_windows = 0
+
+    while window_end > start_date:
+        window_start = max(window_end - timedelta(days=window_days), start_date)
+        total_windows += 1
+        log.info(
+            f"Backfill window {total_windows}: "
+            f"{window_start.strftime('%Y-%m-%d')} → {window_end.strftime('%Y-%m-%d')}"
+        )
+
+        for country in countries:
+            params = build_gdelt_query(
+                query, [country],
+                start_dt=window_start,
+                end_dt=window_end,
+            )
+            params["maxrecords"] = max_results_per_window
+            articles = fetch_gdelt_articles(params)
+            log.info(
+                f"  {country}: {len(articles)} raw articles "
+                f"({window_start.strftime('%Y-%m-%d')}–{window_end.strftime('%Y-%m-%d')})"
+            )
+            for art in articles:
+                url = art.get("url", "")
+                if url and url not in seen_urls:
+                    seen_urls[url] = art
+
+        # Step back — next window ends where this one started
+        window_end = window_start
+        if window_end <= start_date:
+            break
+        # Brief pause between windows to avoid hammering GDELT
+        time.sleep(2)
+
+    raw_articles = list(seen_urls.values())
+    log.info(
+        f"Backfill complete: {total_windows} windows, "
+        f"{len(raw_articles)} unique articles across all countries"
+    )
+
+    # Normalize and filter — same post-processing as discover_articles()
+    normalized = []
+    for art in raw_articles:
+        url = art.get("url", "")
+        if not url:
+            continue
+        normalized.append(
+            {
+                "url": url,
+                "title": art.get("title", ""),
+                "seendate": art.get("seendate", ""),
+                "sourcecountry": art.get("sourcecountry", ""),
+                "sourcelanguage": art.get("sourcelanguage", ""),
+                "domain": art.get("domain", ""),
+                "_relevance": None,
+                "text": None,
+                "text_lang": None,
+                "text_en": None,
+                "events": [],
+            }
+        )
+
+    return filter_protest_relevant(normalized)
 
 
 def discover_articles(

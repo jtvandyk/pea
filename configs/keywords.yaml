@@ -71,3 +71,58 @@ url_signals:
   - march
   - riot
   - unrest
+
+# =============================================================================
+# DRONE DOMAIN KEYWORDS
+# Used by RelevanceFilter when domain='drone'
+# =============================================================================
+
+# Keyword signals for drone domain relevance filter fallback.
+drone_signals:
+  # Platform names
+  - drone
+  - drones
+  - uav
+  - uavs
+  - unmanned
+  - quadcopter
+  - multirotor
+  - fpv
+  - bayraktar
+  - shahed
+  - geran
+  - lancet
+  - reaper
+  - mq-9
+  - predator
+  - tb2
+  - switchblade
+  - harop
+  - harpy
+  - orlan
+  - mohajer
+  - loitering munition
+  - one-way attack
+  - kamikaze drone
+  # Actions
+  - drone strike
+  - drone attack
+  - drone struck
+  - drone launched
+  - drone intercepted
+  - shot down drone
+  - drone shot down
+  - drone surveillance
+  - drone footage
+  - swarm attack
+  # Arabic / multilingual
+  - طائرة مسيّرة
+  - طائرة بدون طيار
+
+drone_url_signals:
+  - drone
+  - uav
+  - unmanned
+  - airstrike
+  - shahed
+  - bayraktar

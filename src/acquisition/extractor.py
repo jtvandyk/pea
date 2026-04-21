@@ -126,7 +126,7 @@ def _build_few_shot_examples(examples_path: Path) -> str:
     return "\n".join(lines)
 
 
-SYSTEM_PROMPT = """You are an expert coder for a protest event analysis (PEA) dataset,
+_BASE_SYSTEM_PROMPT = """You are an expert coder for a protest event analysis (PEA) dataset,
 specialising in the Global South and African contexts.
 You follow codebook version 2.2, aligned with Halterman & Keith (2025).
 
@@ -223,7 +223,7 @@ JSON schema for each event:
   "confidence": "high / medium / low"
 }"""
 
-SYSTEM_PROMPT = SYSTEM_PROMPT + _build_codebook_context(_CODEBOOK_PATH)
+SYSTEM_PROMPT = _BASE_SYSTEM_PROMPT + _build_codebook_context(_CODEBOOK_PATH)
 
 _FEW_SHOT_EXAMPLES = _build_few_shot_examples(_EXAMPLES_PATH)
 
@@ -354,11 +354,20 @@ def extract_from_article(
     api_key: str,
     provider: str = "azure",
     max_retries: int = 2,
+    system_prompt: Optional[str] = None,
+    few_shot_examples: Optional[str] = None,
 ) -> Optional[list[dict]]:
     """
     Run LLM extraction on a single article.
     Returns list of extracted event dicts, or None on total failure.
+
+    system_prompt: override the default SYSTEM_PROMPT (built from protest codebook).
+    few_shot_examples: override the default _FEW_SHOT_EXAMPLES string.
+    Both default to the module-level constants when not supplied.
     """
+    resolved_system = system_prompt if system_prompt is not None else SYSTEM_PROMPT
+    resolved_examples = few_shot_examples if few_shot_examples is not None else _FEW_SHOT_EXAMPLES
+
     text = article.get("text_en") or article.get("text") or ""
 
     if not text or len(text) < 100:
@@ -370,7 +379,7 @@ def extract_from_article(
     truncated_text = text[:12000]
 
     prompt = USER_PROMPT_TEMPLATE.format(
-        few_shot_examples=_FEW_SHOT_EXAMPLES,
+        few_shot_examples=resolved_examples,
         title=article.get("title", "Unknown"),
         url=article.get("url", ""),
         date=article.get("seendate", "Unknown"),
@@ -381,7 +390,7 @@ def extract_from_article(
 
     for attempt in range(max_retries + 1):
         raw = _call_azure(
-            system=SYSTEM_PROMPT,
+            system=resolved_system,
             user=prompt,
             model=model,
             api_key=api_key,
@@ -442,6 +451,10 @@ def extract_events(
     rate_limit_delay: float = 1.5,
     checkpoint_path: Optional[str] = None,
     upload_to: Optional[str] = None,
+    codebook_path: Optional[Path] = None,
+    examples_path: Optional[Path] = None,
+    workers: int = 1,
+    rpm_limit: int = 450,
 ) -> tuple[list[dict], list[dict]]:
     """
     Run LLM extraction across all scraped articles via Azure AI Foundry.
@@ -451,14 +464,23 @@ def extract_events(
         model: deployment name in your Azure AI Foundry project (e.g. 'gpt-4.1')
         api_key: API key — defaults to AZURE_FOUNDRY_API_KEY env var
         provider: always 'azure' (kept for interface compatibility)
-        rate_limit_delay: seconds between requests (polite pacing)
-        checkpoint_path: path to checkpoint file; processed URLs are skipped
-                         on resume and appended after each successful article
+        rate_limit_delay: seconds between requests (sequential mode only; ignored when workers>1)
+        checkpoint_path: path to checkpoint file; processed URLs are skipped on resume
+        codebook_path: override the default protest codebook YAML path
+        examples_path: override the default extraction examples YAML path
+        workers: number of concurrent extraction threads (default 1 = sequential).
+                 Set to 4-8 for backfill runs. All workers use the same system prompt,
+                 so Azure prompt caching is maximised.
+        rpm_limit: Azure OpenAI RPM ceiling for the rate limiter (default 450 = 10%
+                   headroom under the 500 RPM gpt-4o-mini limit).
 
     Returns:
         (events, failures) — flat list of extracted event dicts, and list of
         articles that failed extraction after all retries.
     """
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     if provider != "azure":
         raise ValueError(
             f"Provider '{provider}' is not supported. This pipeline uses Azure AI Foundry only."
@@ -475,6 +497,20 @@ def extract_events(
 
     log.info(f"LLM provider: {provider} | model: {resolved_model}")
 
+    # Build system prompt ONCE before the article loop so all workers share the
+    # identical byte sequence — prerequisite for Azure prompt cache hits.
+    if codebook_path is not None:
+        run_system = _BASE_SYSTEM_PROMPT + _build_codebook_context(codebook_path)
+        log.info(f"Using custom codebook: {codebook_path}")
+    else:
+        run_system = SYSTEM_PROMPT
+
+    if examples_path is not None:
+        run_examples = _build_few_shot_examples(examples_path)
+        log.info(f"Using custom examples: {examples_path}")
+    else:
+        run_examples = _FEW_SHOT_EXAMPLES
+
     # Load already-processed URLs if resuming
     done_urls: set[str] = set()
     if checkpoint_path:
@@ -483,63 +519,108 @@ def extract_events(
             done_urls = set(cp.read_text().splitlines())
             log.info(f"Checkpoint: skipping {len(done_urls)} already-processed URLs")
 
-    all_events = []
-    failures = []
-    processed = 0
-    skipped = 0
+    todo_articles = [a for a in articles if a.get("url", "") not in done_urls]
+    log.info(f"Articles to process: {len(todo_articles)} (skipping {len(articles) - len(todo_articles)} checkpointed)")
 
-    for i, article in enumerate(articles):
+    all_events: list[dict] = []
+    failures: list[dict] = []
+    _checkpoint_lock = threading.Lock()
+
+    def _write_checkpoint(url: str) -> None:
+        if not checkpoint_path:
+            return
+        with _checkpoint_lock:
+            with open(checkpoint_path, "a") as f:
+                f.write(url + "\n")
+
+    def _process_one(article: dict) -> tuple[str, Optional[list[dict]]]:
         url = article.get("url", "")
-        url_display = url[:70]
-
-        if url in done_urls:
-            log.info(
-                f"[{i+1}/{len(articles)}] Skipping (checkpointed): {url_display}..."
-            )
-            continue
-
-        log.info(f"[{i+1}/{len(articles)}] Extracting from: {url_display}...")
-
         events = extract_from_article(
-            article, model=resolved_model, api_key=resolved_key, provider=provider
+            article,
+            model=resolved_model,
+            api_key=resolved_key,
+            provider=provider,
+            system_prompt=run_system,
+            few_shot_examples=run_examples,
         )
+        if events is not None:
+            _write_checkpoint(url)
+        return url, events
 
-        if events:
-            log.info(f"  ✓ Found {len(events)} event(s)")
-            all_events.extend(events)
-            processed += 1
-        elif events is not None and len(events) == 0:
-            # Empty list = valid response (no protest events in article)
-            log.info("  — No events found")
-            skipped += 1
-        else:
-            # None = extraction failed after all retries
-            log.warning(f"  ✗ Extraction failed: {url_display}")
-            failures.append(
-                {
+    if workers > 1:
+        log.info(f"Concurrent extraction: {workers} workers, rpm_limit={rpm_limit}")
+
+        # Simple token-bucket rate limiter: shared across all worker threads.
+        _rpm_interval = 60.0 / rpm_limit
+        _rate_lock = threading.Lock()
+        _last_call: list[float] = [0.0]  # list to allow mutation from nested function
+
+        def _rate_limited_process(article: dict) -> tuple[str, Optional[list[dict]]]:
+            with _rate_lock:
+                wait = _rpm_interval - (time.monotonic() - _last_call[0])
+                if wait > 0:
+                    time.sleep(wait)
+                _last_call[0] = time.monotonic()
+            return _process_one(article)
+
+        results: list[tuple[str, Optional[list[dict]]]] = []
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(_rate_limited_process, a): a for a in todo_articles}
+            for i, future in enumerate(as_completed(futures)):
+                url, events = future.result()
+                results.append((url, events))
+                # Periodic blob upload (every 10 completions)
+                if upload_to and (i + 1) % 10 == 0:
+                    from src.acquisition.storage import upload_checkpoint
+                    if checkpoint_path:
+                        upload_checkpoint(upload_to, Path(checkpoint_path).parent)
+
+        # Collect results in stable order for deterministic output
+        for url, events in results:
+            if events:
+                all_events.extend(events)
+            elif events is None:
+                article = next((a for a in todo_articles if a.get("url") == url), {})
+                failures.append({
                     "url": url,
                     "title": article.get("title", ""),
                     "reason": "extraction_failed",
                     "lang": article.get("text_lang", "unknown"),
-                }
-            )
-            skipped += 1
+                })
+    else:
+        # Sequential mode (default): preserves original order and per-article delay.
+        for i, article in enumerate(todo_articles):
+            url = article.get("url", "")
+            url_display = url[:70]
+            log.info(f"[{i+1}/{len(todo_articles)}] Extracting from: {url_display}...")
 
-        # Write to checkpoint after every article (success or no-events; not failures)
-        if checkpoint_path and events is not None:
-            with open(checkpoint_path, "a") as f:
-                f.write(url + "\n")
-            # Upload checkpoint to blob every 10 articles for crash-safe resume
+            url, events = _process_one(article)
+
+            if events:
+                log.info(f"  ✓ Found {len(events)} event(s)")
+                all_events.extend(events)
+            elif events is not None and len(events) == 0:
+                log.info("  — No events found")
+            else:
+                log.warning(f"  ✗ Extraction failed: {url_display}")
+                failures.append({
+                    "url": url,
+                    "title": article.get("title", ""),
+                    "reason": "extraction_failed",
+                    "lang": article.get("text_lang", "unknown"),
+                })
+
             if upload_to and (i + 1) % 10 == 0:
                 from src.acquisition.storage import upload_checkpoint
+                if checkpoint_path:
+                    upload_checkpoint(upload_to, Path(checkpoint_path).parent)
 
-                upload_checkpoint(upload_to, Path(checkpoint_path).parent)
-
-        if i < len(articles) - 1:
-            time.sleep(rate_limit_delay)
+            if i < len(todo_articles) - 1:
+                time.sleep(rate_limit_delay)
 
     log.info(
         f"Extraction complete: {len(all_events)} events from "
-        f"{processed} articles ({skipped} with no events, {len(failures)} failures)"
+        f"{len(all_events) + len([f for f in failures])} articles "
+        f"({len(failures)} failures)"
     )
     return all_events, failures
