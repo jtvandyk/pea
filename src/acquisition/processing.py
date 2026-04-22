@@ -22,6 +22,7 @@ import json
 import logging
 import math
 import os
+import re
 from collections import Counter
 from datetime import datetime
 from difflib import SequenceMatcher
@@ -311,12 +312,10 @@ def recheck_borderline(
             raw = _call_azure(system=SYSTEM_PROMPT, user=user_msg, model=model, api_key=api_key)
             if not raw:
                 continue
-            import json as _json, re as _re
-            # Extract JSON object from response
-            m = _re.search(r'\{[^{}]+\}', raw, _re.DOTALL)
+            m = re.search(r'\{[^{}]+\}', raw, re.DOTALL)
             if not m:
                 continue
-            data = _json.loads(m.group())
+            data = json.loads(m.group())
             new_type = data.get("event_type", "")
             new_conf = data.get("confidence", "")
             if new_type in valid_types and new_type != event.get("event_type"):

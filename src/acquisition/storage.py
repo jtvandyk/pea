@@ -5,10 +5,7 @@ Saves extracted protest events to:
   1. A JSONL file (one event per line) — ideal for streaming/appending
   2. A CSV file — for easy viewing in Excel/Sheets
   3. A run summary JSON — metadata about the pipeline run
-
-v2.1 additions:
-  - New CSV columns: duration, location_notes, state_actors, outcome_notes
-  - Derived field: turmoil_level (high / medium / low)
+  4. A cumulative all_events.jsonl across runs
 """
 
 import csv
@@ -227,15 +224,14 @@ def save_results(
     """
     Save events to JSONL, CSV, and a run summary file.
 
-    domain: subdirectory namespace ('protest' or 'drone'). All files are written
-    under output_dir/domain/ so multiple codebook runs never share checkpoints or
-    cumulative files. E.g. data/raw/protest/ and data/raw/drone/.
+    domain: output subdirectory (e.g. 'protest', 'drone'). Files go to
+    output_dir/domain/ so multiple codebook runs never collide.
 
     If failures are provided, writes them to failures_{run_id}.jsonl.
     If upload_to is set, uploads all output files to S3 or Azure Blob after writing.
 
     Derives turmoil_level for each event before writing.
-    Returns the path to the effective output directory (output_dir/domain/).
+    Returns the effective output directory (output_dir/domain/).
     """
     if not events:
         log.warning("No events to save.")

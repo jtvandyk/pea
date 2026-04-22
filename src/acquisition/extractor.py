@@ -159,7 +159,7 @@ def _build_few_shot_examples(
 
 _BASE_SYSTEM_PROMPT = """You are an expert coder for a protest event analysis (PEA) dataset,
 specialising in the Global South and African contexts.
-You follow codebook version 2.2, aligned with Halterman & Keith (2025).
+You follow codebook version 2.3, aligned with Halterman & Keith (2025).
 
 Your task is to read a news article and extract structured information about
 each distinct protest event described.
@@ -662,9 +662,9 @@ def extract_events(
             if i < len(todo_articles) - 1:
                 time.sleep(rate_limit_delay)
 
+    n_succeeded = len(todo_articles) - len(failures)
     log.info(
         f"Extraction complete: {len(all_events)} events from "
-        f"{len(all_events) + len([f for f in failures])} articles "
-        f"({len(failures)} failures)"
+        f"{n_succeeded} articles ({len(failures)} failures)"
     )
     return all_events, failures

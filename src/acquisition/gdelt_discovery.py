@@ -241,28 +241,47 @@ _PROTEST_SIGNALS: set[str] = set(_KEYWORDS.get("protest_signals", []))
 _URL_SIGNALS: list[str] = _KEYWORDS.get("url_signals", [])
 
 
-def filter_protest_relevant(articles: list[dict], min_score: float = 0.0) -> list[dict]:
+def _normalize_articles(raw: list[dict]) -> list[dict]:
+    """Normalize GDELT article dicts to the pipeline's standard field set."""
+    normalized = []
+    for art in raw:
+        url = art.get("url", "")
+        if not url:
+            continue
+        normalized.append(
+            {
+                "url": url,
+                "title": art.get("title", ""),
+                "seendate": art.get("seendate", ""),
+                "sourcecountry": art.get("sourcecountry", ""),
+                "sourcelanguage": art.get("sourcelanguage", ""),
+                "domain": art.get("domain", ""),
+                "_relevance": None,
+                "text": None,
+                "text_lang": None,
+                "text_en": None,
+                "events": [],
+            }
+        )
+    return normalized
+
+
+def _tag_relevance(articles: list[dict]) -> list[dict]:
     """
-    Filter articles to keep only those likely to be about protest events.
-    GDELT returns articles matching the keyword query but may include noise.
+    Tag each article with a '_relevance' hint based on title/URL keyword matching.
+    All articles are returned — GDELT pre-filters by theme, so nothing is dropped here.
+    The tag is used downstream by the relevance filter for diagnostic logging only.
     """
-    filtered = []
     for article in articles:
         title = (article.get("title") or "").lower()
         url = (article.get("url") or "").lower()
-
         if any(signal in title for signal in _PROTEST_SIGNALS):
             article["_relevance"] = "title_match"
-            filtered.append(article)
         elif any(signal in url for signal in _URL_SIGNALS):
             article["_relevance"] = "url_match"
-            filtered.append(article)
         else:
-            # Keep anyway if it passed GDELT's theme filter — mark as uncertain
             article["_relevance"] = "gdelt_theme"
-            filtered.append(article)
-
-    return filtered
+    return articles
 
 
 def _fetch_for_country(query: str, country: str, days: int) -> list[dict]:
@@ -360,29 +379,7 @@ def discover_articles_date_range(
         f"{len(raw_articles)} unique articles across all countries"
     )
 
-    # Normalize and filter — same post-processing as discover_articles()
-    normalized = []
-    for art in raw_articles:
-        url = art.get("url", "")
-        if not url:
-            continue
-        normalized.append(
-            {
-                "url": url,
-                "title": art.get("title", ""),
-                "seendate": art.get("seendate", ""),
-                "sourcecountry": art.get("sourcecountry", ""),
-                "sourcelanguage": art.get("sourcelanguage", ""),
-                "domain": art.get("domain", ""),
-                "_relevance": None,
-                "text": None,
-                "text_lang": None,
-                "text_en": None,
-                "events": [],
-            }
-        )
-
-    return filter_protest_relevant(normalized)
+    return _tag_relevance(_normalize_articles(raw_articles))
 
 
 def discover_articles(
@@ -427,32 +424,6 @@ def discover_articles(
     raw_articles = list(seen_urls.values())
     log.info(f"Total unique articles across all countries: {len(raw_articles)}")
 
-    # Normalize fields
-    normalized = []
-    for art in raw_articles:
-        url = art.get("url", "")
-        if not url:
-            continue
-        normalized.append(
-            {
-                "url": url,
-                "title": art.get("title", ""),
-                "seendate": art.get("seendate", ""),
-                "sourcecountry": art.get("sourcecountry", ""),
-                "sourcelanguage": art.get("sourcelanguage", ""),
-                "domain": art.get("domain", ""),
-                "_relevance": None,
-                "text": None,
-                "text_lang": None,
-                "text_en": None,
-                "events": [],
-            }
-        )
-
-    # Filter for protest relevance
-    filtered = filter_protest_relevant(normalized)
-
-    # Cap results
-    result = filtered[:max_results]
+    result = _tag_relevance(_normalize_articles(raw_articles))[:max_results]
     log.info(f"Returning {len(result)} candidate articles after filtering")
     return result

@@ -20,9 +20,9 @@ from typing import Optional
 
 log = logging.getLogger(__name__)
 
-# Languages Claude can handle natively — skip translation for these
+# Languages the LLM can handle natively — skip translation for these
 # (saves time and avoids translation noise)
-CLAUDE_NATIVE_LANGUAGES = {
+NATIVE_LANGUAGES = {
     "en",
     "es",
     "fr",
@@ -134,7 +134,7 @@ def translate_articles(articles: list[dict]) -> list[dict]:
             article["text_en"] = text
             native_count += 1
 
-        elif lang in CLAUDE_NATIVE_LANGUAGES:
+        elif lang in NATIVE_LANGUAGES:
             # Claude can handle this language natively
             # Still provide original, flag as non-English for extractor
             log.info(f"  Language '{lang}' — Claude handles natively, passing as-is")

@@ -180,23 +180,6 @@ class RelevanceFilter:
             return 1.0
         return 0.0
 
-    def score_article(self, article: dict) -> float:
-        """Score a single article. Uses title + first 200 chars of text."""
-        title = article.get("title") or ""
-        text_snippet = (article.get("text_en") or article.get("text") or "")[:200]
-        combined = f"{title}. {text_snippet}".strip()
-
-        if self._model_available:
-            score = self._score_with_model(combined)
-            source = "model"
-        else:
-            score = self._score_with_keywords(combined)
-            source = "keyword"
-
-        article["_relevance_score"] = round(score, 4)
-        article["_relevance_source"] = source
-        return score
-
     def filter(
         self,
         articles: list[dict],

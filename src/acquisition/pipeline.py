@@ -28,7 +28,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 
 import src.acquisition.gdelt_discovery as _gdelt
@@ -105,6 +105,7 @@ def run_pipeline(
     scrape_workers: int = 16,
     relevance_batch_size: int = 32,
     examples_sample_n: int = 5,
+    articles: Optional[list] = None,
 ):
     log.info("=== Protest Event Analysis Pipeline (codebook v2.3) ===")
     log.info(f"Query: '{query}' | Countries: {countries} | Days back: {days}")
@@ -123,41 +124,44 @@ def run_pipeline(
     if resume and upload_to:
         sync_checkpoint_from_blob(upload_to, effective_output_dir)
 
-    # Stage 1: Discovery
-    articles = []
+    # Stage 1: Discovery — skipped when articles are pre-supplied (e.g. backfill mode)
+    if articles is not None:
+        log.info(f"Using {len(articles)} pre-discovered articles — skipping Stage 1")
+    else:
+        articles = []
 
-    if source in ("gdelt", "both"):
-        log.info("--- Stage 1a: GDELT Discovery ---")
-        gdelt_articles = _gdelt.discover_articles(
-            query=query, countries=countries, days=days, max_results=max_articles
-        )
-        log.info(f"GDELT: {len(gdelt_articles)} candidate articles")
-        articles.extend(gdelt_articles)
+        if source in ("gdelt", "both"):
+            log.info("--- Stage 1a: GDELT Discovery ---")
+            gdelt_articles = _gdelt.discover_articles(
+                query=query, countries=countries, days=days, max_results=max_articles
+            )
+            log.info(f"GDELT: {len(gdelt_articles)} candidate articles")
+            articles.extend(gdelt_articles)
 
-    if source in ("bbc", "both"):
-        log.info("--- Stage 1b: BBC Monitoring Discovery ---")
-        bbc_articles = _bbc.discover_articles(
-            query=query,
-            countries=countries,
-            days=days,
-            max_results=max_articles,
-            fetch_full_text=True,
-        )
-        log.info(f"BBC Monitoring: {len(bbc_articles)} candidate articles")
-        articles.extend(bbc_articles)
+        if source in ("bbc", "both"):
+            log.info("--- Stage 1b: BBC Monitoring Discovery ---")
+            bbc_articles = _bbc.discover_articles(
+                query=query,
+                countries=countries,
+                days=days,
+                max_results=max_articles,
+                fetch_full_text=True,
+            )
+            log.info(f"BBC Monitoring: {len(bbc_articles)} candidate articles")
+            articles.extend(bbc_articles)
 
-    # Deduplicate by URL when using both sources
-    if source == "both":
-        seen = set()
-        deduped = []
-        for a in articles:
-            if a["url"] not in seen:
-                seen.add(a["url"])
-                deduped.append(a)
-        log.info(
-            f"After dedup: {len(deduped)} articles ({len(articles) - len(deduped)} duplicates removed)"
-        )
-        articles = deduped
+        # Deduplicate by URL when using both sources
+        if source == "both":
+            seen = set()
+            deduped = []
+            for a in articles:
+                if a["url"] not in seen:
+                    seen.add(a["url"])
+                    deduped.append(a)
+            log.info(
+                f"After dedup: {len(deduped)} articles ({len(articles) - len(deduped)} duplicates removed)"
+            )
+            articles = deduped
 
     log.info(f"Discovered {len(articles)} candidate articles total")
 
@@ -687,6 +691,28 @@ def main():
                 checkpoint.unlink()
                 log.info(f"Fresh run — cleared existing checkpoint for domain '{domain}'")
 
+            # Pre-discover articles for backfill mode; normal mode leaves articles=None
+            # so run_pipeline() runs its own discovery.
+            backfill_articles = None
+            if args.backfill_from:
+                start_date = datetime.strptime(args.backfill_from, "%Y-%m-%d")
+                end_date = (
+                    datetime.strptime(args.backfill_to, "%Y-%m-%d")
+                    if args.backfill_to
+                    else datetime.utcnow()
+                )
+                log.info(
+                    f"Backfill mode: {start_date.date()} → {end_date.date()} "
+                    f"(window={args.backfill_window_days}d)"
+                )
+                backfill_articles = _gdelt.discover_articles_date_range(
+                    query=query,
+                    countries=args.countries.split(","),
+                    start_date=start_date,
+                    end_date=end_date,
+                    window_days=args.backfill_window_days,
+                )
+
             run_pipeline(
                 query=query,
                 countries=args.countries.split(","),
@@ -712,6 +738,7 @@ def main():
                 scrape_workers=args.scrape_workers,
                 relevance_batch_size=args.relevance_batch_size,
                 examples_sample_n=args.examples_sample_n,
+                articles=backfill_articles,
             )
 
     if args.stage in ("process", "all"):
