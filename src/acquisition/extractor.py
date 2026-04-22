@@ -36,6 +36,8 @@ from typing import Optional
 
 import yaml
 
+from src.acquisition._rate_limit import SlidingWindowLimiter
+
 log = logging.getLogger(__name__)
 
 
@@ -356,6 +358,7 @@ def extract_from_article(
     max_retries: int = 2,
     system_prompt: Optional[str] = None,
     few_shot_examples: Optional[str] = None,
+    limiter: Optional[SlidingWindowLimiter] = None,
 ) -> Optional[list[dict]]:
     """
     Run LLM extraction on a single article.
@@ -363,7 +366,8 @@ def extract_from_article(
 
     system_prompt: override the default SYSTEM_PROMPT (built from protest codebook).
     few_shot_examples: override the default _FEW_SHOT_EXAMPLES string.
-    Both default to the module-level constants when not supplied.
+    limiter: shared rate limiter — acquired before every Azure call, including
+        retries, so retry storms cannot burst past the RPM ceiling.
     """
     resolved_system = system_prompt if system_prompt is not None else SYSTEM_PROMPT
     resolved_examples = few_shot_examples if few_shot_examples is not None else _FEW_SHOT_EXAMPLES
@@ -389,6 +393,8 @@ def extract_from_article(
     )
 
     for attempt in range(max_retries + 1):
+        if limiter is not None:
+            limiter.acquire()
         raw = _call_azure(
             system=resolved_system,
             user=prompt,
@@ -453,7 +459,7 @@ def extract_events(
     upload_to: Optional[str] = None,
     codebook_path: Optional[Path] = None,
     examples_path: Optional[Path] = None,
-    workers: int = 1,
+    workers: int = 4,
     rpm_limit: int = 450,
 ) -> tuple[list[dict], list[dict]]:
     """
@@ -468,9 +474,10 @@ def extract_events(
         checkpoint_path: path to checkpoint file; processed URLs are skipped on resume
         codebook_path: override the default protest codebook YAML path
         examples_path: override the default extraction examples YAML path
-        workers: number of concurrent extraction threads (default 1 = sequential).
-                 Set to 4-8 for backfill runs. All workers use the same system prompt,
-                 so Azure prompt caching is maximised.
+        workers: number of concurrent extraction threads (default 4). Pass 1 for
+                 sequential mode. All workers use the same system prompt so Azure
+                 prompt caching is maximised, and share one sliding-window rate
+                 limiter so retry storms cannot burst past the RPM ceiling.
         rpm_limit: Azure OpenAI RPM ceiling for the rate limiter (default 450 = 10%
                    headroom under the 500 RPM gpt-4o-mini limit).
 
@@ -533,7 +540,10 @@ def extract_events(
             with open(checkpoint_path, "a") as f:
                 f.write(url + "\n")
 
-    def _process_one(article: dict) -> tuple[str, Optional[list[dict]]]:
+    def _process_one(
+        article: dict,
+        limiter: Optional[SlidingWindowLimiter] = None,
+    ) -> tuple[str, Optional[list[dict]]]:
         url = article.get("url", "")
         events = extract_from_article(
             article,
@@ -542,6 +552,7 @@ def extract_events(
             provider=provider,
             system_prompt=run_system,
             few_shot_examples=run_examples,
+            limiter=limiter,
         )
         if events is not None:
             _write_checkpoint(url)
@@ -550,22 +561,14 @@ def extract_events(
     if workers > 1:
         log.info(f"Concurrent extraction: {workers} workers, rpm_limit={rpm_limit}")
 
-        # Simple token-bucket rate limiter: shared across all worker threads.
-        _rpm_interval = 60.0 / rpm_limit
-        _rate_lock = threading.Lock()
-        _last_call: list[float] = [0.0]  # list to allow mutation from nested function
-
-        def _rate_limited_process(article: dict) -> tuple[str, Optional[list[dict]]]:
-            with _rate_lock:
-                wait = _rpm_interval - (time.monotonic() - _last_call[0])
-                if wait > 0:
-                    time.sleep(wait)
-                _last_call[0] = time.monotonic()
-            return _process_one(article)
+        # Single sliding-window limiter shared across all worker threads. Acquire
+        # happens inside extract_from_article, so retries are counted too —
+        # a retry storm cannot burst past rpm_limit.
+        _limiter = SlidingWindowLimiter(max_requests=rpm_limit, window_seconds=60.0)
 
         results: list[tuple[str, Optional[list[dict]]]] = []
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {pool.submit(_rate_limited_process, a): a for a in todo_articles}
+            futures = {pool.submit(_process_one, a, _limiter): a for a in todo_articles}
             for i, future in enumerate(as_completed(futures)):
                 url, events = future.result()
                 results.append((url, events))

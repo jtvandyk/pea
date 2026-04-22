@@ -545,11 +545,12 @@ def main():
     parser.add_argument(
         "--workers",
         type=int,
-        default=1,
+        default=4,
         help=(
-            "Concurrent extraction workers (default 1 = sequential). "
-            "Recommended: 4–8 for backfill runs. All workers share one system prompt "
-            "so Azure prompt caching is maximised."
+            "Concurrent extraction workers (default 4; pass 1 for sequential). "
+            "All workers share one system prompt so Azure prompt caching stays "
+            "hot, and share one sliding-window limiter so retry storms cannot "
+            "burst past --rpm-limit."
         ),
     )
     parser.add_argument(

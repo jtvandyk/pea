@@ -27,11 +27,11 @@ Nominatim usage policy:
 import json
 import logging
 import threading
-import time
-from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
+
+from src.acquisition._rate_limit import SlidingWindowLimiter as _SlidingWindowLimiter
 
 log = logging.getLogger(__name__)
 
@@ -43,38 +43,6 @@ _USER_AGENT = "protest-event-analysis/1.0 (research; contact: pea-pipeline)"
 
 # Default cache path (relative to CWD — caller may override)
 _DEFAULT_CACHE_PATH = Path("data/cache/geocode.json")
-
-
-class _SlidingWindowLimiter:
-    """
-    Thread-safe sliding-window rate limiter.
-
-    Enforces at most `max_requests` in any `window_seconds` window. Threads
-    calling `acquire()` block until a slot is free. The lock is released
-    before sleeping so other threads can still enqueue.
-
-    For Nominatim: max_requests=1, window_seconds>=1.0 (policy).
-    """
-
-    def __init__(self, max_requests: int, window_seconds: float):
-        self.max_requests = max(1, int(max_requests))
-        self.window_seconds = float(window_seconds)
-        self._timestamps: deque = deque()
-        self._lock = threading.Lock()
-
-    def acquire(self) -> None:
-        while True:
-            with self._lock:
-                now = time.monotonic()
-                cutoff = now - self.window_seconds
-                while self._timestamps and self._timestamps[0] < cutoff:
-                    self._timestamps.popleft()
-                if len(self._timestamps) < self.max_requests:
-                    self._timestamps.append(now)
-                    return
-                sleep_for = self._timestamps[0] + self.window_seconds - now
-            if sleep_for > 0:
-                time.sleep(sleep_for)
 
 
 class _GeocodeCache:
