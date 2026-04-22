@@ -35,8 +35,15 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
+
+import yaml
 
 log = logging.getLogger(__name__)
+
+_DEFAULT_EXAMPLES_PATH = (
+    Path(__file__).parent.parent.parent / "configs" / "extraction_examples.yaml"
+)
 
 # Mapping from Label Studio choice values to training-ready values
 _CONF_MAP = {"high": "high", "medium": "medium", "low": "low"}
@@ -168,9 +175,144 @@ def build_training_pair(event: dict) -> dict | None:
     }
 
 
+def _promotion_rank(event: dict) -> tuple:
+    """
+    Sort key for promotion candidates — higher is better.
+    Priority: type-corrected > extraction-errors flagged > longer article.
+    """
+    return (
+        1 if event.get("_type_corrected") else 0,
+        1 if event.get("_extraction_errors") else 0,
+        len(event.get("_article_text", "")),
+    )
+
+
+def promote_examples(
+    reviewed_events: list[dict],
+    examples_path: Path,
+    n: int,
+) -> int:
+    """
+    Append up to ``n`` annotator-corrected events to ``examples_path`` as
+    new few-shot entries. Each appended entry carries provenance
+    metadata (source, task_id, annotator_id, date_promoted).
+
+    De-dupe: uses ``article_url`` as the unique key. If an example with a
+    matching provenance.task_id already exists, it is skipped.
+
+    The file is appended to as text rather than round-tripped through
+    yaml.safe_dump so handwritten comments and formatting survive.
+
+    Returns the number of entries actually appended.
+    """
+    if n <= 0:
+        return 0
+
+    candidates = [
+        e for e in reviewed_events
+        if not e.get("_is_false_positive") and e.get("_article_text")
+    ]
+    if not candidates:
+        log.info("No promotion candidates (no reviewed events with article text).")
+        return 0
+
+    candidates.sort(key=_promotion_rank, reverse=True)
+
+    # Read existing file to dedupe by task_id
+    try:
+        with open(examples_path, encoding="utf-8") as f:
+            existing_data = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        existing_data = {}
+    except Exception as e:
+        log.warning(f"Could not parse existing examples at {examples_path}: {e}")
+        existing_data = {}
+
+    existing_examples = (existing_data.get("examples") or []) if isinstance(existing_data, dict) else []
+    existing_task_ids = set()
+    for ex in existing_examples:
+        if not isinstance(ex, dict):
+            continue
+        prov = ex.get("provenance") or {}
+        tid = prov.get("task_id")
+        if tid:
+            existing_task_ids.add(tid)
+
+    now = datetime.utcnow().isoformat()
+    appended: list[dict] = []
+    next_id = len(existing_examples) + 1
+
+    for event in candidates:
+        if len(appended) >= n:
+            break
+
+        task_id = event.get("article_url") or f"{event.get('article_title', '')}|{event.get('event_date', '')}"
+        if not task_id or task_id in existing_task_ids:
+            continue
+
+        training_event = {k: v for k, v in event.items() if not k.startswith("_")}
+        new_ex = {
+            "id": f"promoted_{next_id:02d}",
+            "description": (
+                f"Promoted from annotation — {event.get('event_type', 'unknown')}"
+            ),
+            "rationale": (
+                "Auto-promoted from a Label Studio correction. "
+                "Demonstrates the corrected extraction that the annotator "
+                "agreed with. See provenance for traceability."
+            ),
+            "article_snippet": (event.get("_article_text", "")[:3000]).strip(),
+            "extracted_events": [training_event],
+            "provenance": {
+                "source": "label_studio",
+                "task_id": task_id,
+                "annotator_id": event.get("_annotator_id"),
+                "date_promoted": now,
+                "type_corrected": bool(event.get("_type_corrected")),
+                "had_extraction_errors": bool(event.get("_extraction_errors")),
+            },
+        }
+        appended.append(new_ex)
+        next_id += 1
+
+    if not appended:
+        log.info("All promotion candidates already present in examples file.")
+        return 0
+
+    # Dump the appended entries as YAML, then indent each line by 2 spaces so
+    # they nest correctly under the top-level ``examples:`` key. safe_dump
+    # emits each list item starting with ``- `` at column 0.
+    snippet = yaml.safe_dump(
+        appended,
+        sort_keys=False,
+        allow_unicode=True,
+        width=120,
+        default_flow_style=False,
+    )
+    indented = "\n".join(
+        ("  " + line) if line else "" for line in snippet.splitlines()
+    )
+
+    # Append with a leading newline to guarantee separation from the
+    # previous last example.
+    with open(examples_path, "a", encoding="utf-8") as f:
+        f.write("\n")
+        f.write(indented)
+        if not indented.endswith("\n"):
+            f.write("\n")
+
+    log.info(
+        f"Promoted {len(appended)} example(s) to {examples_path} "
+        f"(pool size: {len(existing_examples) + len(appended)})"
+    )
+    return len(appended)
+
+
 def import_annotations(
     annotations_path: Path,
     output_dir: Path,
+    promote_to_examples: int = 0,
+    examples_path: Optional[Path] = None,
 ) -> dict:
     """
     Process a Label Studio export file and write output files.
@@ -260,6 +402,15 @@ def import_annotations(
               f"pairs ({remaining} more needed before QLoRA fine-tuning)")
     else:
         print(f"\n✓ {stats['training_pairs']} training pairs — ready for QLoRA fine-tuning")
+
+    # Close the loop: promote high-ranked corrections into the few-shot
+    # examples file so the next extraction run actually benefits from them.
+    if promote_to_examples > 0:
+        target_path = examples_path or _DEFAULT_EXAMPLES_PATH
+        n_promoted = promote_examples(reviewed_events, target_path, promote_to_examples)
+        stats["promoted_to_examples"] = n_promoted
+        print(f"\nExamples promoted: {n_promoted} → {target_path}")
+
     print("=" * 55 + "\n")
 
     return stats
@@ -282,9 +433,32 @@ if __name__ == "__main__":
         default="data/annotation",
         help="Directory for output files [default: data/annotation]",
     )
+    parser.add_argument(
+        "--promote-to-examples",
+        type=int,
+        default=0,
+        metavar="N",
+        help=(
+            "After import, append up to N top-ranked annotator-corrected "
+            "events to configs/extraction_examples.yaml as new few-shot "
+            "entries (with provenance). Closes the active-learning loop so "
+            "the next extraction run benefits from the corrections. "
+            "Default 0 = off."
+        ),
+    )
+    parser.add_argument(
+        "--examples-path",
+        default=None,
+        help=(
+            "Target YAML for --promote-to-examples. Defaults to "
+            "configs/extraction_examples.yaml."
+        ),
+    )
     args = parser.parse_args()
 
     import_annotations(
         annotations_path=Path(args.annotations),
         output_dir=Path(args.output_dir),
+        promote_to_examples=args.promote_to_examples,
+        examples_path=Path(args.examples_path) if args.examples_path else None,
     )

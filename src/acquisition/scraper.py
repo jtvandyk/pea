@@ -13,8 +13,11 @@ For Global South sources this module:
 """
 
 import logging
+import threading
 import time
 import random
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -181,65 +184,139 @@ def scrape_article(url: str, session: requests.Session) -> Optional[str]:
     return text
 
 
+class _HostThrottle:
+    """
+    Per-host politeness — one lock + last-fetch timestamp per netloc.
+
+    Holding `lock_for(host)` across `wait_for_host(host)` AND the subsequent
+    HTTP fetch guarantees same-host requests fully serialise with a jittered
+    delay between them. Different hosts take different locks, so fetches
+    to distinct domains run in parallel.
+    """
+
+    def __init__(self, delay_range: tuple = REQUEST_DELAY):
+        self.delay_min, self.delay_max = delay_range
+        self._locks: dict[str, threading.Lock] = {}
+        self._last_fetch: dict[str, float] = {}
+        self._registry_lock = threading.Lock()
+
+    def lock_for(self, host: str) -> threading.Lock:
+        with self._registry_lock:
+            lock = self._locks.get(host)
+            if lock is None:
+                lock = threading.Lock()
+                self._locks[host] = lock
+            return lock
+
+    def wait_for_host(self, host: str) -> None:
+        """Sleep until the per-host delay since last fetch has elapsed."""
+        last = self._last_fetch.get(host, 0.0)
+        jitter = random.uniform(self.delay_min, self.delay_max)
+        target = last + jitter
+        now = time.monotonic()
+        if target > now:
+            time.sleep(target - now)
+        self._last_fetch[host] = time.monotonic()
+
+
 def scrape_articles(
     articles: list[dict],
     delay: tuple = REQUEST_DELAY,
     max_failures: int = 20,
+    max_workers: int = 16,
 ) -> list[dict]:
     """
     Scrape full text for a list of article dicts.
     Modifies each dict in-place, adding 'text' field.
 
+    Concurrency: up to `max_workers` threads fetch in parallel. Same-host
+    requests serialise through a per-host lock + jittered delay so politeness
+    is preserved; different hosts proceed in parallel.
+
     Args:
         articles: list of article dicts (must have 'url' field)
-        delay: (min, max) seconds to wait between requests
-        max_failures: stop early if too many consecutive failures
+        delay: (min, max) seconds between consecutive fetches to the same host
+        max_failures: early-abort signal — if this many failures occur with zero
+            successes, stop dispatching new work (network is likely broken)
+        max_workers: size of the scraping thread pool (default 16)
 
     Returns:
         same list with 'text' field populated where scraping succeeded
     """
     session = make_session()
-    failures = 0
-    success = 0
+    throttle = _HostThrottle(delay)
+    workers = max(1, int(max_workers))
 
-    for i, article in enumerate(articles):
+    total = len(articles)
+    counters = {"success": 0, "failures": 0, "started": 0}
+    counters_lock = threading.Lock()
+    aborted = threading.Event()
+
+    def _scrape_one(item: tuple) -> None:
+        i, article = item
+        if aborted.is_set():
+            return
+
         url = article.get("url", "")
         if not url:
-            continue
+            return
 
-        # Skip articles that already have text (e.g. pre-populated by BBC Monitoring)
+        with counters_lock:
+            counters["started"] += 1
+            position = counters["started"]
+
         if article.get("text"):
             log.info(
-                f"[{i+1}/{len(articles)}] Skipping (text pre-populated): {url[:80]}"
+                f"[{position}/{total}] Skipping (text pre-populated): {url[:80]}"
             )
-            success += 1
-            continue
+            with counters_lock:
+                counters["success"] += 1
+            return
 
-        log.info(f"[{i+1}/{len(articles)}] Scraping: {url[:80]}...")
+        log.info(f"[{position}/{total}] Scraping: {url[:80]}...")
+        host = get_domain(url)
+        host_lock = throttle.lock_for(host)
 
-        text = scrape_article(url, session)
+        # Hold the host lock across wait + fetch so same-host requests
+        # fully serialise. Different-host fetches run in parallel.
+        with host_lock:
+            if aborted.is_set():
+                return
+            throttle.wait_for_host(host)
+            text = scrape_article(url, session)
 
         if text:
             article["text"] = text
-            # Rough word count for logging
             word_count = len(text.split())
-            log.info(f"  ✓ {word_count} words extracted")
-            success += 1
-            failures = 0  # reset consecutive failure counter
+            log.info(f"  ✓ {word_count} words extracted ({host})")
+            with counters_lock:
+                counters["success"] += 1
         else:
             article["text"] = None
-            log.info("  ✗ Scraping failed")
-            failures += 1
+            log.info(f"  ✗ Scraping failed ({host})")
+            with counters_lock:
+                counters["failures"] += 1
+                # Early abort: many failures and not a single success yet
+                # → treat as network-broken and stop dispatching.
+                if counters["failures"] >= max_failures and counters["success"] == 0:
+                    log.warning(
+                        f"Too many failures ({counters['failures']}) with no "
+                        f"successes; aborting remaining scrapes."
+                    )
+                    aborted.set()
 
-        if failures >= max_failures:
-            log.warning(
-                f"Too many consecutive failures ({failures}). Stopping scraping."
-            )
-            break
+    log.info(
+        f"Scraping {total} article(s) with {workers} worker(s), "
+        f"per-host delay {delay[0]}-{delay[1]}s"
+    )
 
-        # Polite delay between requests
-        if i < len(articles) - 1:
-            time.sleep(random.uniform(*delay))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        # map() consumes the iterator; we don't need return values (mutation in place).
+        for _ in pool.map(_scrape_one, enumerate(articles)):
+            pass
 
-    log.info(f"Scraping complete: {success}/{len(articles)} articles retrieved")
+    log.info(
+        f"Scraping complete: {counters['success']}/{total} articles retrieved "
+        f"({counters['failures']} failed)"
+    )
     return articles

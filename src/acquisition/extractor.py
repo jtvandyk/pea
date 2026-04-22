@@ -29,12 +29,15 @@ The LLM is instructed to return a JSON array of event objects.
 import json
 import logging
 import os
+import random
 import re
 import time
 from pathlib import Path
 from typing import Optional
 
 import yaml
+
+from src.acquisition._rate_limit import SlidingWindowLimiter
 
 log = logging.getLogger(__name__)
 
@@ -89,10 +92,26 @@ _CODEBOOK_PATH = Path(__file__).parent.parent.parent / "configs" / "protest_code
 _EXAMPLES_PATH = Path(__file__).parent.parent.parent / "configs" / "extraction_examples.yaml"
 
 
-def _build_few_shot_examples(examples_path: Path) -> str:
+def _build_few_shot_examples(
+    examples_path: Path,
+    sample_n: int = 5,
+    seed: Optional[int] = None,
+) -> str:
     """
     Load the gold-standard extraction examples YAML and return a formatted
     string of demonstrated input/output pairs for injection into the user prompt.
+
+    Selection rules:
+      - Entries with ``pinned: true`` are always included (handwritten
+        curriculum; never evicted).
+      - Remaining slots up to ``sample_n`` total are filled by random sampling
+        from the non-pinned pool using ``random.Random(seed)``. With a
+        run-stable seed, the sample is identical across all articles in a
+        run (preserves Azure prompt caching) but varies across runs
+        (exposes the model to rotating promoted examples).
+      - If ``sample_n <= len(pinned)``, ``sample_n`` acts as a floor and
+        all pinned are still included.
+
     Returns an empty string if the file cannot be loaded.
     """
     try:
@@ -102,9 +121,21 @@ def _build_few_shot_examples(examples_path: Path) -> str:
         log.warning(f"Could not load extraction examples for prompt injection: {e}")
         return ""
 
-    examples = data.get("examples", [])
-    if not examples:
+    pool = (data or {}).get("examples", []) or []
+    if not pool:
         return ""
+
+    pinned = [ex for ex in pool if ex.get("pinned")]
+    rotatable = [ex for ex in pool if not ex.get("pinned")]
+
+    remaining = max(0, int(sample_n) - len(pinned))
+    if remaining and rotatable:
+        rng = random.Random(seed)
+        sampled = rng.sample(rotatable, min(remaining, len(rotatable)))
+    else:
+        sampled = []
+
+    selected = pinned + sampled
 
     lines = ["== FEW-SHOT EXAMPLES ==", ""]
     lines.append(
@@ -112,7 +143,7 @@ def _build_few_shot_examples(examples_path: Path) -> str:
         "Study them before processing the real article below.\n"
     )
 
-    for ex in examples:
+    for ex in selected:
         lines.append(f"--- Example: {ex.get('description', '')} ---")
         lines.append("ARTICLE TEXT:")
         lines.append(ex.get("article_snippet", "").strip())
@@ -356,6 +387,7 @@ def extract_from_article(
     max_retries: int = 2,
     system_prompt: Optional[str] = None,
     few_shot_examples: Optional[str] = None,
+    limiter: Optional[SlidingWindowLimiter] = None,
 ) -> Optional[list[dict]]:
     """
     Run LLM extraction on a single article.
@@ -363,7 +395,8 @@ def extract_from_article(
 
     system_prompt: override the default SYSTEM_PROMPT (built from protest codebook).
     few_shot_examples: override the default _FEW_SHOT_EXAMPLES string.
-    Both default to the module-level constants when not supplied.
+    limiter: shared rate limiter — acquired before every Azure call, including
+        retries, so retry storms cannot burst past the RPM ceiling.
     """
     resolved_system = system_prompt if system_prompt is not None else SYSTEM_PROMPT
     resolved_examples = few_shot_examples if few_shot_examples is not None else _FEW_SHOT_EXAMPLES
@@ -389,6 +422,8 @@ def extract_from_article(
     )
 
     for attempt in range(max_retries + 1):
+        if limiter is not None:
+            limiter.acquire()
         raw = _call_azure(
             system=resolved_system,
             user=prompt,
@@ -453,8 +488,10 @@ def extract_events(
     upload_to: Optional[str] = None,
     codebook_path: Optional[Path] = None,
     examples_path: Optional[Path] = None,
-    workers: int = 1,
+    workers: int = 4,
     rpm_limit: int = 450,
+    examples_sample_n: int = 5,
+    examples_seed: Optional[int] = None,
 ) -> tuple[list[dict], list[dict]]:
     """
     Run LLM extraction across all scraped articles via Azure AI Foundry.
@@ -468,9 +505,10 @@ def extract_events(
         checkpoint_path: path to checkpoint file; processed URLs are skipped on resume
         codebook_path: override the default protest codebook YAML path
         examples_path: override the default extraction examples YAML path
-        workers: number of concurrent extraction threads (default 1 = sequential).
-                 Set to 4-8 for backfill runs. All workers use the same system prompt,
-                 so Azure prompt caching is maximised.
+        workers: number of concurrent extraction threads (default 4). Pass 1 for
+                 sequential mode. All workers use the same system prompt so Azure
+                 prompt caching is maximised, and share one sliding-window rate
+                 limiter so retry storms cannot burst past the RPM ceiling.
         rpm_limit: Azure OpenAI RPM ceiling for the rate limiter (default 450 = 10%
                    headroom under the 500 RPM gpt-4o-mini limit).
 
@@ -505,11 +543,21 @@ def extract_events(
     else:
         run_system = SYSTEM_PROMPT
 
+    # Rebuild few-shot examples for this run. A run-stable seed keeps the
+    # sampled subset identical across all articles in the run (so Azure
+    # prompt caching keeps hitting) while varying across runs (so promoted
+    # examples rotate in and out as the pool grows).
+    resolved_seed = (
+        examples_seed if examples_seed is not None else time.time_ns()
+    )
+    resolved_examples_path = examples_path if examples_path is not None else _EXAMPLES_PATH
+    run_examples = _build_few_shot_examples(
+        resolved_examples_path,
+        sample_n=examples_sample_n,
+        seed=resolved_seed,
+    )
     if examples_path is not None:
-        run_examples = _build_few_shot_examples(examples_path)
         log.info(f"Using custom examples: {examples_path}")
-    else:
-        run_examples = _FEW_SHOT_EXAMPLES
 
     # Load already-processed URLs if resuming
     done_urls: set[str] = set()
@@ -533,7 +581,10 @@ def extract_events(
             with open(checkpoint_path, "a") as f:
                 f.write(url + "\n")
 
-    def _process_one(article: dict) -> tuple[str, Optional[list[dict]]]:
+    def _process_one(
+        article: dict,
+        limiter: Optional[SlidingWindowLimiter] = None,
+    ) -> tuple[str, Optional[list[dict]]]:
         url = article.get("url", "")
         events = extract_from_article(
             article,
@@ -542,6 +593,7 @@ def extract_events(
             provider=provider,
             system_prompt=run_system,
             few_shot_examples=run_examples,
+            limiter=limiter,
         )
         if events is not None:
             _write_checkpoint(url)
@@ -550,22 +602,14 @@ def extract_events(
     if workers > 1:
         log.info(f"Concurrent extraction: {workers} workers, rpm_limit={rpm_limit}")
 
-        # Simple token-bucket rate limiter: shared across all worker threads.
-        _rpm_interval = 60.0 / rpm_limit
-        _rate_lock = threading.Lock()
-        _last_call: list[float] = [0.0]  # list to allow mutation from nested function
-
-        def _rate_limited_process(article: dict) -> tuple[str, Optional[list[dict]]]:
-            with _rate_lock:
-                wait = _rpm_interval - (time.monotonic() - _last_call[0])
-                if wait > 0:
-                    time.sleep(wait)
-                _last_call[0] = time.monotonic()
-            return _process_one(article)
+        # Single sliding-window limiter shared across all worker threads. Acquire
+        # happens inside extract_from_article, so retries are counted too —
+        # a retry storm cannot burst past rpm_limit.
+        _limiter = SlidingWindowLimiter(max_requests=rpm_limit, window_seconds=60.0)
 
         results: list[tuple[str, Optional[list[dict]]]] = []
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {pool.submit(_rate_limited_process, a): a for a in todo_articles}
+            futures = {pool.submit(_process_one, a, _limiter): a for a in todo_articles}
             for i, future in enumerate(as_completed(futures)):
                 url, events = future.result()
                 results.append((url, events))

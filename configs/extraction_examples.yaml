@@ -19,6 +19,7 @@
 examples:
 
   - id: "ex_01"
+    pinned: true
     description: "Clean single event — South African service delivery protest with roadblock"
     rationale: |
       Demonstrates the correct handling of a township roadblock with burning tyres,
@@ -60,6 +61,7 @@ examples:
         confidence: "high"
 
   - id: "ex_02"
+    pinned: true
     description: "Correct empty result — AU summit, not a protest"
     rationale: |
       Demonstrates the disqualifier gate working correctly. AU and SADC summits
@@ -76,6 +78,7 @@ examples:
     extracted_events: []
 
   - id: "ex_03"
+    pinned: true
     description: "Multi-event article — strike and simultaneous student occupation, Nigeria"
     rationale: |
       Demonstrates that one article can contain multiple distinct protest events
@@ -146,6 +149,7 @@ examples:
         confidence: "high"
 
   - id: "ex_04"
+    pinned: true
     description: "Demonstration with teargas dispersal — Nigeria cost-of-living protest, medium confidence"
     rationale: |
       Demonstrates demonstration_march (currently uncovered type), active state response
@@ -189,6 +193,7 @@ examples:
         confidence: "medium"
 
   - id: "ex_05"
+    pinned: true
     description: "Riot — post-election protest violence, Nigeria, protester-initiated"
     rationale: |
       Demonstrates riot classification where violence is PROTESTER-initiated (looting,

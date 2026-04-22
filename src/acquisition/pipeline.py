@@ -100,6 +100,11 @@ def run_pipeline(
     examples_path: Optional[Path] = None,
     workers: int = 1,
     rpm_limit: int = 450,
+    geocode_cache: Optional[Path] = Path("data/cache/geocode.json"),
+    geocode_workers: int = 4,
+    scrape_workers: int = 16,
+    relevance_batch_size: int = 32,
+    examples_sample_n: int = 5,
 ):
     log.info("=== Protest Event Analysis Pipeline (codebook v2.3) ===")
     log.info(f"Query: '{query}' | Countries: {countries} | Days back: {days}")
@@ -162,7 +167,7 @@ def run_pipeline(
 
     # Stage 2: Full-text scraping
     log.info("--- Stage 2: Full-text Scraping ---")
-    articles = scrape_articles(articles)
+    articles = scrape_articles(articles, max_workers=scrape_workers)
     scraped = [a for a in articles if a.get("text")]
     log.info(f"Successfully scraped {len(scraped)}/{len(articles)} articles")
 
@@ -172,7 +177,11 @@ def run_pipeline(
 
     # Stage 2.5: Relevance filter — rejects non-domain articles before LLM
     log.info(f"--- Stage 2.5: Relevance Filter (domain={domain}) ---")
-    _rf = RelevanceFilter(threshold=relevance_threshold, domain=domain)
+    _rf = RelevanceFilter(
+        threshold=relevance_threshold,
+        domain=domain,
+        batch_size=relevance_batch_size,
+    )
     scraped, rf_rejected = _rf.filter(scraped)
     log.info(
         f"Relevance filter: {len(scraped)} kept, {len(rf_rejected)} rejected "
@@ -205,6 +214,7 @@ def run_pipeline(
         examples_path=examples_path,
         workers=workers,
         rpm_limit=rpm_limit,
+        examples_sample_n=examples_sample_n,
     )
     log.info(
         f"Extracted {len(events)} events ({len(failures)} extraction failures)"
@@ -213,7 +223,11 @@ def run_pipeline(
     # Stage 4.5: Geocoding
     if geocode and events:
         log.info("--- Stage 4.5: Geocoding ---")
-        events = geocode_events(events)
+        events = geocode_events(
+            events,
+            cache_path=geocode_cache,
+            max_workers=geocode_workers,
+        )
 
     # Stage 5: Storage
     log.info("--- Stage 5: Saving Results ---")
@@ -266,6 +280,11 @@ def run_pipeline_multi_codebook(
     relevance_threshold: float = 0.30,
     workers: int = 1,
     rpm_limit: int = 450,
+    geocode_cache: Optional[Path] = Path("data/cache/geocode.json"),
+    geocode_workers: int = 4,
+    scrape_workers: int = 16,
+    relevance_batch_size: int = 32,
+    examples_sample_n: int = 5,
 ) -> dict:
     """
     Scrape and translate once, then run each domain's relevance filter and
@@ -324,7 +343,7 @@ def run_pipeline_multi_codebook(
 
     # --- Stage 2: Scraping (shared — happens once for all domains) ---
     log.info("--- Stage 2: Full-text Scraping (shared) ---")
-    articles = scrape_articles(articles)
+    articles = scrape_articles(articles, max_workers=scrape_workers)
     scraped = [a for a in articles if a.get("text")]
     log.info(f"Successfully scraped {len(scraped)}/{len(articles)} articles")
 
@@ -351,7 +370,11 @@ def run_pipeline_multi_codebook(
 
         # Stage 2.5: Domain-specific relevance filter
         log.info(f"--- Stage 2.5: Relevance Filter (domain={domain}) ---")
-        _rf = RelevanceFilter(threshold=relevance_threshold, domain=domain)
+        _rf = RelevanceFilter(
+            threshold=relevance_threshold,
+            domain=domain,
+            batch_size=relevance_batch_size,
+        )
         domain_articles, rf_rejected = _rf.filter(scraped)
         log.info(
             f"  {len(domain_articles)} kept, {len(rf_rejected)} rejected"
@@ -381,13 +404,18 @@ def run_pipeline_multi_codebook(
             examples_path=cfg.get("examples"),
             workers=workers,
             rpm_limit=rpm_limit,
+            examples_sample_n=examples_sample_n,
         )
         log.info(f"  Extracted {len(events)} events ({len(failures)} failures)")
 
         # Stage 4.5: Geocoding
         if geocode and events:
             log.info(f"--- Stage 4.5: Geocoding (domain={domain}) ---")
-            events = geocode_events(events)
+            events = geocode_events(
+                events,
+                cache_path=geocode_cache,
+                max_workers=geocode_workers,
+            )
 
         # Stage 5: Storage
         save_results(
@@ -460,6 +488,25 @@ def main():
         "--no-geocode", action="store_true", help="Skip geocoding step (Nominatim OSM)"
     )
     parser.add_argument(
+        "--geocode-cache",
+        default="data/cache/geocode.json",
+        help=(
+            "Path to on-disk geocode cache (JSON). Persists across runs so "
+            "repeated (city, country) pairs skip Nominatim. "
+            "Pass 'none' to disable. Default: data/cache/geocode.json"
+        ),
+    )
+    parser.add_argument(
+        "--geocode-workers",
+        type=int,
+        default=4,
+        help=(
+            "Threads dispatching Nominatim lookups (default 4). All threads "
+            "share one rate limiter to honour Nominatim's 1 req/s policy; "
+            "speedup comes from parallel cache hits, not parallel network."
+        ),
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Resume from checkpoint.txt — skip already-processed URLs",
@@ -514,11 +561,44 @@ def main():
     parser.add_argument(
         "--workers",
         type=int,
-        default=1,
+        default=4,
         help=(
-            "Concurrent extraction workers (default 1 = sequential). "
-            "Recommended: 4–8 for backfill runs. All workers share one system prompt "
-            "so Azure prompt caching is maximised."
+            "Concurrent extraction workers (default 4; pass 1 for sequential). "
+            "All workers share one system prompt so Azure prompt caching stays "
+            "hot, and share one sliding-window limiter so retry storms cannot "
+            "burst past --rpm-limit."
+        ),
+    )
+    parser.add_argument(
+        "--scrape-workers",
+        type=int,
+        default=16,
+        help=(
+            "Threads dispatching article scrapes (default 16). Same-host "
+            "requests serialise via a per-host lock + jittered delay; "
+            "different hosts proceed in parallel."
+        ),
+    )
+    parser.add_argument(
+        "--relevance-batch-size",
+        type=int,
+        default=32,
+        help=(
+            "Snippets per relevance-filter HF pipeline call (default 32). "
+            "Raise on GPU, lower if memory is tight. Keyword fallback ignores "
+            "this flag."
+        ),
+    )
+    parser.add_argument(
+        "--examples-sample-n",
+        type=int,
+        default=5,
+        help=(
+            "Number of few-shot examples to inject per run (default 5). "
+            "Pinned examples are always included; the remainder is filled by "
+            "a run-stable random sample from the promoted pool, so promoted "
+            "annotator corrections rotate in and out across runs. Azure "
+            "prompt caching is preserved within a run."
         ),
     )
     parser.add_argument(
@@ -548,6 +628,13 @@ def main():
     output_dir = Path(args.output_dir)
     domains = [d.strip() for d in args.domains.split(",") if d.strip()]
 
+    # Resolve geocode cache path: 'none' / empty string disables caching.
+    _geocode_cache_arg = (args.geocode_cache or "").strip()
+    geocode_cache = (
+        None if _geocode_cache_arg.lower() in ("", "none", "off", "false")
+        else Path(_geocode_cache_arg)
+    )
+
     if args.stage in ("acquire", "all"):
         if len(domains) > 1:
             # Multi-domain: scrape once, route to each codebook.
@@ -571,6 +658,11 @@ def main():
                 relevance_threshold=args.relevance_threshold,
                 workers=args.workers,
                 rpm_limit=args.rpm_limit,
+                geocode_cache=geocode_cache,
+                geocode_workers=args.geocode_workers,
+                scrape_workers=args.scrape_workers,
+                relevance_batch_size=args.relevance_batch_size,
+                examples_sample_n=args.examples_sample_n,
             )
         else:
             domain = domains[0] if domains else "protest"
@@ -615,6 +707,11 @@ def main():
                 examples_path=examples_path,
                 workers=args.workers,
                 rpm_limit=args.rpm_limit,
+                geocode_cache=geocode_cache,
+                geocode_workers=args.geocode_workers,
+                scrape_workers=args.scrape_workers,
+                relevance_batch_size=args.relevance_batch_size,
+                examples_sample_n=args.examples_sample_n,
             )
 
     if args.stage in ("process", "all"):
