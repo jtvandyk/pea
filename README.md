@@ -4,7 +4,7 @@ An automated pipeline for collecting structured protest event data from African 
 
 **Codebook:** v2.3 (Halterman & Keith 2025, Type III stipulative definitions)  
 **Target geography:** Nigeria (NG), South Africa (ZA), Uganda (UG), Algeria (DZ)  
-**LLM backend:** Claude (default), OpenAI, or Azure AI Foundry — switchable via `--provider`
+**LLM backend:** Azure AI Foundry (`AZURE_FOUNDRY_API_KEY` + `AZURE_OPENAI_ENDPOINT`)
 
 ---
 
@@ -13,54 +13,67 @@ An automated pipeline for collecting structured protest event data from African 
 The pipeline runs in three independent stages. Each stage reads from the previous stage's output directory.
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────────────┐
 │  STAGE 1 — ACQUIRE                                             acquire│
-│                                                                      │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────┐  │
-│  │  1a. GDELT   │    │ 1b. BBC Mon. │    │  2. Scraper          │  │
-│  │  DOC 2.0 API │    │  (optional)  │    │  newspaper3k +       │  │
-│  │  per-country │ ──►│              │ ──►│  requests fallback   │  │
-│  │  FIPS filter │    │  Civil_unrest│    │  user-agent rotation │  │
-│  └──────────────┘    │  topic filter│    └──────────┬───────────┘  │
-│                      └──────────────┘               │              │
-│                                                      ▼              │
-│  ┌──────────────────────────────┐    ┌──────────────────────────┐  │
-│  │  4. LLM Extraction (Claude)  │◄───│  3. Translation          │  │
-│  │  Codebook v2.3 in SYSTEM     │    │  langdetect + Google     │  │
-│  │  Few-shot examples in USER   │    │  Translate (free tier)   │  │
-│  │  JSON array output           │    │  Native langs: skip      │  │
-│  └──────────────┬───────────────┘    └──────────────────────────┘  │
-│                 │                                                    │
-│                 ▼                                                    │
-│  ┌──────────────────────────────┐    ┌──────────────────────────┐  │
-│  │  4.5 Geocoding               │    │  5. Storage              │  │
-│  │  Nominatim (OSM)             │ ──►│  data/raw/               │  │
-│  │  venue → city → region →     │    │  JSONL + CSV + summary   │  │
-│  │  country fallback            │    │  + dead-letter file      │  │
-│  └──────────────────────────────┘    └──────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
+│                                                                       │
+│  ┌──────────────┐    ┌──────────────┐    ┌───────────────────────┐  │
+│  │  1a. GDELT   │    │ 1b. BBC Mon. │    │  2. Scraper           │  │
+│  │  DOC 2.0 API │    │  (optional)  │    │  newspaper3k +        │  │
+│  │  per-country │ ──►│              │ ──►│  requests fallback    │  │
+│  │  FIPS filter │    │  Civil_unrest│    │  user-agent rotation  │  │
+│  └──────────────┘    │  topic filter│    └───────────┬───────────┘  │
+│                      └──────────────┘                │               │
+│                                                       ▼               │
+│                                         ┌───────────────────────┐   │
+│                                         │  2.5 Relevance Filter │   │
+│                                         │  DeBERTa zero-shot NLI│   │
+│                                         │  per-domain threshold  │   │
+│                                         │  keyword fallback      │   │
+│                                         └───────────┬───────────┘   │
+│                                                      │               │
+│  ┌───────────────────────────────┐    ┌─────────────▼─────────────┐ │
+│  │  4. LLM Extraction            │◄───│  3. Translation           │ │
+│  │  Azure AI Foundry             │    │  langdetect + Google      │ │
+│  │  Codebook v2.3 in SYSTEM      │    │  Translate (free tier)    │ │
+│  │  Few-shot examples in USER    │    │  Native langs: skip       │ │
+│  │  Prompt caching (~36% saving) │    └───────────────────────────┘ │
+│  └───────────────┬───────────────┘                                   │
+│                  │                                                    │
+│                  ▼                                                    │
+│  ┌───────────────────────────────┐    ┌───────────────────────────┐ │
+│  │  4.5 Geocoding                │    │  5. Storage               │ │
+│  │  Nominatim (OSM)              │ ──►│  data/raw/<domain>/       │ │
+│  │  venue → city → region →      │    │  JSONL + CSV + summary    │ │
+│  │  country fallback             │    │  + dead-letter file       │ │
+│  └───────────────────────────────┘    └───────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────┘
 
-┌─────────────────────────────────────────────────────────────────────┐
-│  STAGE 2 — PROCESS                                            process│
-│                                                                      │
-│  data/raw/all_events.jsonl                                           │
-│       │                                                              │
-│       ├─► Geography filter (remove off-target countries)            │
-│       ├─► Deduplication (country + city + date ±2 days + type)      │
+  Multi-domain mode (--domains protest,drone):
+  Stages 1–3 run once (shared scrape + translate), then Stages 2.5–5
+  run independently per domain. An article can qualify for both.
+
+┌──────────────────────────────────────────────────────────────────────┐
+│  STAGE 2 — PROCESS                                            process │
+│                                                                       │
+│  data/raw/<domain>/all_events.jsonl                                   │
+│       │                                                               │
+│       ├─► Geography filter (remove off-target countries)             │
+│       ├─► Deduplication (country + city fuzzy ±3 days + type         │
+│       │   + TF-IDF claims similarity ≥0.20; null-city safe)          │
 │       ├─► LLM re-verification of medium/low confidence events        │
-│       └─► Quality control → data/processed/                         │
-└─────────────────────────────────────────────────────────────────────┘
+│       └─► Quality control → data/processed/                          │
+└──────────────────────────────────────────────────────────────────────┘
 
-┌─────────────────────────────────────────────────────────────────────┐
-│  STAGE 3 — PREDICT                                            predict│
-│                                                                      │
-│  data/processed/events_consolidated.jsonl                            │
-│       │                                                              │
-│       ├─► Prevalence estimates per country + event type              │
-│       ├─► Prediction-Powered Inference (Angelopoulos et al. 2023)   │
-│       │   accounts for LLM misclassification in confidence intervals │
-│       └─► data/predictions/                                          │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│  STAGE 3 — PREDICT                                            predict │
+│                                                                       │
+│  data/processed/events_consolidated.jsonl                             │
+│       │                                                               │
+│       ├─► Prevalence estimates per country + event type               │
+│       ├─► Prediction-Powered Inference (Angelopoulos et al. 2023)    │
+│       │   accounts for LLM misclassification in confidence intervals  │
+│       └─► data/predictions/                                           │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -71,15 +84,15 @@ The pipeline runs in three independent stages. Each stage reads from the previou
 
 ```bash
 cp .env.example .env
-# Fill in at least one LLM API key
+# Fill in Azure credentials
 ```
 
 ```
-ANTHROPIC_API_KEY=           # --provider claude (default)
-OPENAI_API_KEY=              # --provider openai
-AZURE_FOUNDRY_API_KEY=       # --provider azure
-AZURE_OPENAI_ENDPOINT=       # --provider azure
-AZURE_STORAGE_CONNECTION_STRING=   # --upload-to az://...
+AZURE_FOUNDRY_API_KEY=             # required
+AZURE_OPENAI_ENDPOINT=             # required (e.g. https://<resource>.openai.azure.com/openai/v1)
+AZURE_STORAGE_CONNECTION_STRING=   # optional — --upload-to az://...
+BBC_MONITORING_USER_NAME=          # optional — --source bbc or both
+BBC_MONITORING_USER_PASSWORD=      # optional — --source bbc or both
 ```
 
 ```bash
@@ -91,34 +104,56 @@ pip install -r requirements-core.txt
 ### 2. Run
 
 ```bash
-# Minimal run — South Africa, last 7 days, Claude
+# Minimal — South Africa, last 7 days
 python -m src.acquisition.pipeline --countries ZA --days 7
 
-# Multi-country, 30-day window, Azure fallback
+# Multi-country, 30-day window
 python -m src.acquisition.pipeline \
-  --provider azure \
-  --model gpt-4o-mini \
+  --model gpt-4.1 \
   --countries NG,ZA,UG,DZ \
   --days 30 \
   --max-articles 200
 
+# Adjust relevance filter threshold (default 0.30 — conservative/high recall)
+python -m src.acquisition.pipeline --countries ZA --days 30 \
+  --relevance-threshold 0.50
+
+# Multi-domain: scrape once, extract protest events AND drone events
+python -m src.acquisition.pipeline \
+  --domains protest,drone \
+  --countries NG,ZA,UG,DZ \
+  --days 7
+
+# Historical backfill with concurrent workers
+python -m src.acquisition.pipeline \
+  --domains protest \
+  --countries ZA \
+  --backfill-from 2025-01-01 --backfill-to 2025-12-31 \
+  --workers 8 --rpm-limit 450
+
 # Resume after a crash
-python -m src.acquisition.pipeline --provider azure --resume
+python -m src.acquisition.pipeline --resume
 
 # Run all three stages end-to-end
 python -m src.acquisition.pipeline --stage all --countries ZA --days 30
+
+# Upload outputs to Azure Blob after run
+python -m src.acquisition.pipeline \
+  --upload-to az://my-container/pea/runs
 ```
 
 ### 3. Outputs
 
+Output is written to `data/raw/<domain>/` (domain defaults to `protest`).
+
 | File | Stage | Contents |
 |------|-------|----------|
-| `data/raw/events_{run_id}.jsonl` | acquire | Extracted protest events (primary) |
-| `data/raw/events_{run_id}.csv` | acquire | Same events, spreadsheet-friendly |
-| `data/raw/summary_{run_id}.json` | acquire | Run metadata: counts by country, type, turmoil level |
-| `data/raw/failures_{run_id}.jsonl` | acquire | Articles that failed all extraction retries |
-| `data/raw/all_events.jsonl` | acquire | Cumulative append across all runs |
-| `data/raw/checkpoint.txt` | acquire | Processed URLs — used by `--resume` |
+| `data/raw/<domain>/events_{run_id}.jsonl` | acquire | Extracted protest events (primary) |
+| `data/raw/<domain>/events_{run_id}.csv` | acquire | Same events, spreadsheet-friendly |
+| `data/raw/<domain>/summary_{run_id}.json` | acquire | Run metadata: counts by country, type, turmoil level |
+| `data/raw/<domain>/failures_{run_id}.jsonl` | acquire | Articles that failed all extraction retries |
+| `data/raw/<domain>/all_events.jsonl` | acquire | Cumulative append across all runs |
+| `data/raw/<domain>/checkpoint.txt` | acquire | Processed URLs — used by `--resume` |
 | `data/processed/events_consolidated.jsonl` | process | Deduplicated, quality-controlled events |
 | `data/processed/quality_report.json` | process | Schema validity + confidence distribution |
 | `data/processed/duplicates_log.jsonl` | process | Audit trail of removed duplicates |
@@ -133,71 +168,81 @@ python -m src.acquisition.pipeline --stage all --countries ZA --days 30
 
 [src/acquisition/gdelt_discovery.py](src/acquisition/gdelt_discovery.py) queries the [GDELT DOC 2.0 API](https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/).
 
-**Key design decisions:**
+- **Per-country queries with FIPS codes.** The GDELT `sourcecountry` filter requires FIPS 10-4 codes. The pipeline runs one query per country (ISO2 → FIPS via `ISO2_TO_FIPS`) and merges results by URL.
+- **Keyword-based relevance filter.** After GDELT returns results, `filter_protest_relevant()` checks article titles against protest signals loaded from `configs/keywords.yaml`.
+- **Per-country fallback.** If GDELT returns nothing for a given country + FIPS code, the pipeline retries without `sourcecountry` and injects the country name as a keyword.
 
-- **Per-country queries with FIPS codes.** The GDELT `sourcecountry` filter requires [FIPS 10-4 codes](https://en.wikipedia.org/wiki/FIPS_10-4), not ISO2. For a list of countries, the pipeline runs one query per country (ISO2 → FIPS via `ISO2_TO_FIPS`) and merges results by URL. This replaces the earlier approach of OR-ing country names into the keyword query, which returned off-target articles mentioning a country in passing.
-- **Keyword-based relevance filter.** After GDELT returns results, `filter_protest_relevant()` checks article titles against protest signals loaded from `configs/keywords.yaml`. Articles that pass GDELT's theme filter but have no title signal are retained with `_relevance: gdelt_theme`.
-- **Per-country fallback.** If GDELT returns nothing for a given country + FIPS code (occasionally unreliable), the pipeline retries without `sourcecountry` and injects the country name as a keyword for that country only.
-
-**Keywords** are managed in [configs/keywords.yaml](configs/keywords.yaml):
+Keywords are managed in [configs/keywords.yaml](configs/keywords.yaml):
 - `protest_themes` — GDELT GKG themes used in the API query
 - `protest_signals` — 39 multilingual title keywords (English, Arabic, French, Spanish, Indonesian)
 - `url_signals` — URL substring fallback
 
 ### Stage 1b — Discovery (BBC Monitoring, optional)
 
-[src/acquisition/bbc_discovery.py](src/acquisition/bbc_discovery.py) queries the BBC Monitoring API using the `Civil_unrest` topic filter and ISO3 country codes. Requires `BBC_MONITORING_USER_NAME` and `BBC_MONITORING_USER_PASSWORD` credentials.
+[src/acquisition/bbc_discovery.py](src/acquisition/bbc_discovery.py) queries BBC Monitoring using the `Civil_unrest` topic filter and ISO3 country codes. Requires `BBC_MONITORING_USER_NAME` and `BBC_MONITORING_USER_PASSWORD`.
 
-Enable with `--source bbc` or `--source both`. When `--source both`, results from both sources are deduplicated by URL.
+Enable with `--source bbc` or `--source both`. When `--source both`, results are deduplicated by URL before scraping.
 
 ### Stage 2 — Scraping
 
-[src/acquisition/scraper.py](src/acquisition/scraper.py) fetches full article text from each discovered URL.
+[src/acquisition/scraper.py](src/acquisition/scraper.py) fetches full article text.
 
 - Primary: `newspaper3k`
 - Fallback: `requests` + `BeautifulSoup`
 - User-agent rotation to reduce bot detection
 - Known paywall domains (NYT, FT, Reuters, etc.) are skipped gracefully
 
+### Stage 2.5 — Relevance Filter
+
+[src/acquisition/relevance_filter.py](src/acquisition/relevance_filter.py) rejects off-topic articles before they reach the LLM, reducing cost and noise.
+
+- **Model:** `cross-encoder/nli-deberta-v3-small` (184 MB, CPU-only)
+- **Default threshold:** `0.30` — conservative, prioritises recall over precision
+- **Domain-aware:** the hypothesis text changes per domain (`protest` vs `drone`)
+- **Fallback:** keyword matching if `transformers` is unavailable
+- **In multi-domain mode**, each domain runs its own filter independently against the shared scraped corpus
+- Rejected articles are logged with their `_relevance_score` for threshold calibration
+- Raise to `0.50` after GLOCON/ACLED validation confirms filter accuracy
+
 ### Stage 3 — Translation
 
 [src/acquisition/translator.py](src/acquisition/translator.py) detects language with `langdetect` and translates to English via Google Translate (free tier).
 
-Languages Claude handles natively (en, es, fr, pt, ar, sw, hi, ur, id, tl, bn, ha, yo, ig, am) skip translation to preserve fidelity and save time.
+Languages handled natively (en, es, fr, pt, ar, sw, hi, ur, id, tl, bn, ha, yo, ig, am) skip translation to preserve fidelity and save time.
 
 ### Stage 4 — LLM Extraction
 
 [src/acquisition/extractor.py](src/acquisition/extractor.py) is the core of the pipeline.
 
+**LLM backend:** Azure AI Foundry only. The `--model` flag sets the deployment name in your Azure AI Foundry project (default: `gpt-4.1`).
+
 **Two-step disqualifier gate:**
 
-1. The `SYSTEM_PROMPT` opens with an explicit list of non-protest article types to reject immediately (AU/SADC summits, election results, sports, parliamentary sessions, military parades, inter-communal mob violence, etc.). The model returns `[]` without extracting.
+1. The `SYSTEM_PROMPT` opens with an explicit list of non-protest article types to reject immediately (AU/SADC summits, election results, sports, parliamentary sessions, etc.). The model returns `[]` without extracting.
 2. If the article passes the gate, minimum criteria are applied: at least one collective actor + one claim/grievance + one action.
 
 **Codebook-in-prompt architecture (v2.3):**
 
-The full codebook is injected into the system prompt at import time via `_build_codebook_context()`. This loads [configs/protest_codebook.yaml](configs/protest_codebook.yaml) and formats all 8 event type definitions — including positive examples, boundary negatives, and decision rules — as structured text appended to `SYSTEM_PROMPT`. This approach is validated in the literature to yield +8–15 F1 points over brief label descriptions (Codebook LLMs 2025; arXiv:2502.16377).
+The full codebook is injected into the system prompt at import time via `_build_codebook_context()`. This loads the appropriate domain codebook YAML and formats all event type definitions — including positive examples, boundary negatives, and decision rules. ~22k tokens. This approach yields +8–15 F1 points over brief label descriptions (Halterman & Keith 2025; arXiv:2502.16377).
+
+| Config file | Domain |
+|-------------|--------|
+| `configs/protest_codebook.yaml` | `protest` — 8 protest event types |
+| `configs/drone_events_codebook.yaml` | `drone` — drone/UAV incident types |
 
 **Few-shot examples:**
 
-Three gold-standard examples from [configs/extraction_examples.yaml](configs/extraction_examples.yaml) are prepended to the user prompt before each article. They demonstrate:
-1. A Soweto service delivery roadblock → 1 `confrontation` event (Africa-specific protest form, null crowd size handling)
-2. An AU summit → `[]` (correct disqualifier gate for the most common African false positive)
-3. An ASUU staff strike + student occupation at the same university → 2 separate events (the most common multi-event failure mode)
+Three gold-standard examples from the domain examples YAML are prepended to every user prompt:
+- `configs/extraction_examples.yaml` (protest domain)
+- `configs/drone_extraction_examples.yaml` (drone domain)
 
-**Multi-provider support:**
+**Prompt caching:** The system prompt prefix (~29k tokens) is identical across every article in a run. Azure caches it automatically for gpt-4.1 (>1024 token prefix). Cached tokens are billed at 50% of the input rate — approximately 36% overall cost reduction.
 
-| Provider | Default model | API key env var |
-|----------|--------------|-----------------|
-| `claude` | `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` |
-| `openai` | `gpt-4o-mini` | `OPENAI_API_KEY` |
-| `azure` | `gpt-4o-mini` | `AZURE_FOUNDRY_API_KEY` + `AZURE_OPENAI_ENDPOINT` |
+**Concurrent workers:** Use `--workers N` for parallel extraction during backfill runs. All workers share one system prompt so prompt caching is maximised. Use `--rpm-limit` to stay under your Azure quota (default: 450 RPM, ~10% headroom under a 500 RPM deployment limit).
 
-For `--provider azure`, `--model` is the **deployment name** in your Azure AI Foundry project.
+**Checkpoint / resume:** Each successfully extracted article URL is appended to `checkpoint.txt`. Pass `--resume` to skip already-processed URLs after a crash.
 
-**Checkpoint / resume:** Each successfully extracted article URL is appended to `checkpoint.txt`. Pass `--resume` to skip already-processed URLs after a crash or container restart.
-
-**Dead-letter file:** Articles that fail all extraction retries are written to `failures_{run_id}.jsonl` for manual review or reprocessing.
+**Dead-letter file:** Articles that fail all extraction retries are written to `failures_{run_id}.jsonl`.
 
 ### Stage 4.5 — Geocoding
 
@@ -219,19 +264,70 @@ Optional cloud upload via `--upload-to`:
 - `az://container/prefix` — Azure Blob Storage (`AZURE_STORAGE_CONNECTION_STRING`)
 - `s3://bucket/prefix` — AWS S3 (`boto3`)
 
-### Stage 2 — Processing
+### Stage 2 (outer) — Processing
 
-[src/acquisition/processing.py](src/acquisition/processing.py) reads `data/raw/all_events.jsonl` and produces a clean dataset.
+[src/acquisition/processing.py](src/acquisition/processing.py) reads `data/raw/<domain>/all_events.jsonl` and produces a clean dataset.
 
-Steps:
-1. Geography filter — removes events outside the target country list
-2. Deduplication — deterministic rules: same country + city + date (±2 days) + event type
-3. LLM re-verification — borderline medium/low confidence events are re-examined with chain-of-thought prompting
-4. Quality control — schema validity checks and confidence distribution report
+1. **Geography filter** — removes events outside the target country list
+2. **Deduplication** — same country + city fuzzy match ≥0.70 + date ±3 days + event type; city matching only enforced when both cities are non-null (null-city safe); TF-IDF cosine similarity on claims ≥0.20 prevents same-city/same-day events with different demands from merging; `claims_similarity` recorded in `duplicates_log.jsonl`
+3. **LLM re-verification** — borderline medium/low confidence events re-examined with chain-of-thought prompting
+4. **Quality control** — schema validity checks and confidence distribution report
 
-### Stage 3 — Predictions
+### Stage 3 (outer) — Predictions
 
-[src/acquisition/predictions.py](src/acquisition/predictions.py) applies **Prediction-Powered Inference** (Angelopoulos et al. 2023) to generate statistically valid prevalence estimates that account for LLM misclassification rates. PPI is the methodologically correct way to report LLM-derived event frequencies — naive averaging of predictions propagates classification error into the point estimate.
+[src/acquisition/predictions.py](src/acquisition/predictions.py) applies **Prediction-Powered Inference** (Angelopoulos et al. 2023) to generate statistically valid prevalence estimates that account for LLM misclassification rates. Raw averaging of LLM predictions propagates classification error into the point estimate and is methodologically incorrect.
+
+---
+
+## Multi-Codebook Pipeline
+
+The `--domains` flag enables processing multiple event codebooks in a single invocation. Articles are scraped and translated once, then routed through each domain's relevance filter and extractor independently.
+
+```
+Shared:   Discovery → Scraping → Translation
+               │
+     ┌─────────┴──────────┐
+     ▼                    ▼
+  protest domain       drone domain
+  2.5 Filter           2.5 Filter
+  4. Extraction        4. Extraction
+  4.5 Geocoding        4.5 Geocoding
+  5. Storage           5. Storage
+  data/raw/protest/    data/raw/drone/
+```
+
+An article can qualify for multiple domains — for example, a protest dispersed with a surveillance drone passes both relevance filters.
+
+**Supported domains:**
+
+| Domain | Codebook | Default query |
+|--------|----------|---------------|
+| `protest` | `configs/protest_codebook.yaml` | `protest demonstration strike rally march` |
+| `drone` | `configs/drone_events_codebook.yaml` | `drone UAV airstrike unmanned aircraft` |
+
+Use `--codebook` and `--examples` to supply a custom codebook YAML when running a single domain. These flags are not supported in multi-domain mode.
+
+---
+
+## Historical Backfill
+
+Use `--backfill-from` / `--backfill-to` to run the pipeline over a historical date range, processing one window at a time.
+
+```bash
+python -m src.acquisition.pipeline \
+  --domains protest \
+  --countries ZA,NG,UG,DZ \
+  --backfill-from 2024-01-01 \
+  --backfill-to   2024-12-31 \
+  --backfill-window-days 30 \
+  --workers 8 \
+  --rpm-limit 450 \
+  --upload-to az://my-container/pea/backfill
+```
+
+- `--backfill-window-days` (default 30) controls how many days each GDELT query spans
+- `--workers` parallelises extraction within each window; prompt caching is preserved because all workers share the same system prompt
+- `--resume` skips URLs already in `checkpoint.txt`, making restarts safe
 
 ---
 
@@ -250,7 +346,7 @@ Each extracted event is a JSON object with the following fields:
 | `latitude` | float \| null | From geocoder |
 | `longitude` | float \| null | From geocoder |
 | `geo_accuracy` | string \| null | `venue`, `city`, `region`, or `country` |
-| `event_type` | string | One of 8 types (see below) |
+| `event_type` | string | One of the codebook types (see below) |
 | `organizer` | string \| null | Organising entity, or `unknown` if WhatsApp-mobilised |
 | `participant_groups` | array | Groups involved (workers, students, residents, etc.) |
 | `claims` | array | Demands or grievances |
@@ -270,7 +366,7 @@ Each extracted event is a JSON object with the following fields:
 | `source_language` | string | BCP-47 language code |
 | `confidence` | string | `high`, `medium`, or `low` |
 
-### Event Types
+### Protest Event Types
 
 | Code | Description |
 |------|-------------|
@@ -295,8 +391,10 @@ Extended (from criminalisation of protest literature): `legal_criminalisation`, 
 
 | File | Purpose |
 |------|---------|
-| [configs/protest_codebook.yaml](configs/protest_codebook.yaml) | Codebook v2.3 — 8 event type definitions with positive/negative examples, decision rules, non-event disqualifiers, African context notes, edge cases, state response vocabulary, confidence guidance |
-| [configs/extraction_examples.yaml](configs/extraction_examples.yaml) | 3 gold-standard few-shot examples injected into user prompt |
+| [configs/protest_codebook.yaml](configs/protest_codebook.yaml) | Codebook v2.3 — 8 protest event type definitions with positive/negative examples, decision rules, non-event disqualifiers, African context notes, edge cases, state response vocabulary, confidence guidance |
+| [configs/drone_events_codebook.yaml](configs/drone_events_codebook.yaml) | Drone/UAV event codebook — parallel structure to protest codebook |
+| [configs/extraction_examples.yaml](configs/extraction_examples.yaml) | 3 gold-standard few-shot examples for protest extraction |
+| [configs/drone_extraction_examples.yaml](configs/drone_extraction_examples.yaml) | Few-shot examples for drone extraction |
 | [configs/keywords.yaml](configs/keywords.yaml) | GDELT GKG themes, protest signal keywords (39, multilingual), URL signals |
 
 ---
@@ -307,10 +405,12 @@ Extended (from criminalisation of protest literature): `legal_criminalisation`, 
 
 ```bash
 docker build -t pea .
-docker run --env-file .env pea --provider azure --countries ZA --days 7
+docker run --env-file .env pea --countries ZA --days 7
 ```
 
-The multi-stage Dockerfile uses `requirements-core.txt` (pipeline dependencies only — no GPU packages). ML packages (`torch`, `vllm`, `transformers`) are in `requirements.txt` for local development.
+The multi-stage Dockerfile uses `requirements-core.txt` (pipeline dependencies only). ML packages (`torch`, `transformers`) are in `requirements.txt` for local development.
+
+> **Note:** `torch` in `requirements-core.txt` currently pulls the CUDA build. Pin to a CPU wheel URL in the Dockerfile for production to avoid a 2 GB image layer.
 
 ### GitHub Actions
 
@@ -320,59 +420,16 @@ The multi-stage Dockerfile uses `requirements-core.txt` (pipeline dependencies o
 
 | Item | Required for |
 |------|-------------|
-| Anthropic API key | `--provider claude` |
 | Azure Container Registry + GitHub Secrets | Docker CI workflow |
 | Azure Storage Account | `--upload-to az://...` |
-| ACLED API token | Recall validation |
-
----
-
-## Validation Against ACLED
-
-The pipeline supports recall validation against [ACLED](https://acleddata.com/) using a fuzzy matching approach: same country + date within ±2 days + city similarity ≥ 0.6 (SequenceMatcher). Target threshold is ≥60% recall (GDELT's source network is sparser than ACLED's curated feeds, so PEA finding more events than it misses is expected).
-
-See the ACLED validation plan in [CLAUDE.md](CLAUDE.md) for the step-by-step methodology, including the PEA-to-ACLED event type crosswalk.
-
----
-
-## Methodology
-
-This pipeline implements the [Halterman & Keith (2025)](https://arxiv.org/html/2510.03541v1) framework for LLM-based protest event coding:
-
-- **Type III (Stipulative) definitions** — codebook definitions are precise enough that reasonable annotators would reach the same decision. Vague definitions cannot be compensated for by larger models.
-- **Codebook-in-prompt** — full annotation guidelines injected into the system prompt. Validated to yield +8–15 F1 points over brief label descriptions.
-- **Prediction-Powered Inference** ([Angelopoulos et al. 2023](https://arxiv.org/abs/2309.08574)) — prevalence estimates account for LLM misclassification rates with valid confidence intervals. Raw averaging of LLM predictions is methodologically incorrect.
-
----
-
-## CLI Reference
-
-```
-python -m src.acquisition.pipeline [OPTIONS]
-
-Options:
-  --query TEXT         Keywords (space-separated) [default: "protest demonstration strike rally march"]
-  --countries TEXT     ISO2 codes, comma-separated [default: NG,ZA,UG,DZ]
-  --days INT           Lookback window in days [default: 7]
-  --max-articles INT   Article cap [default: 50]
-  --output-dir PATH    Output directory [default: data/raw/]
-  --provider TEXT      LLM: claude | openai | azure [default: claude]
-  --model TEXT         Model/deployment name override
-  --api-key TEXT       API key override (defaults to env var)
-  --source TEXT        Discovery source: gdelt | bbc | both [default: gdelt]
-  --stage TEXT         acquire | process | predict | all [default: acquire]
-  --no-translate       Skip translation step
-  --no-geocode         Skip Nominatim geocoding
-  --resume             Skip already-processed URLs (reads checkpoint.txt)
-  --upload-to TEXT     Cloud destination: az://container/prefix or s3://bucket/prefix
-  --relevance-threshold FLOAT  Minimum relevance score for LLM extraction [default: 0.30]
-```
+| ACLED API token | Recall validation (`acled_validator.py` not yet built) |
+| GLOCON data access | `glocon_validator.py` (applied 2026-04-05) |
 
 ---
 
 ## Annotation Workflow (Active Learning Loop)
 
-The annotation pipeline builds gold-standard training data for future fine-tuning. Run this after every few pipeline runs. Target: 200+ reviewed events to unlock QLoRA fine-tuning.
+Builds gold-standard training data for future fine-tuning. Target: 200+ reviewed events to unlock QLoRA fine-tuning.
 
 ### First-time setup
 
@@ -390,16 +447,15 @@ docker compose -f docker-compose.annotation.yml up -d
 ### Per-batch workflow (repeat after each pipeline run)
 
 ```bash
-# 1. Export the highest-priority events for review
-#    (low and medium confidence first — these are the most valuable to annotate)
+# 1. Export highest-priority events (low and medium confidence first)
 python -m src.annotation.export_for_annotation \
-  --events data/raw/all_events.jsonl \
+  --events data/raw/protest/all_events.jsonl \
   --output data/annotation/tasks_$(date +%Y%m%d).json \
   --max-tasks 50 \
   --tiers 1,2
 
 # 2. In Label Studio:
-#    Import → upload the tasks JSON file
+#    Import → upload the tasks JSON
 #    Annotate each task (~2 min each):
 #      - Is this a genuine protest event?
 #      - Is the event type correct? (fix if not)
@@ -421,13 +477,19 @@ python -m src.annotation.import_annotations \
 | `training_data.jsonl` | Gold (article text → corrected JSON) pairs for fine-tuning |
 | `annotation_stats.json` | False positive rate, type correction rate, running pair count |
 
-The console output prints progress toward the 200-pair fine-tuning threshold.
+### Priority tiers
+
+| Tier | Condition | Why |
+|------|-----------|-----|
+| 1 (annotate first) | Low confidence + high relevance score | Uncertain but probably real — highest misclassification risk |
+| 2 | Medium confidence | Borderline — most F1 improvement per annotation hour |
+| 3 (10% spot-check) | High confidence | Precision monitoring only |
 
 ---
 
 ## Validation
 
-Validation benchmarks pipeline recall against a gold-standard human-coded dataset. It is automated — no manual annotation required.
+Benchmarks pipeline recall against a gold-standard human-coded dataset. Automated — no manual annotation required. Run against `data/processed/events_consolidated.jsonl` for the cleanest recall number.
 
 ### GLOCON GSC
 
@@ -435,7 +497,6 @@ Validation benchmarks pipeline recall against a gold-standard human-coded datase
 # Download dataset (requires data access approval from emerging-welfare team)
 git clone <glocon-url> ~/datasets/glocon
 
-# Run validator against processed (deduplicated) events
 python -m src.validation.glocon_validator \
   --glocon-dir ~/datasets/glocon/data/south_africa/english \
   --pea-events data/processed/events_consolidated.jsonl \
@@ -444,8 +505,9 @@ python -m src.validation.glocon_validator \
 
 ### ACLED
 
+> **Status:** `acled_validator.py` is not yet built — blocked on obtaining an ACLED API token. Register at [acleddata.com](https://acleddata.com) for a free researcher token.
+
 ```bash
-# Register at acleddata.com for a free API token, then:
 python -m src.validation.acled_validator \
   --countries ZA \
   --start-date 2026-01-01 \
@@ -462,12 +524,12 @@ python -m src.validation.acled_validator \
 | 40–60% | Investigate systematic misses by type and country |
 | < 40% | Diagnose at each stage: GDELT discovery → scraper → relevance filter → LLM |
 
-The JSON report includes per-event match records so you can inspect exactly which events were missed and where the gap is.
+The JSON report includes per-event match records so you can inspect exactly which events were missed.
 
 ### How annotation and validation connect
 
 ```
-Pipeline run  →  data/raw/all_events.jsonl
+Pipeline run  →  data/raw/protest/all_events.jsonl
                         │
           ┌─────────────┴──────────────┐
           │                            │
@@ -482,4 +544,58 @@ Pipeline run  →  data/raw/all_events.jsonl
    (→ fine-tuning)        GLOCON gold         ACLED gold
 ```
 
-Validation tells you **how accurate the pipeline is**. Annotation generates **data to make it more accurate**.
+---
+
+## CLI Reference
+
+```
+python -m src.acquisition.pipeline [OPTIONS]
+
+Discovery & scope:
+  --query TEXT                Keywords for GDELT (space-separated)
+  --countries TEXT            ISO2 codes, comma-separated [default: NG,ZA,UG,DZ]
+  --days INT                  Lookback window in days [default: 7]
+  --max-articles INT          Article cap [default: 50]
+  --source TEXT               gdelt | bbc | both [default: gdelt]
+
+Domain & codebook:
+  --domains TEXT              Comma-separated codebook domains [default: protest]
+                              Use 'protest,drone' for multi-domain mode
+  --codebook PATH             Custom codebook YAML (single-domain only)
+  --examples PATH             Custom examples YAML (single-domain only)
+
+LLM backend (Azure AI Foundry only):
+  --provider TEXT             azure [only supported value]
+  --model TEXT                Deployment name [default: gpt-4.1]
+  --api-key TEXT              Override AZURE_FOUNDRY_API_KEY env var
+
+Pipeline control:
+  --stage TEXT                acquire | process | predict | all [default: acquire]
+  --no-translate              Skip translation step
+  --no-geocode                Skip Nominatim geocoding
+  --resume                    Skip already-processed URLs (reads checkpoint.txt)
+  --relevance-threshold FLOAT Minimum NLI score to pass to LLM [default: 0.30]
+
+Concurrency & rate limiting:
+  --workers INT               Concurrent extraction workers [default: 1]
+  --rpm-limit INT             Azure OpenAI RPM ceiling [default: 450]
+
+Historical backfill:
+  --backfill-from DATE        Start date: YYYY-MM-DD
+  --backfill-to DATE          End date: YYYY-MM-DD [default: today]
+  --backfill-window-days INT  Days per GDELT query window [default: 30]
+
+Output & storage:
+  --output-dir PATH           Output directory [default: data/raw/]
+  --upload-to TEXT            az://container/prefix or s3://bucket/prefix
+```
+
+---
+
+## Methodology
+
+This pipeline implements the [Halterman & Keith (2025)](https://arxiv.org/html/2510.03541v1) framework for LLM-based protest event coding:
+
+- **Type III (Stipulative) definitions** — codebook definitions are precise enough that reasonable annotators would reach the same decision. Vague definitions cannot be compensated for by larger models.
+- **Codebook-in-prompt** — full annotation guidelines injected into the system prompt. Validated to yield +8–15 F1 points over brief label descriptions.
+- **Prediction-Powered Inference** ([Angelopoulos et al. 2023](https://arxiv.org/abs/2309.08574)) — prevalence estimates account for LLM misclassification rates with valid confidence intervals. Raw averaging of LLM predictions is methodologically incorrect.
