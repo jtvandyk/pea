@@ -103,6 +103,7 @@ def run_pipeline(
     geocode_cache: Optional[Path] = Path("data/cache/geocode.json"),
     geocode_workers: int = 4,
     scrape_workers: int = 16,
+    relevance_batch_size: int = 32,
 ):
     log.info("=== Protest Event Analysis Pipeline (codebook v2.3) ===")
     log.info(f"Query: '{query}' | Countries: {countries} | Days back: {days}")
@@ -175,7 +176,11 @@ def run_pipeline(
 
     # Stage 2.5: Relevance filter — rejects non-domain articles before LLM
     log.info(f"--- Stage 2.5: Relevance Filter (domain={domain}) ---")
-    _rf = RelevanceFilter(threshold=relevance_threshold, domain=domain)
+    _rf = RelevanceFilter(
+        threshold=relevance_threshold,
+        domain=domain,
+        batch_size=relevance_batch_size,
+    )
     scraped, rf_rejected = _rf.filter(scraped)
     log.info(
         f"Relevance filter: {len(scraped)} kept, {len(rf_rejected)} rejected "
@@ -276,6 +281,7 @@ def run_pipeline_multi_codebook(
     geocode_cache: Optional[Path] = Path("data/cache/geocode.json"),
     geocode_workers: int = 4,
     scrape_workers: int = 16,
+    relevance_batch_size: int = 32,
 ) -> dict:
     """
     Scrape and translate once, then run each domain's relevance filter and
@@ -361,7 +367,11 @@ def run_pipeline_multi_codebook(
 
         # Stage 2.5: Domain-specific relevance filter
         log.info(f"--- Stage 2.5: Relevance Filter (domain={domain}) ---")
-        _rf = RelevanceFilter(threshold=relevance_threshold, domain=domain)
+        _rf = RelevanceFilter(
+            threshold=relevance_threshold,
+            domain=domain,
+            batch_size=relevance_batch_size,
+        )
         domain_articles, rf_rejected = _rf.filter(scraped)
         log.info(
             f"  {len(domain_articles)} kept, {len(rf_rejected)} rejected"
@@ -566,6 +576,16 @@ def main():
         ),
     )
     parser.add_argument(
+        "--relevance-batch-size",
+        type=int,
+        default=32,
+        help=(
+            "Snippets per relevance-filter HF pipeline call (default 32). "
+            "Raise on GPU, lower if memory is tight. Keyword fallback ignores "
+            "this flag."
+        ),
+    )
+    parser.add_argument(
         "--rpm-limit",
         type=int,
         default=450,
@@ -625,6 +645,7 @@ def main():
                 geocode_cache=geocode_cache,
                 geocode_workers=args.geocode_workers,
                 scrape_workers=args.scrape_workers,
+                relevance_batch_size=args.relevance_batch_size,
             )
         else:
             domain = domains[0] if domains else "protest"
@@ -672,6 +693,7 @@ def main():
                 geocode_cache=geocode_cache,
                 geocode_workers=args.geocode_workers,
                 scrape_workers=args.scrape_workers,
+                relevance_batch_size=args.relevance_batch_size,
             )
 
     if args.stage in ("process", "all"):
