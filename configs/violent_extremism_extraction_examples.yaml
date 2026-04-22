@@ -1,0 +1,216 @@
+# Few-Shot Extraction Examples — Violent Extremism Domain
+# =========================================================
+# Aligned with violent_extremism_codebook.yaml v1.0
+# Based on GTD methodology (START / University of Maryland, August 2021)
+#
+# These are gold-standard input/output pairs injected into the user prompt
+# before the real article text. They ground the model on:
+#   (1) The extraction JSON schema for VE events
+#   (2) The most important disqualifier (law enforcement op → return [])
+#   (3) A multi-event article requiring two separate coded incidents
+#   (4) Correct use of doubt_terrorism for an ambiguous criminal/VE case
+#
+# DO NOT change the structure of the extracted_events arrays — they must
+# be valid JSON arrays matching the extraction schema exactly.
+
+examples:
+
+  - id: "ve_ex_01"
+    pinned: true
+    description: "Clean single bombing event — ISWAP suicide attack, Borno State Nigeria"
+    rationale: |
+      Demonstrates the most common VE event type in the pipeline's primary African
+      geography: a jihadist-salafi group conducting a suicide bombing at a civilian
+      target. Shows correct use of target_type: religious, weapon_type: explosives,
+      weapon_subtype: suicide_vest, and high confidence when group claims responsibility
+      and specific casualty figures are given. responsibility_claimed: true.
+    article_snippet: |
+      At least 14 people were killed and 23 others wounded on Friday when a suicide
+      bomber detonated an explosive vest inside the central mosque in Gamboru, Borno
+      State, as worshippers gathered for afternoon prayers. The Islamic State West
+      Africa Province (ISWAP) claimed responsibility for the attack in a statement
+      posted to affiliated channels. Security sources said the bomber was a young
+      man who entered the mosque blending in with worshippers. It is the third
+      major bombing in Borno in the past six weeks. No soldiers or government
+      officials were among the dead; all victims were civilians.
+    extracted_events:
+      - event_date: null
+        country: "Nigeria"
+        city: "Gamboru"
+        region: "Borno State"
+        venue: "Central mosque, Gamboru"
+        location_notes: null
+        attack_type: "bombing_explosion"
+        perpetrator_name: "ISWAP (Islamic State West Africa Province)"
+        perpetrator_ideology: "jihadist_salafi"
+        is_individual_attacker: false
+        target_type: "religious"
+        target_description: "Mosque congregation during Friday afternoon prayers"
+        weapon_type: "explosives"
+        weapon_subtype: "suicide_vest"
+        fatalities: "14"
+        injuries: "23"
+        hostages_taken: null
+        property_damage: true
+        responsibility_claimed: true
+        doubt_terrorism: false
+        doubt_reason: null
+        outcome: "escaped"
+        outcome_notes: "Third major bombing in Borno in six weeks; all victims were civilians"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "high"
+
+  - id: "ve_ex_02"
+    pinned: true
+    description: "Correct empty result — Nigerian Army counterterrorism operation kills militants"
+    rationale: |
+      Demonstrates the most important disqualifier in the African VE context: articles
+      about MILITARY OPERATIONS against militant groups must return [] immediately.
+      The perpetrator here is the Nigerian Army (a state actor), not a sub-national
+      VE group. Confusing counterterrorism operations for VE attacks is the single
+      most common error in African conflict news feeds. Return [] without hesitation.
+    article_snippet: |
+      The Nigerian Army on Monday announced it had killed 47 Boko Haram fighters and
+      destroyed three camps during a multi-day operation in the Sambisa Forest in
+      Borno State. A military spokesperson said troops of the 7 Division recovered
+      weapons, ammunition, and vehicles during the operation, which was supported by
+      the Air Force. Three soldiers sustained injuries but no fatalities were recorded
+      among Nigerian forces. The Army said the operation was part of a sustained
+      campaign to clear remaining militant strongholds ahead of the farming season.
+    extracted_events: []
+
+  - id: "ve_ex_03"
+    pinned: true
+    description: "Multi-event article — assassination + facility attack, Al-Shabaab, Kenya"
+    rationale: |
+      Demonstrates that one article can contain two distinct VE incidents that must
+      be coded separately. A targeted killing of a named official AND a separate
+      attack on a police station are TWO events with different attack types, targets,
+      and even slightly different locations. Collapsing them is the most common
+      multi-event failure. Also shows correct use of perpetrator attribution without
+      a formal claim (attributed by authorities, not self-claimed).
+    article_snippet: |
+      Al-Shabaab militants conducted two coordinated attacks in Lamu County on
+      Thursday evening. In the first, gunmen shot dead the area chief of Jima
+      village, Hussein Omar Abdi, outside his home — the second local official
+      killed by the group in the county this month. The attackers fled into
+      nearby bush before police could respond. Hours later, a separate cell
+      detonated an improvised explosive device at the gate of the Mpeketoni
+      police station, destroying the barrier and damaging two police vehicles;
+      no officers were inside at the time. Police attributed both attacks to
+      Al-Shabaab based on the group's known operating patterns in the area,
+      though no formal claim of responsibility was issued.
+    extracted_events:
+      - event_date: null
+        country: "Kenya"
+        city: "Jima"
+        region: "Lamu County"
+        venue: "Outside victim's home, Jima village"
+        location_notes: "Second local official killed by Al-Shabaab in Lamu this month"
+        attack_type: "assassination"
+        perpetrator_name: "Al-Shabaab"
+        perpetrator_ideology: "jihadist_salafi"
+        is_individual_attacker: false
+        target_type: "government"
+        target_description: "Hussein Omar Abdi, area chief of Jima village"
+        weapon_type: "firearms"
+        weapon_subtype: null
+        fatalities: "1"
+        injuries: null
+        hostages_taken: null
+        property_damage: false
+        responsibility_claimed: false
+        doubt_terrorism: false
+        doubt_reason: null
+        outcome: "escaped"
+        outcome_notes: "Attackers fled into bush; police attribution based on operating patterns"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "high"
+
+      - event_date: null
+        country: "Kenya"
+        city: "Mpeketoni"
+        region: "Lamu County"
+        venue: "Mpeketoni police station gate"
+        location_notes: "Gate and two vehicles destroyed; no officers present at time of blast"
+        attack_type: "facility_attack"
+        perpetrator_name: "Al-Shabaab"
+        perpetrator_ideology: "jihadist_salafi"
+        is_individual_attacker: false
+        target_type: "police"
+        target_description: "Mpeketoni police station gate and police vehicles"
+        weapon_type: "explosives"
+        weapon_subtype: "IED"
+        fatalities: null
+        injuries: null
+        hostages_taken: null
+        property_damage: true
+        responsibility_claimed: false
+        doubt_terrorism: false
+        doubt_reason: null
+        outcome: "escaped"
+        outcome_notes: "No officers inside at time of blast; police attribute to Al-Shabaab without formal claim"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "high"
+
+  - id: "ve_ex_04"
+    pinned: true
+    description: "Ambiguous kidnapping — doubt_terrorism: other_crime, Gulf of Guinea piracy"
+    rationale: |
+      Demonstrates correct use of doubt_terrorism: true with reason other_crime.
+      This kidnapping meets the mandatory GTD criteria (intentional, violent, sub-national
+      actor) but fails the 2-of-3 test: no political goal is stated, no coercive message
+      to a broader audience, and the method is consistent with purely criminal piracy.
+      The event is still extracted (not discarded) but flagged as doubtful. This is the
+      correct approach when the article is genuinely ambiguous.
+    article_snippet: |
+      Armed men boarded a Liberian-flagged chemical tanker in international waters
+      off the Niger Delta early Saturday and kidnapped seven crew members —
+      five Filipinos and two Greeks — before departing with the hostages. The
+      ship's owner, Athens-based Crestview Shipping, confirmed the incident and
+      said ransom negotiations were underway through a private security firm.
+      No group has claimed responsibility. The Nigerian Navy said it was
+      investigating but described the attack as "a criminal act by sea robbers."
+      Piracy incidents in the Gulf of Guinea have increased in recent months.
+    extracted_events:
+      - event_date: null
+        country: "Nigeria"
+        city: null
+        region: "Gulf of Guinea (international waters off Niger Delta)"
+        venue: "Liberian-flagged chemical tanker"
+        location_notes: "International waters; Nigerian Navy jurisdiction invoked"
+        attack_type: "kidnapping"
+        perpetrator_name: null
+        perpetrator_ideology: "criminal"
+        is_individual_attacker: false
+        target_type: "maritime"
+        target_description: "Seven crew members (5 Filipino, 2 Greek) aboard chemical tanker"
+        weapon_type: "firearms"
+        weapon_subtype: null
+        fatalities: null
+        injuries: null
+        hostages_taken: "7"
+        property_damage: false
+        responsibility_claimed: false
+        doubt_terrorism: true
+        doubt_reason: "other_crime"
+        outcome: "ongoing"
+        outcome_notes: "Ransom negotiations underway via private security firm; Nigerian Navy calls it criminal act"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "medium"

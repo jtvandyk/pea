@@ -1,0 +1,830 @@
+# Violent Extremism Event Codebook for LLM Classification
+# Based on: Global Terrorism Database (GTD) Codebook, August 2021 (START / University of Maryland)
+#           CSIS Domestic Terrorism Case Studies Methodology (McCabe 2024)
+#
+# Version: 1.0
+# Created: 2026-04-22
+#
+# Unit of analysis: A single violent extremism INCIDENT — one attack event at one
+# location at one time. Unlike the protest codebook (collective political action),
+# most VE events involve a small number of perpetrators acting with lethal or
+# destructive intent. The primary classification variable is ATTACK_TYPE.
+#
+# Relationship to protest codebook: these two codebooks are MUTUALLY EXCLUSIVE.
+# Collective non-violent or contentious political action → protest codebook.
+# Intentional violence by a sub-national actor for a political/religious/social
+# goal → this codebook. When in doubt, see the decision rule in non_events.
+
+metadata:
+  title: "Violent Extremism Event Codebook for LLM Classification"
+  description: |
+    Codebook for extracting structured VE events from news articles.
+    Grounded in GTD mandatory + 2-of-3 inclusion criteria and CSIS ideological
+    categories. Events are classified by attack_type, perpetrator_ideology,
+    target_type, and weapon_type.
+  temporal_scope: "Any time period"
+  geographic_scope: "Global (primary focus: Africa — NG, ZA, UG, DZ, Sahel, Horn)"
+  source_datasets:
+    - "GTD — Global Terrorism Database (START / University of Maryland, August 2021)"
+    - "CSIS Domestic Terrorism Database (McCabe 2024)"
+  unit_of_analysis: "Individual violent extremism incident"
+  minimum_participants: 1
+  llm_backend: "Azure AI Foundry (gpt-4o-mini)"
+  version: "1.0"
+  last_updated: "2026-04-22"
+
+# ============================================================================
+# MINIMUM CRITERIA — check BEFORE assigning any attack_type
+# ============================================================================
+#
+# GTD uses three MANDATORY criteria (ALL must be met) and a 2-of-3 rule.
+# The 2-of-3 rule exists because not every attack has all three characteristics,
+# but any qualifying terrorist incident must have at least two.
+
+minimum_criteria:
+
+  mandatory_all_three:
+    1_intentional: |
+      The incident must be INTENTIONAL — the direct result of a conscious decision
+      by a perpetrator. Accidents, natural events, and collateral damage from
+      unrelated military operations do not qualify.
+    2_violent: |
+      The incident must entail some level of VIOLENCE or immediate threat of violence
+      against persons or property. Credible, specific threats count; vague online
+      rhetoric does not.
+    3_sub_national_actor: |
+      The perpetrators must be SUB-NATIONAL actors — not solely representing the
+      official will of a government. State violence against civilians is out of scope.
+      Covert state proxies are ambiguous — use doubt_terrorism: state_actor.
+
+  at_least_two_of_three:
+    1_political_goal: |
+      The act is aimed at attaining a POLITICAL, ECONOMIC, RELIGIOUS, or SOCIAL goal —
+      not purely personal revenge or financial gain.
+    2_coercive_intent: |
+      Evidence of an intention to COERCE, intimidate, or convey a message to a
+      larger audience beyond the immediate victims (audiences can be governments,
+      populations, rival groups, or international observers).
+    3_outside_ihl: |
+      The action is OUTSIDE the precepts of international humanitarian law — e.g.,
+      deliberate targeting of civilians, non-combatants, protected sites, or
+      indiscriminate use of violence.
+
+  disqualify_immediately:
+    - "Article describes protests, demonstrations, marches, or collective non-violent political action (→ protest codebook)"
+    - "Article describes conventional interstate war — two state militaries directly engaging each other without civilian targeting"
+    - "Article reports only a government/military counterterrorism operation (e.g. 'army kills 40 militants in air raid') with no attack by a non-state actor"
+    - "Article is analytical commentary, policy paper, academic discussion, or historical retrospective ABOUT terrorism (not reporting a specific incident)"
+    - "Article reports a FOILED or PREVENTED plot with no physical action — arrests before any attack, confiscation of explosives, online threats without a specific target"
+    - "Article describes election results, court verdicts, or policy announcements about counterterrorism"
+    - "Article describes criminal gang violence, armed robbery, or carjacking with no political motivation and no coercive message to a broader audience"
+    - "Article describes natural disasters, accidents, or unintentional harm"
+    - "Article is an obituary or memorial with no incident report"
+    - "Article describes inter-communal ethnic clashes over land, cattle, or resources with no coercive political message directed at a state or institution (→ non-event)"
+
+# ============================================================================
+# DOUBT TERRORISM PROPER
+# ============================================================================
+#
+# Some incidents meet mandatory criteria but better fit an alternative category.
+# Set doubt_terrorism: true and assign doubt_reason for any of the following.
+# Do NOT return [] for these — still extract the event, but flag it.
+
+doubt_terrorism_designations:
+
+  insurgency: |
+    Primarily a conventional military engagement — an organised armed group fighting
+    government forces with military-style tactics (frontal assaults, territory control,
+    artillery exchanges). Code as VE only when civilian targeting or a coercive
+    political message to a broader audience is present alongside the engagement.
+
+  other_crime: |
+    Primarily a criminal act — armed robbery, ransom kidnapping with no political demand,
+    drug-related gang killing, opportunistic looting. Political framing may be present
+    but secondary or implausible. If the article is ambiguous, err toward coding + flagging
+    rather than discarding.
+
+  intra_group_conflict: |
+    Violence between two non-state armed factions with no clear civilian targeting and
+    no coercive message directed at a state or broader population (e.g., cartel-style
+    elimination of a rival commander).
+
+  state_actor: |
+    Evidence suggests the actual perpetrators are state security forces or their proxies
+    operating covertly. Even when attributed to a militant group, if sourcing or
+    circumstantial evidence points to state involvement, flag this.
+
+  lack_intentionality: |
+    The violence appears unintentional, accidental, or results from negligence
+    (e.g., weapons cache explosion, friendly fire reported as an attack).
+
+# ============================================================================
+# TYPE ALIASES
+# ============================================================================
+
+type_aliases:
+  "bombing": "bombing_explosion"
+  "explosion": "bombing_explosion"
+  "ied attack": "bombing_explosion"
+  "suicide bombing": "bombing_explosion"
+  "car bomb": "bombing_explosion"
+  "vbied": "bombing_explosion"
+  "shooting": "armed_assault"
+  "gunfire": "armed_assault"
+  "ambush": "armed_assault"
+  "raid": "armed_assault"
+  "attack": "armed_assault"
+  "murder": "assassination"
+  "killing": "assassination"
+  "targeted killing": "assassination"
+  "abduction": "kidnapping"
+  "hostage taking": "barricade_hostage"
+  "siege": "barricade_hostage"
+  "hijack": "hijacking"
+  "sabotage": "facility_attack"
+  "infrastructure attack": "facility_attack"
+  "vehicle ramming": "unarmed_assault"
+  "knife attack": "armed_assault"
+  "machete attack": "armed_assault"
+
+# ============================================================================
+# ATTACK TYPES
+# ============================================================================
+#
+# Use the exact key names below as the attack_type value.
+# Valid keys: assassination | armed_assault | bombing_explosion | hijacking |
+#             barricade_hostage | kidnapping | facility_attack | unarmed_assault | unknown
+
+attack_types:
+
+  assassination:
+    name: "Assassination"
+    definition: |
+      A deliberate, premeditated act aimed at killing or seriously injuring a SPECIFIC,
+      NAMED individual — typically a political figure, official, journalist, activist,
+      religious leader, or community elder. The identity of the target is the primary
+      motivation. Attempted assassinations (target survived) are still coded here.
+
+    positive_examples:
+      - "Gunmen shot and killed the governor of Borno State as he left Friday prayers"
+      - "A suicide bomber killed a tribal elder who had mediated between communities"
+      - "A journalist known for reporting on Boko Haram was stabbed outside his home"
+      - "Al-Shabaab gunmen killed a member of parliament in Mogadishu"
+      - "A local emir was targeted and killed — his successor was immediately named"
+
+    negative_examples:
+      - "A bomb exploded at a busy market, killing 14 (place is the target, not a named individual → BOMBING_EXPLOSION)"
+      - "Militants fired at a military checkpoint, killing three soldiers (group target → ARMED_ASSAULT)"
+      - "A leader was kidnapped and driven to an unknown location (removal, not killing → KIDNAPPING)"
+      - "Gunmen shot at a convoy carrying a minister; the minister escaped unhurt (if IED → BOMBING_EXPLOSION; if firearms + named target → ASSASSINATION)"
+
+    decision_rules:
+      - "IF a specific named individual is identified as the intended target → ASSASSINATION"
+      - "IF the victim is a symbolic category but not named in advance → prefer ARMED_ASSAULT"
+      - "IF an IED/bomb is used and the specific named person is the target → ASSASSINATION (target specificity overrides weapon type)"
+      - "IF the victim survived → still code as ASSASSINATION (attempted)"
+      - "IF multiple named co-targeted individuals in one incident → single ASSASSINATION event; list all in target_description"
+
+    confidence_threshold: 0.80
+    codebook_equivalents:
+      gtd: "Attack type 1 — Assassination"
+    temporal_markers:
+      - "killed"
+      - "shot"
+      - "assassinated"
+      - "murdered"
+      - "targeted"
+      - "executed"
+      - "slain"
+
+  armed_assault:
+    name: "Armed Assault"
+    definition: |
+      An attack carried out with firearms, bladed weapons, or other arms where the
+      primary intent is to kill or injure people — but the victims are a CATEGORY of
+      persons (soldiers, civilians, worshippers) rather than a specific named individual.
+      Includes mass shootings, ambushes, drive-by shootings, and raids on villages or
+      military positions.
+
+    positive_examples:
+      - "ISWAP militants opened fire on an army checkpoint, killing five soldiers"
+      - "Gunmen ambushed a convoy on the Maiduguri–Damaturu road, killing civilians and troops"
+      - "Attackers raided a farming community overnight, killing 23 and burning homes"
+      - "Al-Shabaab fighters stormed a hotel popular with government officials, killing 14"
+      - "Armed men opened fire at a church congregation, killing eight worshippers"
+
+    negative_examples:
+      - "Gunmen shot and killed a named police commissioner outside his home (specific named target → ASSASSINATION)"
+      - "Militants detonated a landmine under an army vehicle (explosive primary → BOMBING_EXPLOSION)"
+      - "Militants captured and held civilians inside a school (taking control of location → BARRICADE_HOSTAGE)"
+      - "Attackers abducted 30 villagers and drove them away (removal from scene → KIDNAPPING)"
+
+    decision_rules:
+      - "IF perpetrators attack with weapons AND intent is to kill/harm a category of people → ARMED_ASSAULT"
+      - "IF an explosive is the primary weapon → BOMBING_EXPLOSION"
+      - "IF attack combines firearms and explosives, assess primary: if explosion caused most casualties → BOMBING_EXPLOSION; if firearms did → ARMED_ASSAULT"
+      - "IF a village raid combines killing and arson → ARMED_ASSAULT (violence against persons is primary)"
+      - "IF soldiers are killed at their base → ARMED_ASSAULT (not FACILITY_ATTACK — persons are the target)"
+
+    confidence_threshold: 0.75
+    codebook_equivalents:
+      gtd: "Attack type 2 — Armed Assault"
+    temporal_markers:
+      - "opened fire"
+      - "ambushed"
+      - "raided"
+      - "attacked"
+      - "shot dead"
+      - "gunned down"
+      - "stormed"
+
+  bombing_explosion:
+    name: "Bombing or Explosion"
+    definition: |
+      The use of an explosive or incendiary device — including IEDs, suicide vests, car
+      bombs (VBIEDs), grenades, landmines, mortars, rockets, RPGs — as the primary attack
+      method. The device may be planted, thrown, remotely detonated, or carried by a
+      person. Deliberately set fires (arson as political violence) are also coded here.
+
+    positive_examples:
+      - "A suicide bomber detonated a vest inside a mosque, killing 20 worshippers"
+      - "An IED planted under a road detonated as an army vehicle passed, killing four soldiers"
+      - "A car bomb exploded outside a government building in Mogadishu, killing six"
+      - "Militants launched mortar rounds at a military base, destroying vehicles"
+      - "Arsonists set fire to a church, destroying the building — religious motivation stated"
+      - "A landmine detonated under a civilian vehicle transporting traders"
+
+    negative_examples:
+      - "Rioters burned a car during post-election unrest (collective protest violence → protest codebook)"
+      - "A factory fire was caused by unsafe conditions (accident, not intentional)"
+      - "Militants fired machine guns at a patrol (no explosives → ARMED_ASSAULT)"
+      - "A car bomb killed a named minister who was the specific target (named individual → ASSASSINATION)"
+
+    decision_rules:
+      - "IF explosive/incendiary device is the primary weapon → BOMBING_EXPLOSION regardless of outcome"
+      - "IF explosive is used but a specific named individual is the unambiguous target → ASSASSINATION"
+      - "IF deliberately set fire is politically motivated → BOMBING_EXPLOSION (not FACILITY_ATTACK)"
+      - "IF mortar/rocket attack is part of sustained conventional warfare with no civilian targeting → consider doubt_terrorism: insurgency"
+
+    confidence_threshold: 0.75
+    codebook_equivalents:
+      gtd: "Attack type 3 — Bombing/Explosion"
+    temporal_markers:
+      - "explosion"
+      - "bomb"
+      - "detonated"
+      - "IED"
+      - "blast"
+      - "suicide bomber"
+      - "landmine"
+      - "booby trap"
+
+  hijacking:
+    name: "Hijacking"
+    definition: |
+      The seizure and commandeering of a VEHICLE — primarily aircraft, ships, buses, or
+      trucks — to coerce an audience or hold passengers hostage. Requires that the
+      perpetrators take control of the vehicle and its occupants, whether briefly or
+      for an extended period.
+
+    positive_examples:
+      - "Gunmen seized a fishing vessel in the Gulf of Guinea and held the crew for ransom"
+      - "Armed men stopped a bus on a highway and abducted all 30 passengers"
+      - "Militants commandeered a government supply truck and drove it to their territory"
+
+    negative_examples:
+      - "Armed robbers stole a truck after the driver fled (theft, no passengers taken → criminal, not hijacking)"
+      - "Carjackers forced a driver out and stole the vehicle (theft, not coercive transport of victims)"
+      - "Militants occupied a building (not a vehicle → BARRICADE_HOSTAGE or FACILITY_ATTACK)"
+
+    decision_rules:
+      - "IF seizure involves a moving vehicle with passengers AND political/coercive motive → HIJACKING"
+      - "IF vehicle is immediately abandoned after abducting passengers → KIDNAPPING"
+      - "IF motive is purely criminal ransom with no political demand → doubt_terrorism: other_crime"
+      - "IF a ship is seized for extended hostage negotiation → BARRICADE_HOSTAGE may be more accurate"
+
+    confidence_threshold: 0.80
+    codebook_equivalents:
+      gtd: "Attack type 4 — Hijacking"
+
+  barricade_hostage:
+    name: "Barricade Incident or Facility-Based Hostage Taking"
+    definition: |
+      Perpetrators seize control of a building or fixed location and HOLD PERSONS
+      (hostages) at that location — as distinct from kidnapping, where victims are
+      removed from the scene. Includes school sieges, hotel takeovers, and
+      standoff-style attacks. Typically involves a standoff with security forces.
+
+    positive_examples:
+      - "Gunmen seized a school and held 300 pupils and teachers inside for three days"
+      - "Militants stormed a hotel popular with Western contractors and held guests hostage"
+      - "Al-Shabaab fighters occupied a shopping mall and held shoppers at gunpoint"
+      - "Armed group occupied a government building and refused to leave until demands were met"
+
+    negative_examples:
+      - "Militants kidnapped a relief worker and drove away (removed from location → KIDNAPPING)"
+      - "Armed group stormed a military base and destroyed equipment, no hostages (→ FACILITY_ATTACK)"
+      - "Protesters occupied a parliament building peacefully (non-violent political action → protest codebook: occupation_seizure)"
+
+    decision_rules:
+      - "IF perpetrators hold people at a fixed location → BARRICADE_HOSTAGE"
+      - "IF victims are taken AWAY from the scene → KIDNAPPING"
+      - "IF location is seized with no hostages → FACILITY_ATTACK"
+      - "IF a peaceful occupation is used to demand policy change without threats → protest codebook: occupation_seizure"
+
+    confidence_threshold: 0.80
+    codebook_equivalents:
+      gtd: "Attack type 5 — Barricade/Hostage Taking"
+    temporal_markers:
+      - "seized"
+      - "took hostage"
+      - "held captive"
+      - "stormed and occupied"
+      - "siege"
+      - "standoff"
+
+  kidnapping:
+    name: "Kidnapping"
+    definition: |
+      The ABDUCTION of an individual or group — removing them from the scene and
+      holding them at a separate, typically undisclosed location — for ransom, prisoner
+      exchange, propaganda, forced recruitment, or political leverage. The victim is
+      TAKEN AWAY (not held at the original location).
+
+    positive_examples:
+      - "Armed men abducted a French aid worker in Mali and demanded a prisoner release"
+      - "Boko Haram kidnapped 200 schoolgirls and transported them to a forest camp"
+      - "Gunmen seized a local government official and demanded a ransom from his family"
+      - "Seven Chinese construction workers were abducted from a project site in Nigeria"
+      - "Al-Shabaab captured a Kenyan soldier and released a video demanding negotiations"
+
+    negative_examples:
+      - "Gunmen held passengers inside a hijacked bus on the road (vehicle, not location → HIJACKING)"
+      - "Armed men stormed a school and held pupils inside the building (fixed location → BARRICADE_HOSTAGE)"
+      - "A criminal gang abducted a businessman for ransom; no political demand (→ doubt_terrorism: other_crime)"
+
+    decision_rules:
+      - "IF victim is abducted AND removed from the scene → KIDNAPPING"
+      - "IF victim is held at the original location → BARRICADE_HOSTAGE"
+      - "IF purely criminal ransom with no political demand or coercive message → doubt_terrorism: true, reason: other_crime"
+      - "IF demand is for prisoner exchange or policy change → stronger VE classification (political + coercive)"
+      - "IF kidnapped individuals are later killed in captivity → single KIDNAPPING event; note deaths in fatalities"
+
+    confidence_threshold: 0.75
+    codebook_equivalents:
+      gtd: "Attack type 6 — Kidnapping"
+    temporal_markers:
+      - "abducted"
+      - "kidnapped"
+      - "snatched"
+      - "taken hostage and removed"
+      - "held for ransom"
+
+  facility_attack:
+    name: "Facility or Infrastructure Attack"
+    definition: |
+      An attack whose PRIMARY target is a BUILDING, INSTALLATION, or PHYSICAL
+      INFRASTRUCTURE — rather than specific persons. Includes attacks on power stations,
+      bridges, pipelines, military bases, police stations, government buildings, and
+      communications towers. May involve explosives, arson, sabotage, or direct assault.
+      The key distinction from armed_assault is that PROPERTY/INFRASTRUCTURE is the
+      primary target, even if casualties result.
+
+    positive_examples:
+      - "Militants destroyed a power transmission tower, cutting electricity to three towns"
+      - "An armed group attacked a police station, damaged vehicles, and withdrew"
+      - "Saboteurs blew up a section of the Trans-Saharan oil pipeline"
+      - "Attackers set fire to a government tax office — no personnel were present"
+      - "Militants detonated an explosive at the gate of a military base"
+
+    negative_examples:
+      - "Gunmen ambushed soldiers guarding a fuel depot (people are the primary target → ARMED_ASSAULT)"
+      - "A suicide bomber detonated at a crowded market near a government building (people are primary target → BOMBING_EXPLOSION)"
+      - "Militants seized a police station and held officers inside (hostages at fixed location → BARRICADE_HOSTAGE)"
+
+    decision_rules:
+      - "IF primary target is a building/infrastructure AND people are incidental → FACILITY_ATTACK"
+      - "IF attack on facility causes significant casualties to persons AND it is unclear which is primary → ARMED_ASSAULT"
+      - "IF explosive is used and persons are the clear primary target → BOMBING_EXPLOSION"
+      - "IF militants seize and hold an installation: with hostages → BARRICADE_HOSTAGE; without → FACILITY_ATTACK"
+
+    confidence_threshold: 0.75
+    codebook_equivalents:
+      gtd: "Attack type 7 — Facility/Infrastructure Attack"
+    temporal_markers:
+      - "sabotaged"
+      - "blew up"
+      - "destroyed"
+      - "damaged"
+      - "set fire to"
+      - "attacked the base"
+
+  unarmed_assault:
+    name: "Unarmed Assault"
+    definition: |
+      A physical attack on persons carried out WITHOUT conventional weapons — no firearms,
+      explosives, or bladed weapons. Includes vehicle-ramming attacks where the vehicle is
+      used as the primary weapon (and no explosive device is involved). Relatively rare in
+      the African VE context but occurs in lone-actor incidents.
+
+    positive_examples:
+      - "A man drove a vehicle into a crowd gathered outside a mosque, killing four"
+      - "An attacker beat a community leader with a wooden club in a politically motivated assault"
+
+    negative_examples:
+      - "A car bomb exploded in a crowd (explosive device → BOMBING_EXPLOSION)"
+      - "A hijacker threatened a driver with a knife (bladed weapon → ARMED_ASSAULT)"
+      - "Protesters threw stones at police (collective action → protest codebook: confrontation)"
+
+    decision_rules:
+      - "IF vehicle is used as a weapon to ram into people (not hijacked, no explosion) → UNARMED_ASSAULT"
+      - "IF any conventional weapon (knife, firearm) is used in the same attack → ARMED_ASSAULT"
+      - "IF vehicle ramming accompanies an explosive → BOMBING_EXPLOSION"
+
+    confidence_threshold: 0.70
+    codebook_equivalents:
+      gtd: "Attack type 8 — Unarmed Assault"
+
+  unknown:
+    name: "Unknown Attack Type"
+    definition: |
+      Sufficient information exists to conclude that a VE incident occurred, but the
+      attack method cannot be determined from the article.
+
+    positive_examples:
+      - "An explosion of unknown origin killed three people near a government building"
+      - "A security official was killed in unclear circumstances attributed by authorities to militant activity"
+
+    decision_rules:
+      - "Use UNKNOWN only after genuinely attempting to assign one of the eight typed categories"
+      - "IF a person is killed but method is completely absent → UNKNOWN"
+      - "IF article says 'attack' with no other detail → UNKNOWN"
+
+    confidence_threshold: 0.50
+    codebook_equivalents:
+      gtd: "Attack type 9 — Unknown"
+
+# ============================================================================
+# TARGET TYPE VOCABULARY  (GTD 22 categories)
+# ============================================================================
+#
+# Use the key as the target_type value. Describe the specific target in target_description.
+
+target_type_vocabulary:
+  business: "Commercial business, private firm, or corporate property"
+  government: "Government buildings, vehicles, officials, or government policy targets (non-police/military)"
+  police: "Police officers, police stations, police vehicles, or law enforcement personnel"
+  military: "Military personnel, bases, vehicles, equipment, or armed forces"
+  abortion_related: "Abortion providers, clinics, or related persons"
+  airports_aircraft: "Airports, aircraft, or aviation personnel"
+  diplomatic: "Embassies, consulates, diplomats, or foreign government representatives"
+  education: "Schools, universities, students, teachers, or educational facilities"
+  food_water: "Food supply systems, water treatment plants, or related infrastructure"
+  journalists_media: "Journalists, media organisations, newspapers, or broadcasting infrastructure"
+  maritime: "Ships, ports, maritime personnel, oil platforms, or offshore installations"
+  ngo: "Non-governmental organisations, international aid agencies, or humanitarian workers"
+  other: "Target does not fit another category"
+  private_citizens: "Civilians or private property with no specific institutional affiliation"
+  religious: "Places of worship, religious leaders, clergy, or religious gatherings"
+  telecommunication: "Telephone networks, internet infrastructure, cellular towers, or broadcasting equipment"
+  terrorists_militias: "Members of a rival non-state armed group"
+  tourists: "Tourists, tourist facilities, or visitors at tourist sites"
+  transportation: "Road infrastructure, railways, buses, or ground transport networks (non-aviation)"
+  unknown: "Target type cannot be determined from the article"
+  utilities: "Power grids, electricity pylons, fuel pipelines, gas lines, or water supply infrastructure"
+  violent_political_parties: "Members or property of politically violent factions or party militias"
+
+# ============================================================================
+# WEAPON TYPE VOCABULARY  (GTD 13 categories)
+# ============================================================================
+
+weapon_type_vocabulary:
+  biological: "Pathogen, toxin, or biological agent used as a weapon"
+  chemical: "Chemical warfare agent or toxic chemical used as a weapon (nerve agent, chlorine gas, etc.)"
+  radiological_nuclear: "Radioactive material or nuclear device"
+  firearms:
+    description: "Any firearm — handguns, rifles, shotguns, machine guns, sniper rifles, AK-47"
+    subtypes: ["handgun", "rifle", "machine_gun", "sniper_rifle", "RPK", "AK-47"]
+  explosives:
+    description: "Bombs and explosive devices of any type"
+    subtypes: ["IED", "suicide_vest", "car_bomb", "VBIED", "landmine", "grenade", "mortar", "rocket", "RPG"]
+  fake_weapons: "Toy, replica, or unloaded weapon used to threaten"
+  incendiary: "Fire-based devices — Molotov cocktails, incendiary bottles, deliberate arson"
+  melee: "Knives, machetes, axes, clubs, swords, or other hand-held contact weapons"
+  vehicle: "Motor vehicle used as a weapon in a ramming attack (without explosive)"
+  sabotage_equipment: "Tools used to disable or destroy infrastructure (wire cutters, hacksaws, drilling equipment)"
+  other: "Weapon does not fit any other category"
+  unknown: "Weapon type cannot be determined from the article"
+
+# ============================================================================
+# PERPETRATOR IDEOLOGY VOCABULARY
+# CSIS Domestic Terrorism methodology (McCabe 2024) + GTD ideological categories
+# ============================================================================
+
+perpetrator_ideology_vocabulary:
+
+  jihadist_salafi:
+    description: |
+      Groups motivated by an extremist interpretation of Sunni Islam — seeking to
+      establish an Islamic state, enforce sharia, or conduct attacks in defence of
+      Islam as they define it. The dominant VE ideology in the pipeline's primary
+      African target geography.
+    examples:
+      - "Al-Shabaab (Somalia / East Africa)"
+      - "Boko Haram / ISWAP (Islamic State West Africa Province) — Nigeria, Niger, Chad, Cameroon"
+      - "ISIS / Islamic State"
+      - "Al-Qaeda affiliates (AQIM, JNIM)"
+      - "JNIM — Jama'a Nusrat ul-Islam wa al-Muslimin (Sahel)"
+      - "Ansarul Islam (Burkina Faso)"
+      - "ASWJ / Ansar al-Sunna (Mozambique, Cabo Delgado)"
+    african_context: "Dominant ideology for VE in northeastern Nigeria, Somalia, Sahel, and Mozambique"
+
+  nationalist_separatist:
+    description: |
+      Groups motivated by ethnic, regional, or national self-determination — seeking
+      independence or autonomy for an identified group. Overlaps with insurgency;
+      use doubt_terrorism: insurgency when conventional military tactics dominate.
+    examples:
+      - "MNLA / Azawad separatists (Mali)"
+      - "ADF (Allied Democratic Forces, original mandate — DRC/Uganda)"
+      - "Anglophone separatist militias (Cameroon)"
+      - "OLA (Oromo Liberation Army, Ethiopia)"
+
+  far_right:
+    description: |
+      Groups or individuals motivated by white supremacist, neo-Nazi, anti-government
+      militia, or accelerationist ideology.
+    examples:
+      - "AWB (Afrikaner Weerstandsbeweging, South Africa — historical)"
+      - "Contemporary lone-actor attacks targeting minorities"
+    african_context: |
+      Historically associated with apartheid-era South Africa; rare in contemporary
+      sub-Saharan Africa but possible in ZA context.
+
+  far_left:
+    description: |
+      Groups motivated by anarchist, Marxist, or anti-capitalist ideology targeting
+      the state or economic infrastructure.
+    examples:
+      - "ELF/EPLF (historical — now legitimate state actors)"
+      - "Contemporary eco-sabotage groups"
+    note: "True contemporary far-left VE is rare in Africa; use with caution"
+
+  single_issue:
+    description: |
+      Groups or individuals motivated by a single policy position rather than a
+      broader ideological agenda.
+    examples:
+      - "Anti-mining sabotage groups"
+      - "Vigilante anti-poaching attacks"
+      - "Anti-tax militias in artisanal mining areas"
+
+  criminal:
+    description: |
+      Groups or individuals who may use political framing but whose primary
+      motivation is financial gain (kidnap-for-ransom, piracy).
+    note: "Set doubt_terrorism: true, reason: other_crime if political goal is clearly absent"
+    examples:
+      - "Gulf of Guinea piracy groups"
+      - "Kidnap-for-ransom gangs using jihadist branding"
+
+  unknown:
+    description: "Perpetrator ideology cannot be determined from available information"
+
+# ============================================================================
+# NON-EVENTS — return [] immediately
+# ============================================================================
+
+non_events:
+
+  - category: "Law enforcement or military operations against militant groups"
+    examples:
+      - "Nigerian Army kills 40 suspected Boko Haram fighters in Sambisa air raid"
+      - "Police arrested an IS-linked cell before a planned attack"
+      - "Drone strike eliminates Al-Shabaab commander"
+      - "Security forces recover weapons cache in joint operation"
+    reason: |
+      State actor carrying out an operation — the sub-national perpetrator criterion
+      is not met. These articles report counterterrorism, not a VE incident. Return [].
+
+  - category: "Foiled plots and arrests before any physical attack"
+    examples:
+      - "Three men arrested suspected of planning a church bombing"
+      - "Authorities intercepted explosives being transported in a vehicle"
+      - "Man arrested after posting attack threats on social media"
+      - "Intelligence services disrupt planned assassination of a minister"
+    reason: |
+      GTD requires the incident to be 'out the door' — a plan that did not materialise
+      is not coded. Return [].
+
+  - category: "Conventional armed conflict between military forces"
+    examples:
+      - "Government troops launched a major offensive against rebel-held territory"
+      - "Insurgent group and army fought a four-hour pitched battle near the border"
+    reason: |
+      Conventional military engagement between armed forces. Consider extracting only
+      if civilians are deliberately targeted or coercive message is explicit.
+      If coding, set doubt_terrorism: true, reason: insurgency.
+
+  - category: "Criminal violence without political motivation"
+    examples:
+      - "Armed robbery of a bank — three customers killed"
+      - "Carjacking resulted in the driver's death"
+      - "Drug-related gang shooting in a Johannesburg township"
+    reason: |
+      No sub-national political, religious, or social goal. Return [] if motivation
+      is purely criminal. If article is ambiguous, extract with doubt_terrorism: other_crime.
+
+  - category: "Collective political action and protests"
+    examples:
+      - "Rioters burned police vehicles during post-election unrest"
+      - "Protesters threw petrol bombs at the parliament building"
+    reason: |
+      Contentious collective political action → protest codebook, not VE codebook.
+      Even when violent, protest riots are NOT the same as organised VE attacks.
+      Return [] from this codebook.
+
+  - category: "Inter-communal or ethnic violence without VE criteria"
+    examples:
+      - "Herder-farmer clashes over grazing land kill 12"
+      - "Ethnic mob burned homes in a rival community"
+      - "Vigilante group killed alleged cattle thieves"
+    reason: |
+      Communal violence without a coercive political message directed at a state or
+      institutional audience. May warrant doubt_terrorism: intra_group_conflict if
+      extracted; otherwise return [].
+
+  - category: "Natural disasters and accidents"
+    examples:
+      - "Gas explosion kills workers at a factory"
+      - "Accidental weapons discharge at a barracks kills two"
+    reason: "Not intentional. Return []."
+
+  - category: "Commentary and retrospective analysis"
+    examples:
+      - "Academic paper on terrorism trends in West Africa"
+      - "Government counterterrorism strategy white paper"
+      - "Anniversary retrospective on a past attack"
+    reason: "Article is ABOUT terrorism, not reporting a new incident. Return []."
+
+# ============================================================================
+# AFRICAN CONTEXT NOTES
+# ============================================================================
+
+african_context:
+
+  major_active_groups_2026:
+    note: "Active VE groups in pipeline target geographies as of 2026"
+    groups:
+
+      - name: "Boko Haram / ISWAP"
+        ideology: "jihadist_salafi"
+        countries: ["Nigeria (NE Borno/Yobe)", "Niger", "Chad", "Cameroon (far north)"]
+        typical_attack_types: ["armed_assault", "bombing_explosion", "kidnapping", "barricade_hostage"]
+        notes: "ISWAP is the Islamic State-aligned faction; Boko Haram (JAS) is the splinter group. Both active."
+
+      - name: "Al-Shabaab"
+        ideology: "jihadist_salafi"
+        countries: ["Somalia", "Kenya", "Ethiopia", "Uganda"]
+        typical_attack_types: ["bombing_explosion", "armed_assault", "assassination", "facility_attack"]
+        notes: "Complex attacks combining explosives and armed assault are a signature method."
+
+      - name: "JNIM (Jama'a Nusrat ul-Islam wa al-Muslimin)"
+        ideology: "jihadist_salafi"
+        countries: ["Mali", "Burkina Faso", "Niger", "Côte d'Ivoire"]
+        typical_attack_types: ["armed_assault", "bombing_explosion", "assassination", "kidnapping"]
+        notes: "Al-Qaeda-aligned Sahel coalition; formed 2017 from merger of AQIM, Ansar Dine, al-Mourabitoun, FLM."
+
+      - name: "ISGS / ISIS-Sahel"
+        ideology: "jihadist_salafi"
+        countries: ["Mali", "Niger", "Burkina Faso"]
+        typical_attack_types: ["armed_assault", "bombing_explosion"]
+        notes: "Islamic State-aligned; competes with JNIM for territory and recruits."
+
+      - name: "ADF (Allied Democratic Forces)"
+        ideology: "nationalist_separatist + jihadist_salafi"
+        countries: ["DRC (eastern)", "Uganda"]
+        typical_attack_types: ["armed_assault", "kidnapping", "facility_attack"]
+
+      - name: "Ansar al-Sunna / ASWJ"
+        ideology: "jihadist_salafi"
+        countries: ["Mozambique (Cabo Delgado province)"]
+        typical_attack_types: ["armed_assault", "assassination", "barricade_hostage"]
+        notes: "Also referred to as 'Al-Shabaab' in local media — not related to Somali Al-Shabaab."
+
+  false_positive_patterns:
+    note: "Common article types that trigger false VE detection"
+    patterns:
+      - "Regional body statements on terrorism (ECOWAS, AU) → commentary, return []"
+      - "'Army kills militants in operation' → law enforcement/military op, return []"
+      - "'Security forces arrest terror suspects' → foiled plot, return []"
+      - "'Community vigilante kills suspected militant' → may be state_actor or intra_group_conflict; if coding, flag"
+      - "'Government deploys troops to volatile region' → policy action, not incident, return []"
+      - "Mozambique 'Al-Shabaab' reports → Ansar al-Sunna, not Somali Al-Shabaab — correct group name"
+
+  reporting_quality_note: |
+    VE events in remote areas (northeastern Nigeria, Sahel, Mozambique Cabo Delgado)
+    are frequently reported with significant delays and incomplete casualty figures.
+    Apply 'medium' confidence when:
+      - Location is given only at province/state level
+      - Casualty figures are approximate ("dozens killed", "several dead")
+      - Only a single official (military) source is cited
+      - Article uses passive voice throughout ("it was reported that")
+
+  state_narrative_caution: |
+    Government and military spokespersons may overcount enemy casualties or undercount
+    their own losses for strategic reasons. When only official sources are cited and
+    figures seem implausible (e.g., "zero security force casualties" in a major ambush),
+    note this in outcome_notes and cap confidence at 'medium'.
+
+# ============================================================================
+# EDGE CASES & DISAMBIGUATION
+# ============================================================================
+
+edge_cases:
+
+  complex_attacks:
+    description: "Attacks combining multiple methods (e.g., gun + bomb)"
+    rule: |
+      Code by the method that caused the most casualties or best characterises the
+      intent. If a car bomb clears a path for an armed assault, code TWO events:
+      BOMBING_EXPLOSION + ARMED_ASSAULT at the same location. If inseparable,
+      code by the method that initiated or dominated (usually the explosion).
+
+  multiple_incidents_one_article:
+    description: "Article reports separate attacks at different locations or times"
+    rule: |
+      Code each attack as a SEPARATE event. A coordinated multi-site bombing
+      (e.g., three simultaneous IEDs in three cities) is THREE separate events.
+      A 'string of attacks over the past week' without specific details → ONE event
+      with approximate date and outcome_notes summarising the pattern.
+
+  mass_kidnapping:
+    description: "Large-scale abduction events (e.g., schoolgirl kidnappings)"
+    rule: |
+      Code as a single KIDNAPPING event. Record the number of victims in hostages_taken.
+      If some are later killed in captivity, record fatalities. If some are released
+      while others remain held, update outcome_notes.
+
+  claimed_vs_unclaimed:
+    description: "Many attacks in Africa are not formally claimed by any group"
+    rule: |
+      Set responsibility_claimed: false if no group claims credit.
+      Set perpetrator_name to the group if authorities or analysts attribute it
+      credibly, even without a claim. Add attribution source in outcome_notes.
+      Do NOT infer ideology solely from geography or target type.
+
+  lone_actor_vs_group:
+    description: "Attacker appears to have acted alone"
+    rule: |
+      Set is_individual_attacker: true. Still assign perpetrator_ideology if the
+      attacker's motivation is stated. Set perpetrator_name to individual's name
+      only if publicly identified; otherwise null.
+
+  protest_to_violence_boundary:
+    description: "Protest that involves burning, shooting, or deaths"
+    rule: |
+      IF the violence is INITIATED BY PROTESTERS in a political demonstration context
+      → protest codebook (riot or confrontation).
+      IF the violence is an ORGANISED ATTACK by a group with VE characteristics
+      (named group, ideological motive, targeting strategy) occurring near a protest
+      → VE codebook event. Code separately from the protest.
+
+# ============================================================================
+# CONFIDENCE GUIDANCE
+# ============================================================================
+
+confidence_guidance:
+
+  high:
+    criteria:
+      - "Named perpetrator group (or credibly attributed by multiple sources)"
+      - "Unambiguous attack type from article description"
+      - "Specific location (city/district level or named venue)"
+      - "Specific casualty figures or explicit 'no casualties'"
+      - "Multiple source types or direct eyewitness/scene reporting"
+    example: |
+      "ISWAP claimed responsibility for a suicide bombing at a mosque in Maiduguri
+       on Saturday, killing 12 worshippers and wounding 30."
+
+  medium:
+    criteria:
+      - "Perpetrator unnamed or described only as 'militants', 'gunmen', or 'suspected Boko Haram'"
+      - "Location given only at state/province level"
+      - "Casualty figures approximate ('several', 'at least five') or absent"
+      - "Single official source (typically military spokesperson) with no independent confirmation"
+      - "Attack type inferred from fragmentary description"
+    example: |
+      "Gunmen attacked a military patrol in Borno State; the military says three soldiers
+       were killed but gave no further details."
+
+  low:
+    criteria:
+      - "Incident reported secondhand, retrospectively, or from unverified social media"
+      - "Perpetrator completely unknown with no credible attribution"
+      - "Location vague ('in the north', 'near the border')"
+      - "Serious doubt about whether the incident meets minimum VE criteria"
+      - "Only a single source with known bias and implausible details"
+    example: |
+      "Unconfirmed reports circulating on social media claim an explosion occurred
+       in a border area; no official confirmation available."

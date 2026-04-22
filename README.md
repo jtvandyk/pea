@@ -169,7 +169,7 @@ Output is written to `data/raw/<domain>/` (domain defaults to `protest`).
 [src/acquisition/gdelt_discovery.py](src/acquisition/gdelt_discovery.py) queries the [GDELT DOC 2.0 API](https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/).
 
 - **Per-country queries with FIPS codes.** The GDELT `sourcecountry` filter requires FIPS 10-4 codes. The pipeline runs one query per country (ISO2 → FIPS via `ISO2_TO_FIPS`) and merges results by URL.
-- **Keyword-based relevance filter.** After GDELT returns results, `filter_protest_relevant()` checks article titles against protest signals loaded from `configs/keywords.yaml`.
+- **Keyword-based relevance tagging.** After GDELT returns results, articles are tagged for relevance by checking titles and URLs against protest signals loaded from `configs/keywords.yaml`. All articles are passed to the next stage; the tag (`title_match`, `url_match`, `gdelt_theme`) is used for diagnostic logging downstream.
 - **Per-country fallback.** If GDELT returns nothing for a given country + FIPS code, the pipeline retries without `sourcecountry` and injects the country name as a keyword.
 
 Keywords are managed in [configs/keywords.yaml](configs/keywords.yaml):
@@ -326,7 +326,7 @@ Use `--codebook` and `--examples` to supply a custom codebook YAML when running 
 
 ## Historical Backfill
 
-Use `--backfill-from` / `--backfill-to` to run the pipeline over a historical date range, processing one window at a time.
+Use `--backfill-from` / `--backfill-to` to run the pipeline over a historical date range, processing one window at a time. This bypasses GDELT's 1-year `timespan` ceiling by issuing one date-bounded query per window.
 
 ```bash
 python -m src.acquisition.pipeline \
