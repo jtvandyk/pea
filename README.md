@@ -191,6 +191,7 @@ Enable with `--source bbc` or `--source both`. When `--source both`, results are
 - Fallback: `requests` + `BeautifulSoup`
 - User-agent rotation to reduce bot detection
 - Known paywall domains (NYT, FT, Reuters, etc.) are skipped gracefully
+- **Parallel scraping** — up to 16 concurrent workers (configurable via `--scrape-workers`), with per-host politeness delays so no single domain is hit more than once per second
 
 ### Stage 2.5 — Relevance Filter
 
@@ -201,6 +202,7 @@ Enable with `--source bbc` or `--source both`. When `--source both`, results are
 - **Domain-aware:** the hypothesis text changes per domain (`protest` vs `drone`)
 - **Fallback:** keyword matching if `transformers` is unavailable
 - **In multi-domain mode**, each domain runs its own filter independently against the shared scraped corpus
+- **Batched scoring** — all articles scored in a single HuggingFace pipeline call (batch size 32 by default, `--relevance-batch-size`). Substantially faster than per-article inference on a CPU.
 - Rejected articles are logged with their `_relevance_score` for threshold calibration
 - Raise to `0.50` after GLOCON/ACLED validation confirms filter accuracy
 
@@ -232,9 +234,20 @@ The full codebook is injected into the system prompt at import time via `_build_
 
 **Few-shot examples:**
 
-Three gold-standard examples from the domain examples YAML are prepended to every user prompt:
+Gold-standard examples from the domain examples YAML are prepended to every user prompt:
 - `configs/extraction_examples.yaml` (protest domain)
 - `configs/drone_extraction_examples.yaml` (drone domain)
+
+Examples are selected from a two-tier pool:
+
+| Tier | YAML tag | Behaviour |
+|------|----------|-----------|
+| Pinned | `pinned: true` | Always injected — the original handwritten curriculum examples, never evicted |
+| Rotatable | *(no tag)* | Annotator-promoted corrections that rotate in by random sample each run |
+
+The number of examples per run is controlled by `--examples-sample-n` (default 5). With only the 5 original pinned examples and no promoted ones, this is identical to the previous behaviour. As the promoted pool grows through the annotation workflow, raising `--examples-sample-n` above 5 causes promoted examples to start rotating in.
+
+The random seed is resolved once per run from `time.time_ns()` and held fixed across all articles in that run. This keeps the per-run prompt prefix identical across every article, which is required for Azure prompt caching to hit reliably.
 
 **Prompt caching:** The system prompt prefix (~29k tokens) is identical across every article in a run. Azure caches it automatically for gpt-4.1 (>1024 token prefix). Cached tokens are billed at 50% of the input rate — approximately 36% overall cost reduction.
 
@@ -254,7 +267,9 @@ Geocoding is attempted from most to least specific:
 3. `region + country` → `geo_accuracy: region`
 4. `country` → `geo_accuracy: country`
 
-Nominatim rate limit (1 req/sec) is enforced. Skip with `--no-geocode`.
+Nominatim rate limit (1 req/sec) is enforced across all workers. Results are cached to disk (`data/cache/geocode_cache.json`) so repeated location strings (e.g. "Johannesburg, South Africa") are resolved without a network round-trip. Skip geocoding entirely with `--no-geocode`.
+
+Use `--geocode-workers` to parallelise dispatch; the default is 4 concurrent workers with shared rate-limit enforcement.
 
 ### Stage 5 — Storage
 
@@ -427,63 +442,227 @@ The multi-stage Dockerfile uses `requirements-core.txt` (pipeline dependencies o
 
 ---
 
-## Annotation Workflow (Active Learning Loop)
+## Annotation Workflow — Closing the Active Learning Loop
 
-Builds gold-standard training data for future fine-tuning. Target: 200+ reviewed events to unlock QLoRA fine-tuning.
+Label Studio is used to review LLM-extracted events, correct them, and feed the corrections back into the extraction prompt as new few-shot examples. Each annotation session directly improves the quality of the next pipeline run — the loop is now fully closed.
 
-### First-time setup
+**Goal:** 200+ reviewed gold pairs to unlock QLoRA fine-tuning. The annotation workflow builds this dataset incrementally, one batch at a time.
+
+---
+
+### Why Label Studio?
+
+Label Studio provides a structured review interface where every extracted event is presented alongside its source article. The annotator answers four targeted questions per task, and all corrections are exported as structured JSON that the import script can consume automatically.
+
+The interface is pre-configured for this pipeline via [src/annotation/labeling_config.xml](src/annotation/labeling_config.xml) — you do not need to design the interface yourself.
+
+---
+
+### First-time setup (once only)
 
 ```bash
-# Start Label Studio (runs at http://localhost:8080)
+# Start Label Studio
 docker compose -f docker-compose.annotation.yml up -d
+# Opens at http://localhost:8080
 ```
 
 1. Go to `http://localhost:8080` and create an account
 2. Create a new project — name it "PEA Protest Events"
-3. Settings → Labeling Interface → Code tab
+3. **Settings → Labeling Interface → Code tab**
 4. Paste the full contents of [src/annotation/labeling_config.xml](src/annotation/labeling_config.xml)
 5. Save
+
+The labeling interface shows the source article on the left and the LLM's extracted event JSON on the right.
+
+---
 
 ### Per-batch workflow (repeat after each pipeline run)
 
 ```bash
-# 1. Export highest-priority events (low and medium confidence first)
+# Step 1 — Export the highest-priority events from the latest pipeline run
 python -m src.annotation.export_for_annotation \
   --events data/raw/protest/all_events.jsonl \
   --output data/annotation/tasks_$(date +%Y%m%d).json \
   --max-tasks 50 \
   --tiers 1,2
-
-# 2. In Label Studio:
-#    Import → upload the tasks JSON
-#    Annotate each task (~2 min each):
-#      - Is this a genuine protest event?
-#      - Is the event type correct? (fix if not)
-#      - Is the confidence right?
-#      - Flag any specific extraction errors
-#    Export → JSON → save to data/annotation/label_studio_export.json
-
-# 3. Import corrections back into the pipeline
-python -m src.annotation.import_annotations \
-  --annotations data/annotation/label_studio_export.json \
-  --output-dir data/annotation/
 ```
 
-**Outputs written to `data/annotation/`:**
+```
+# Step 2 — In Label Studio:
+#   Import → upload the tasks JSON file
+#   Annotate each task (target: ~2 min per task)
+#   Export → JSON → save to data/annotation/label_studio_export.json
+```
+
+```bash
+# Step 3 — Import corrections back and promote top corrections into the
+#           few-shot examples pool so the next run benefits immediately
+python -m src.annotation.import_annotations \
+  --annotations data/annotation/label_studio_export.json \
+  --output-dir data/annotation/ \
+  --promote-to-examples 3
+```
+
+The `--promote-to-examples 3` flag is the key step that closes the loop. See [Promotion](#promotion-closing-the-loop) below.
+
+---
+
+### What you're annotating — the four questions
+
+Each Label Studio task presents the source article text alongside the LLM-extracted JSON. You answer four questions:
+
+**1. Is this a genuine protest event?**
+
+The most important check. If the article is not about a protest event at all (election result, parliamentary debate, crime report, sports), mark it as a false positive. These events are filtered out of `reviewed_events.jsonl` and excluded from training data entirely — they are the most damaging failures because they silently inflate event counts.
+
+**2. Is the event type correct?**
+
+Check the `event_type` field against the eight codebook types. The most common errors are:
+- `confrontation` vs `riot` (riot requires looting or violence against persons; burning tyres is confrontation)
+- `demonstration_march` vs `occupation_seizure` (sit-ins and road blockades are occupations)
+- `petition_signature` extracted from an article that describes a march that also presented a petition (classify by the primary action)
+
+If the type is wrong, select the correct one from the dropdown. Type corrections are ranked highest for promotion.
+
+**3. Is the confidence level appropriate?**
+
+`high` = article explicitly describes all three minimum criteria (collective actor + claim/grievance + action).  
+`medium` = one criterion is implied or uncertain.  
+`low` = substantial ambiguity — the article might be describing a planned or rumoured event.
+
+Correct this if the LLM under- or over-stated certainty.
+
+**4. Are there specific extraction errors?**
+
+Use the free-text field to flag field-level problems: wrong city, missing organiser, incorrect crowd size, misidentified state response, etc. These are recorded in `annotation_stats.json` and inform threshold calibration, but the field-level correction itself is not currently auto-applied — it informs manual codebook improvement.
+
+---
+
+### Priority tiers — who to annotate first
+
+```bash
+# Tier 1 + 2 (recommended for most batches)
+python -m src.annotation.export_for_annotation \
+  --events data/raw/protest/all_events.jsonl \
+  --output data/annotation/tasks.json \
+  --max-tasks 50 \
+  --tiers 1,2
+
+# Tier 3 only (spot-check precision on high-confidence events)
+python -m src.annotation.export_for_annotation \
+  --events data/raw/protest/all_events.jsonl \
+  --output data/annotation/spot_check.json \
+  --max-tasks 20 \
+  --tiers 3
+```
+
+| Tier | Condition | Why annotate |
+|------|-----------|--------------|
+| 1 | Low confidence + high relevance score | Uncertain but the relevance filter says it's probably real — highest misclassification risk, most training value per hour |
+| 2 | Medium confidence | Borderline — most F1 improvement per annotation hour |
+| 3 (10% spot-check) | High confidence | Precision monitoring — catch systematic over-extraction without annotating every event |
+
+---
+
+### Promotion — closing the loop
+
+After annotation, run `import_annotations` with `--promote-to-examples N`. This appends up to N annotator-corrected events to `configs/extraction_examples.yaml` as new few-shot entries, ranked by likely teaching value:
+
+1. **Type-corrected events first** — the LLM had the wrong event type; the correction directly teaches the boundary the model is getting wrong
+2. **Extraction-error events second** — the annotator flagged field-level problems; useful for schema fidelity
+3. **Longest article text third** — all else equal, richer context makes a better example
+
+Each promoted entry is tagged with full provenance:
+
+```yaml
+provenance:
+  source: label_studio
+  task_id: https://www.example.com/article-url
+  annotator_id: user@example.com
+  date_promoted: 2026-04-22T18:52:57
+  type_corrected: true
+  had_extraction_errors: false
+```
+
+De-duplication is by `task_id` (article URL), so re-running promotion after a second annotation batch never adds duplicates.
+
+**Recommended cadence:** promote 2–5 examples per batch. More than that and the pool grows faster than it rotates through the prompt, so individual corrections take longer to reach the model.
+
+---
+
+### Few-shot rotation — how promoted examples reach the model
+
+The examples file contains two tiers of entries:
+
+| YAML tag | Behaviour |
+|----------|-----------|
+| `pinned: true` | Always injected into every run — the five original handwritten examples |
+| *(no tag)* | Promoted corrections; rotated in by random sample across runs |
+
+The `--examples-sample-n` flag (default 5) sets the total number of examples per run. With only pinned examples and no promoted ones, this preserves the previous behaviour exactly.
+
+Once the promoted pool grows, raise `--examples-sample-n` above 5 to start rotating promoted examples into the prompt:
+
+```bash
+# Inject 5 pinned + up to 3 promoted examples per run
+python -m src.acquisition.pipeline \
+  --countries ZA --days 7 \
+  --examples-sample-n 8
+```
+
+The rotation seed is resolved once per run and held fixed for all articles. This is important: every article in a given run sees the same example set, which keeps the system-prompt prefix byte-for-byte identical across the run and preserves the Azure prompt cache hit rate.
+
+---
+
+### Outputs
+
+All written to `data/annotation/`:
 
 | File | Contents |
 |------|----------|
 | `reviewed_events.jsonl` | All reviewed events with human corrections applied |
 | `training_data.jsonl` | Gold (article text → corrected JSON) pairs for fine-tuning |
-| `annotation_stats.json` | False positive rate, type correction rate, running pair count |
+| `annotation_stats.json` | False positive rate, type correction rate, running pair count toward 200 |
 
-### Priority tiers
+`annotation_stats.json` is the main health indicator for the annotation effort. Monitor `false_positive_rate` (should be < 5% at high confidence), `type_correction_rate` (high rates indicate codebook boundary ambiguity), and `training_pairs` (target: 200 before QLoRA fine-tuning).
 
-| Tier | Condition | Why |
-|------|-----------|-----|
-| 1 (annotate first) | Low confidence + high relevance score | Uncertain but probably real — highest misclassification risk |
-| 2 | Medium confidence | Borderline — most F1 improvement per annotation hour |
-| 3 (10% spot-check) | High confidence | Precision monitoring only |
+---
+
+### The full feedback loop
+
+```
+Pipeline run
+    │
+    ▼
+data/raw/protest/all_events.jsonl
+    │
+    ├──► export_for_annotation (tier 1+2 priority)
+    │         │
+    │         ▼
+    │    Label Studio
+    │    (annotate: FP? type? confidence? errors?)
+    │         │
+    │         ▼
+    │    label_studio_export.json
+    │         │
+    │         ▼
+    │    import_annotations --promote-to-examples 3
+    │         │
+    │         ├──► data/annotation/reviewed_events.jsonl
+    │         ├──► data/annotation/training_data.jsonl     → future QLoRA fine-tuning
+    │         ├──► data/annotation/annotation_stats.json
+    │         │
+    │         └──► configs/extraction_examples.yaml ◄──────────────────┐
+    │                   (promoted corrections appended)                  │
+    │                                                                    │
+    └──► Next pipeline run                                               │
+              │                                                          │
+              └──► extractor.py: _build_few_shot_examples()             │
+                       pinned (always) + rotatable sample ──────────────┘
+                       (--examples-sample-n controls pool size)
+```
+
+Each annotation session improves the few-shot pool that the next extraction run draws from. The improvement compounds: better examples → fewer type errors → fewer tier-1/2 events exported for annotation → faster future batches.
 
 ---
 
@@ -534,14 +713,17 @@ Pipeline run  →  data/raw/protest/all_events.jsonl
           ┌─────────────┴──────────────┐
           │                            │
    export_for_annotation          Stage 2 processing
-          │                            │
-    Label Studio              events_consolidated.jsonl
-    (you annotate)                     │
-          │                  ┌─────────┴──────────┐
-   import_annotations    glocon_validator     acled_validator
-          │                  │                     │
-   training_data.jsonl    recall vs           recall vs
-   (→ fine-tuning)        GLOCON gold         ACLED gold
+   (tier 1+2 priority)                 │
+          │                    events_consolidated.jsonl
+    Label Studio                       │
+    (annotate)              ┌──────────┴───────────┐
+          │             glocon_validator     acled_validator
+   import_annotations       │                      │
+   --promote-to-examples  recall vs            recall vs
+          │               GLOCON gold          ACLED gold
+          │
+          ├─► training_data.jsonl (→ fine-tuning)
+          └─► configs/extraction_examples.yaml (→ next run's few-shot pool)
 ```
 
 ---
@@ -576,9 +758,19 @@ Pipeline control:
   --resume                    Skip already-processed URLs (reads checkpoint.txt)
   --relevance-threshold FLOAT Minimum NLI score to pass to LLM [default: 0.30]
 
+Few-shot examples:
+  --examples-sample-n INT     Total examples injected per run [default: 5]
+                              Pinned examples always included; remaining slots
+                              filled by run-stable random sample from the
+                              promoted pool. Raise above 5 once annotation
+                              promotion has grown the pool.
+
 Concurrency & rate limiting:
-  --workers INT               Concurrent extraction workers [default: 1]
+  --workers INT               Concurrent extraction workers [default: 4]
   --rpm-limit INT             Azure OpenAI RPM ceiling [default: 450]
+  --scrape-workers INT        Parallel scrape workers [default: 16]
+  --geocode-workers INT       Parallel geocode workers [default: 4]
+  --relevance-batch-size INT  NLI inference batch size [default: 32]
 
 Historical backfill:
   --backfill-from DATE        Start date: YYYY-MM-DD
