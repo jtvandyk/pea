@@ -49,6 +49,15 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional
 
+# Correct byte-lengths for each strptime format string (format codes expand)
+PARSE_DATE_LENGTHS: dict = {
+    "%Y-%m-%d": 10,
+    "%Y%m%d":    8,
+    "%d/%m/%Y": 10,
+    "%m/%d/%Y": 10,
+    "%Y-%m":     7,
+}
+
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -89,6 +98,13 @@ GLOCON_TO_BROAD: dict[str, str] = {
 }
 
 
+_CONFIDENCE_ACCEPT: dict = {
+    "high":   {"high"},
+    "medium": {"high", "medium"},
+    "low":    {"high", "medium", "low"},
+}
+
+
 def _norm_country(s: str) -> str:
     aliases = {
         "south africa": "south africa",
@@ -107,12 +123,55 @@ def _norm_country(s: str) -> str:
 def _parse_date(s: str) -> Optional[datetime]:
     if not s:
         return None
-    for fmt in ("%Y-%m-%d", "%Y%m%d", "%d/%m/%Y", "%m/%d/%Y", "%Y-%m"):
+    for fmt, n in PARSE_DATE_LENGTHS.items():
         try:
-            return datetime.strptime(str(s)[:len(fmt)], fmt)
+            return datetime.strptime(str(s)[:n], fmt)
         except ValueError:
             continue
     return None
+
+
+def _in_date_range(
+    date_str: str,
+    start: Optional[datetime],
+    end: Optional[datetime],
+) -> bool:
+    """True if date_str falls within [start, end]. Unparseable dates are kept."""
+    if start is None and end is None:
+        return True
+    parsed = _parse_date(date_str)
+    if parsed is None:
+        return True
+    if start and parsed < start:
+        return False
+    if end and parsed > end:
+        return False
+    return True
+
+
+def _apply_countries_filter(
+    events: list,
+    countries: Optional[list],
+    is_pea: bool = False,
+) -> list:
+    """Filter events to the given normalised country codes."""
+    if not countries:
+        return events
+    normed = {_norm_country(c) for c in countries}
+    if is_pea:
+        return [e for e in events if _norm_country(e.get("country", "")) in normed]
+    return [e for e in events if e.get("country", "") in normed]
+
+
+def _apply_confidence_filter(
+    pea_events: list,
+    min_confidence: Optional[str],
+) -> list:
+    """Filter PEA events to those at or above min_confidence."""
+    if not min_confidence:
+        return pea_events
+    accepted = _CONFIDENCE_ACCEPT.get(min_confidence, set())
+    return [e for e in pea_events if e.get("confidence", "") in accepted]
 
 
 def _location_match(a: str, b: str, threshold: float = 0.60) -> bool:
@@ -225,6 +284,10 @@ def match_events(
         g_country = g["country"]
         g_loc     = g["location"]
         g_type    = g["broad_type"]
+        g_desc    = (
+            g["raw"].get("description") or g["raw"].get("Description") or
+            g["raw"].get("DESCRIPTION") or ""
+        )
 
         # Filter PEA candidates by country + date window
         candidates = []
@@ -244,9 +307,10 @@ def match_events(
             p_loc  = p.get("city") or p.get("venue") or ""
             p_type = _broad_type(p.get("event_type", ""))
 
-            loc_sim = SequenceMatcher(
-                None, g_loc.lower(), p_loc.lower()
-            ).ratio() if g_loc and p_loc else 0.5
+            loc_sim = (
+                SequenceMatcher(None, g_loc.lower(), p_loc.lower()).ratio()
+                if g_loc and p_loc else location_threshold
+            )
 
             if loc_sim >= location_threshold and p_type == g_type:
                 if loc_sim > best_loc_sim:
@@ -255,16 +319,17 @@ def match_events(
 
         results.append(
             {
-                "glocon_date":     g["event_date"],
-                "glocon_location": g_loc,
-                "glocon_country":  g_country,
-                "glocon_type":     g_type,
-                "matched":         best is not None,
-                "pea_url":         best.get("article_url") if best else None,
-                "pea_date":        best.get("event_date") if best else None,
-                "pea_city":        best.get("city") if best else None,
-                "pea_type":        best.get("event_type") if best else None,
-                "location_sim":    round(best_loc_sim, 3),
+                "glocon_date":        g["event_date"],
+                "glocon_location":    g_loc,
+                "glocon_country":     g_country,
+                "glocon_type":        g_type,
+                "glocon_description": g_desc,
+                "matched":            best is not None,
+                "pea_url":            best.get("article_url") if best else None,
+                "pea_date":           best.get("event_date") if best else None,
+                "pea_city":           best.get("city") if best else None,
+                "pea_type":           best.get("event_type") if best else None,
+                "location_sim":       round(best_loc_sim, 3),
             }
         )
 
@@ -282,8 +347,10 @@ def compute_metrics(match_records: list[dict], pea_events: list[dict]) -> dict:
     matched       = sum(1 for r in match_records if r["matched"])
     recall        = matched / total_glocon if total_glocon else 0.0
 
-    matched_urls = {r["pea_url"] for r in match_records if r["matched"]}
-    pea_only      = [e for e in pea_events if e.get("article_url") not in matched_urls]
+    matched_urls      = {r["pea_url"] for r in match_records if r["matched"]}
+    matched_pea_count = len(matched_urls)
+    precision         = matched_pea_count / len(pea_events) if pea_events else 0.0
+    pea_only          = [e for e in pea_events if e.get("article_url") not in matched_urls]
 
     # Breakdown by GLOCON event type
     by_type: dict = {}
@@ -314,15 +381,94 @@ def compute_metrics(match_records: list[dict], pea_events: list[dict]) -> dict:
         by_country[c]["recall"] = round(m / n, 3) if n else 0.0
 
     return {
-        "recall":          round(recall, 3),
-        "matched":         matched,
-        "total_glocon":    total_glocon,
-        "total_pea":       len(pea_events),
-        "pea_only_count":  len(pea_only),
-        "by_type":         by_type,
-        "by_country":      by_country,
-        "target_threshold": "≥0.60 (acceptable for GDELT-sourced pipeline)",
+        "recall":            round(recall, 3),
+        "precision":         round(precision, 3),
+        "matched":           matched,
+        "matched_pea_count": matched_pea_count,
+        "total_glocon":      total_glocon,
+        "total_pea":         len(pea_events),
+        "pea_only_count":    len(pea_only),
+        "by_type":           by_type,
+        "by_country":        by_country,
+        "target_threshold":  "≥0.60 (acceptable for GDELT-sourced pipeline)",
     }
+
+
+def diagnose_misses(
+    miss_records: list,
+    pea_events: list,
+    date_window: int = 3,
+    location_threshold: float = 0.60,
+) -> list:
+    """
+    For each unmatched GLOCON event, find the nearest PEA candidate and
+    explain why it failed. Returns a list of miss dicts with fail_reasons.
+    """
+    results = []
+    for r in miss_records:
+        g_date    = _parse_date(r["glocon_date"])
+        g_country = r["glocon_country"]
+        g_loc     = r["glocon_location"]
+        g_type    = r["glocon_type"]
+
+        best_candidate = None
+        best_fail_reasons: list = []
+        best_score = -1.0
+
+        for p in pea_events:
+            fail_reasons = []
+            p_country = _norm_country(p.get("country", ""))
+
+            if p_country != g_country:
+                fail_reasons.append(
+                    f"country_mismatch (pea:{p_country} vs glocon:{g_country})"
+                )
+                score = 0.0
+            else:
+                p_date = _parse_date(p.get("event_date", ""))
+                if g_date and p_date:
+                    date_diff = abs((g_date - p_date).days)
+                    if date_diff > date_window:
+                        fail_reasons.append(
+                            f"date_too_far ({date_diff} days > {date_window})"
+                        )
+
+                p_loc = p.get("city") or p.get("venue") or ""
+                loc_sim = (
+                    SequenceMatcher(None, g_loc.lower(), p_loc.lower()).ratio()
+                    if g_loc and p_loc else location_threshold
+                )
+                if loc_sim < location_threshold:
+                    fail_reasons.append(
+                        f"location_mismatch (sim={loc_sim:.2f} < {location_threshold})"
+                    )
+
+                p_type = _broad_type(p.get("event_type", ""))
+                if p_type != g_type:
+                    fail_reasons.append(
+                        f"type_mismatch (pea:{p_type} vs glocon:{g_type})"
+                    )
+
+                score = loc_sim if not fail_reasons else loc_sim * 0.5
+
+            if score > best_score:
+                best_score = score
+                best_candidate = p
+                best_fail_reasons = fail_reasons
+
+        results.append({
+            "glocon_date":        r["glocon_date"],
+            "glocon_location":    r["glocon_location"],
+            "glocon_country":     r["glocon_country"],
+            "glocon_type":        r["glocon_type"],
+            "glocon_description": r.get("glocon_description", ""),
+            "nearest_pea_url":    best_candidate.get("article_url") if best_candidate else None,
+            "nearest_pea_date":   best_candidate.get("event_date") if best_candidate else None,
+            "nearest_pea_city":   best_candidate.get("city") if best_candidate else None,
+            "nearest_pea_type":   best_candidate.get("event_type") if best_candidate else None,
+            "fail_reasons":       best_fail_reasons,
+        })
+    return results
 
 
 def run_validation(
@@ -331,6 +477,11 @@ def run_validation(
     output_path: Optional[Path] = None,
     date_window: int = 3,
     location_threshold: float = 0.60,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    countries: Optional[list] = None,
+    min_confidence: Optional[str] = None,
+    show_misses: bool = False,
 ) -> dict:
     """
     Full validation run. Returns the metrics dict and writes JSON report.
@@ -341,6 +492,33 @@ def run_validation(
     if not glocon_events:
         log.error("No GLOCON events loaded — check glocon_dir path and file format.")
         return {}
+
+    # Apply filters
+    if start_date or end_date:
+        glocon_events = [
+            e for e in glocon_events
+            if _in_date_range(e["event_date"], start_date, end_date)
+        ]
+        pea_events = [
+            e for e in pea_events
+            if _in_date_range(e.get("event_date", ""), start_date, end_date)
+        ]
+        log.info(
+            "After date filter: %d GLOCON, %d PEA events",
+            len(glocon_events), len(pea_events),
+        )
+
+    if countries:
+        glocon_events = _apply_countries_filter(glocon_events, countries, is_pea=False)
+        pea_events    = _apply_countries_filter(pea_events, countries, is_pea=True)
+        log.info(
+            "After country filter: %d GLOCON, %d PEA events",
+            len(glocon_events), len(pea_events),
+        )
+
+    if min_confidence:
+        pea_events = _apply_confidence_filter(pea_events, min_confidence)
+        log.info("After confidence filter: %d PEA events", len(pea_events))
 
     match_records = match_events(
         glocon_events, pea_events,
@@ -356,8 +534,9 @@ def run_validation(
     print(f"GLOCON events:  {metrics['total_glocon']}")
     print(f"PEA events:     {metrics['total_pea']}")
     print(f"Matched:        {metrics['matched']}")
-    print(f"Recall:         {metrics['recall']:.1%}  "
-          f"(target ≥60%)")
+    print(f"Recall:         {metrics['recall']:.1%}  (target ≥60%)")
+    print(f"Precision:      {metrics['precision']:.1%}  "
+          f"({metrics['matched_pea_count']}/{metrics['total_pea']} PEA events matched)")
     print(f"PEA-only:       {metrics['pea_only_count']} events not in GLOCON")
     print("\nRecall by event type:")
     for t, v in sorted(metrics["by_type"].items()):
@@ -369,17 +548,40 @@ def run_validation(
         print(f"  {c:20s} {v['recall']:.0%}  {bar}  ({v['matched']}/{v['total']})")
     print("=" * 60 + "\n")
 
+    report = {
+        "metrics":       metrics,
+        "match_records": match_records,
+        "settings": {
+            "date_window_days":   date_window,
+            "location_threshold": location_threshold,
+        },
+    }
+
+    if show_misses:
+        miss_records = [r for r in match_records if not r["matched"]]
+        misses = diagnose_misses(
+            miss_records, pea_events, date_window, location_threshold
+        )
+        report["misses"] = misses
+        print(f"MISS DIAGNOSIS ({len(misses)} unmatched GLOCON events):")
+        for m in misses:
+            print(
+                f"  [{m['glocon_date']}] {m['glocon_country']}/"
+                f"{m['glocon_location']} ({m['glocon_type']})"
+            )
+            if m["glocon_description"]:
+                print(f"    desc: {m['glocon_description'][:100]}")
+            if m["nearest_pea_url"]:
+                print(f"    nearest PEA: {m['nearest_pea_url']}")
+                for reason in m["fail_reasons"]:
+                    print(f"      FAIL: {reason}")
+            else:
+                print("    nearest PEA: (none found)")
+        print()
+
     if output_path:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        report = {
-            "metrics":       metrics,
-            "match_records": match_records,
-            "settings": {
-                "date_window_days":    date_window,
-                "location_threshold":  location_threshold,
-            },
-        }
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2, ensure_ascii=False)
         log.info(f"Validation report written: {output_path}")
@@ -427,7 +629,41 @@ if __name__ == "__main__":
         default=0.60,
         help="SequenceMatcher ratio threshold for location match [default: 0.60]",
     )
+    parser.add_argument(
+        "--start-date",
+        default=None,
+        help="Only include events on or after this date (YYYY-MM-DD)",
+    )
+    parser.add_argument(
+        "--end-date",
+        default=None,
+        help="Only include events on or before this date (YYYY-MM-DD)",
+    )
+    parser.add_argument(
+        "--countries",
+        default=None,
+        help="Comma-separated country codes to restrict comparison, e.g. ZA,NG",
+    )
+    parser.add_argument(
+        "--min-confidence",
+        default=None,
+        choices=["high", "medium", "low"],
+        help="Minimum PEA event confidence level to include",
+    )
+    parser.add_argument(
+        "--show-misses",
+        action="store_true",
+        default=False,
+        help="Print unmatched GLOCON events with nearest PEA candidate and failure reason",
+    )
     args = parser.parse_args()
+
+    _start = datetime.strptime(args.start_date, "%Y-%m-%d") if args.start_date else None
+    _end   = datetime.strptime(args.end_date,   "%Y-%m-%d") if args.end_date   else None
+    _countries = (
+        [c.strip() for c in args.countries.split(",")]
+        if args.countries else None
+    )
 
     run_validation(
         glocon_dir=Path(args.glocon_dir),
@@ -435,4 +671,9 @@ if __name__ == "__main__":
         output_path=Path(args.output),
         date_window=args.date_window,
         location_threshold=args.location_threshold,
+        start_date=_start,
+        end_date=_end,
+        countries=_countries,
+        min_confidence=args.min_confidence,
+        show_misses=args.show_misses,
     )
