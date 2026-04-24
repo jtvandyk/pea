@@ -209,6 +209,10 @@ __marimo__/
 # Deployment script contains hardcoded ACR credentials — never commit
 infra/deploy.sh
 
+# External validation corpora (clone separately — see CLAUDE.md Validation section)
+CEHA/
+CASE2021/
+
 # Infrastructure outputs / local scripts
 infra/
 
