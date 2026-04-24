@@ -668,44 +668,150 @@ Each annotation session improves the few-shot pool that the next extraction run 
 
 ## Validation
 
-Benchmarks pipeline recall against a gold-standard human-coded dataset. Automated — no manual annotation required. Run against `data/processed/events_consolidated.jsonl` for the cleanest recall number.
+Benchmarks pipeline outputs against human-coded gold-standard datasets. All validators are automated — no manual annotation required.
 
-### GLOCON GSC
+### Validation dataset status
+
+| Dataset | What it validates | Status |
+|---------|------------------|--------|
+| **CEHA** | Relevance filter F1 on African conflict text | Available — `CEHA/data/CEHA_dataset.csv` |
+| **CASE 2021 Task 2** | Relevance filter + event type classification | Available — `CASE2021/task2/test_dataset/` |
+| **GLOCON GSC** | Full end-to-end recall (event matching) | Pending data access (applied 2026-04-05) |
+| **ACLED** | Full end-to-end recall (multi-country) | Pending API token |
+
+---
+
+### CEHA — Relevance Filter Benchmark
+
+**Conflict Events in the Horn of Africa** (Bai et al. 2025, COLING). 500 expert-annotated event descriptions from ACLED and GDELT covering Sudan, Ethiopia, Somalia, South Sudan, Uganda, and Kenya. Binary relevance labels (`Yes`/`No`) with a held-out test split of 250 items.
+
+**Use this to calibrate the relevance filter threshold.** CEHA event types (tribal conflict, religious conflict, SGBV, climate security) do not map to PEA's protest typology — do not use it for event type validation.
 
 ```bash
-# Download dataset (requires data access approval from emerging-welfare team)
-git clone <glocon-url> ~/datasets/glocon
+# Clone the dataset (once)
+git clone https://github.com/dataminr-ai/CEHA CEHA
 
+# Evaluate on the held-out test split (250 items)
+python -m src.validation.ceha_validator \
+  --ceha-csv CEHA/data/CEHA_dataset.csv \
+  --split test \
+  --output data/validation/ceha_report.json
+
+# Sweep thresholds to find the best F1 operating point
+python -m src.validation.ceha_validator \
+  --ceha-csv CEHA/data/CEHA_dataset.csv \
+  --sweep-thresholds \
+  --output data/validation/ceha_sweep.json
+
+# Keyword-fallback only (no model download required)
+python -m src.validation.ceha_validator \
+  --ceha-csv CEHA/data/CEHA_dataset.csv \
+  --no-model \
+  --output data/validation/ceha_report_keyword.json
+```
+
+**Interpreting results:** Bai et al. report ~0.70 F1 for zero-shot LLMs. The DeBERTa NLI filter is not fine-tuned on African conflict text, so the gap to this baseline indicates how much fine-tuning would help. Recall matters more than precision here — the pipeline is designed for high recall at the default threshold of 0.30.
+
+The report breaks down F1 by country, by source (ACLED vs GDELT), and by CEHA event type (ethnic/communal, religious, SGBV, climate security). The `threshold_sweep` output maps each threshold to its F1 — use this to choose the operating point before raising `--relevance-threshold` on production runs.
+
+---
+
+### CASE 2021 Task 2 — Event Type Classification
+
+**CASE 2021 Shared Task 2** (Hürriyetoğlu et al. 2021, ACL-IJCNLP). 1,019 event snippets with 30 fine-grained event type labels. The test set is fully public — no access request required.
+
+Five SubTypes map directly to PEA protest types: `PEACE_PROTEST`, `VIOL_DEMONSTR`, `FORCE_AGAINST_PROTEST`, `PROTEST_WITH_INTER`, and `MOB_VIOL` (172 protest-relevant items out of 1,019 total). Non-protest types (air strikes, natural disasters, armed clashes, etc.) serve as negative examples for the relevance classifier.
+
+```bash
+# Clone the dataset (once)
+git clone https://github.com/emerging-welfare/case-2021-shared-task CASE2021
+
+# Relevance mode — offline, no API key needed
+# Tests whether the relevance filter correctly identifies protest snippets
+python -m src.validation.case2021_validator \
+  --case-tsv CASE2021/task2/test_dataset/test_set_final_release_with_labels.tsv \
+  --mode relevance \
+  --output data/validation/case2021_relevance_report.json
+
+# Extraction mode — tests event_type classification on the 172 protest snippets
+# Requires LLM API key
+python -m src.validation.case2021_validator \
+  --case-tsv CASE2021/task2/test_dataset/test_set_final_release_with_labels.tsv \
+  --mode extraction \
+  --provider azure \
+  --llm-model gpt-4o-mini \
+  --output data/validation/case2021_extraction_report.json
+```
+
+**CASE SubType → PEA event_type crosswalk:**
+
+| CASE SubType | PEA event_type |
+|---|---|
+| `PEACE_PROTEST` | `demonstration_march` |
+| `VIOL_DEMONSTR` | `riot` |
+| `PROTEST_WITH_INTER` | `confrontation` |
+| `FORCE_AGAINST_PROTEST` | `demonstration_march` |
+| `MOB_VIOL` | `riot` |
+
+**Interpreting results — relevance mode:** F1 measures binary protest/not-protest discrimination across all 1,019 snippets. The `by_subtype` field shows recall separately for each protest SubType and false-positive rates for non-protest types. A high false-positive rate on `ARMED_CLASH` or `ATTACK` (adjacent violence types) is expected and acceptable; a high rate on `AGREEMENT` or `NATURAL_DISASTER` indicates the filter is too permissive.
+
+**Interpreting results — extraction mode:** Accuracy is measured on the 172 protest-relevant snippets only. Snippets are short (one or two sentences) which is not the pipeline's typical input — expect lower accuracy here than on full articles.
+
+---
+
+### GLOCON GSC — Full End-to-End Recall
+
+> **Status:** Data access application submitted 2026-04-05. Access pending.
+
+The gold standard for this pipeline. The South Africa English subset provides token-level protest event annotation with IAA Krippendorff α = 0.35–0.60 by argument type, directly setting the human ceiling for confidence threshold calibration.
+
+```bash
+# Download dataset (requires approval from the emerging-welfare team)
+git clone https://github.com/emerging-welfare/glocon-dataset ~/datasets/glocon
+
+# Basic run
 python -m src.validation.glocon_validator \
   --glocon-dir ~/datasets/glocon/data/south_africa/english \
   --pea-events data/processed/events_consolidated.jsonl \
-  --output data/validation/recall_report_glocon.json
-```
-
-### ACLED
-
-> **Status:** `acled_validator.py` is not yet built — blocked on obtaining an ACLED API token. Register at [acleddata.com](https://acleddata.com) for a free researcher token.
-
-```bash
-python -m src.validation.acled_validator \
+  --start-date 2024-01-01 --end-date 2024-12-31 \
   --countries ZA \
-  --start-date 2026-01-01 \
-  --end-date 2026-03-31 \
+  --output data/validation/recall_report_glocon.json
+
+# Diagnose misses if recall < 60%
+python -m src.validation.glocon_validator \
+  --glocon-dir ~/datasets/glocon/data/south_africa/english \
   --pea-events data/processed/events_consolidated.jsonl \
-  --output data/validation/recall_report_acled.json
+  --start-date 2024-01-01 --end-date 2024-12-31 \
+  --countries ZA --show-misses \
+  --output data/validation/recall_report_glocon_misses.json
+
+# High-confidence events only
+python -m src.validation.glocon_validator \
+  --glocon-dir ~/datasets/glocon/data/south_africa/english \
+  --pea-events data/processed/events_consolidated.jsonl \
+  --min-confidence high \
+  --output data/validation/recall_report_glocon_highconf.json
 ```
 
-**Interpreting results:**
+A PEA event is counted as matching a GLOCON event when all four criteria are met: same country, date within ±3 days, location fuzzy similarity ≥ 0.60, and event type in the same broad category (protest / strike / riot). The `--show-misses` flag prints each unmatched GLOCON event alongside the nearest PEA candidate and the specific reason it failed to match (`date_too_far`, `location_mismatch`, `type_mismatch`).
+
+**Recall targets:**
 
 | Recall | Interpretation |
 |--------|----------------|
-| ≥ 60% | Acceptable for GDELT-sourced pipeline |
+| ≥ 60% | Acceptable for a GDELT-sourced pipeline |
 | 40–60% | Investigate systematic misses by type and country |
-| < 40% | Diagnose at each stage: GDELT discovery → scraper → relevance filter → LLM |
+| < 40% | Diagnose stage by stage: GDELT discovery → scraper → relevance filter → LLM |
 
-The JSON report includes per-event match records so you can inspect exactly which events were missed.
+---
 
-### How annotation and validation connect
+### ACLED
+
+> **Status:** `acled_validator.py` not yet built — blocked on obtaining an ACLED API token. Register at [acleddata.com](https://acleddata.com) for a free researcher token.
+
+---
+
+### How validation, annotation, and the pipeline connect
 
 ```
 Pipeline run  →  data/raw/protest/all_events.jsonl
@@ -716,11 +822,12 @@ Pipeline run  →  data/raw/protest/all_events.jsonl
    (tier 1+2 priority)                 │
           │                    events_consolidated.jsonl
     Label Studio                       │
-    (annotate)              ┌──────────┴───────────┐
-          │             glocon_validator     acled_validator
-   import_annotations       │                      │
-   --promote-to-examples  recall vs            recall vs
-          │               GLOCON gold          ACLED gold
+    (annotate)              ┌──────────┴─────────────────────────┐
+          │                 │                                     │
+   import_annotations  glocon_validator               ceha_validator
+   --promote-to-         (pending access)             case2021_validator
+     examples             recall vs                   relevance filter F1
+          │               GLOCON gold                 event type accuracy
           │
           ├─► training_data.jsonl (→ fine-tuning)
           └─► configs/extraction_examples.yaml (→ next run's few-shot pool)
