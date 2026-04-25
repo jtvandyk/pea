@@ -61,9 +61,25 @@ CSV_COLUMNS = [
     "source_language",
 ]
 
-# State responses ranked by severity (highest first)
-_HIGH_TURMOIL_RESPONSES = {"live_ammunition", "rubber_bullets"}
-_MEDIUM_TURMOIL_RESPONSES = {"teargas", "water_cannon", "dispersal", "arrests"}
+# State responses ranked by severity (highest first).
+# Mirrors state_response_vocabulary in configs/protest_codebook.yaml v2.3.
+# Update both if the codebook adds new values.
+_HIGH_TURMOIL_RESPONSES = {
+    "live_ammunition",
+    "rubber_bullets",
+    "legal_criminalisation",
+    "anti_terrorism_designation",
+    "organisational_dissolution",
+}
+_MEDIUM_TURMOIL_RESPONSES = {
+    "teargas",
+    "water_cannon",
+    "dispersal",
+    "arrests",
+    "ban",
+    "curfew",
+    "non_association_bail",
+}
 
 
 def _derive_turmoil_level(event: dict) -> str:

@@ -167,6 +167,116 @@ def trigger_pipeline_job(pipeline_args: list) -> dict:
     return resp.json()
 
 
+def fetch_execution_logs(execution_name: str, limit: int = 50) -> list[str]:
+    """
+    Query Log Analytics for console log lines from a specific job execution.
+    Returns a list of formatted log strings, or an empty list on failure.
+
+    Requires LOG_ANALYTICS_WORKSPACE_ID env var.
+    """
+    workspace_id = os.environ.get("LOG_ANALYTICS_WORKSPACE_ID", "")
+    if not workspace_id:
+        return ["LOG_ANALYTICS_WORKSPACE_ID not configured — cannot fetch logs."]
+
+    token = _mgmt_token()
+    if not token:
+        return ["Azure credentials unavailable — cannot fetch logs."]
+
+    kql = (
+        f"ContainerAppConsoleLogs_CL"
+        f" | where ContainerJobExecutionName_s == '{execution_name}'"
+        f" | order by TimeGenerated asc"
+        f" | project TimeGenerated, Level_s, Log_s"
+        f" | take {limit}"
+    )
+    try:
+        resp = requests.post(
+            f"https://api.loganalytics.io/v1/workspaces/{workspace_id}/query",
+            json={"query": kql},
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        tables = resp.json().get("tables", [])
+        if not tables or not tables[0].get("rows"):
+            return ["No log entries found for this execution."]
+        rows = tables[0]["rows"]
+        cols = [c["name"] for c in tables[0]["columns"]]
+        lines = []
+        for row in rows:
+            record = dict(zip(cols, row))
+            ts = (record.get("TimeGenerated") or "")[:19]
+            level = (record.get("Level_s") or "").upper() or "INFO"
+            msg = record.get("Log_s") or ""
+            lines.append(f"{ts} [{level}] {msg}")
+        return lines
+    except Exception as e:
+        return [f"Log fetch failed: {e}"]
+
+
+@st.cache_data(ttl=120)
+def load_failures_from_adls() -> list[dict]:
+    """Load all failures_*.jsonl dead-letter files from ADLS, cached 2 min."""
+    client = _adls_client()
+    if client is None:
+        return []
+
+    filesystem_name = os.environ.get("BLOB_CONTAINER_NAME", "pea-outputs")
+    prefix = os.environ.get("BLOB_PREFIX", "runs")
+
+    try:
+        fs_client = client.get_file_system_client(filesystem_name)
+        paths = list(fs_client.get_paths(path=prefix, recursive=True))
+        failure_paths = [
+            p for p in paths if p.name.endswith(".jsonl") and "/failures_" in p.name
+        ]
+        all_failures = []
+        for path in failure_paths:
+            file_client = fs_client.get_file_client(path.name)
+            content = file_client.download_file().readall().decode("utf-8")
+            for line in content.splitlines():
+                if line.strip():
+                    try:
+                        all_failures.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        pass
+        return all_failures
+    except Exception as e:
+        st.warning(f"Could not load failures from ADLS: {e}")
+        return []
+
+
+@st.cache_data(ttl=120)
+def load_quality_report_from_adls() -> Optional[dict]:
+    """Load the latest quality_report.json from ADLS, cached 2 min."""
+    client = _adls_client()
+    if client is None:
+        return None
+
+    filesystem_name = os.environ.get("BLOB_CONTAINER_NAME", "pea-outputs")
+    prefix = os.environ.get("BLOB_PREFIX", "runs")
+
+    try:
+        fs_client = client.get_file_system_client(filesystem_name)
+        paths = list(fs_client.get_paths(path=prefix, recursive=True))
+        report_paths = sorted(
+            [p for p in paths if p.name.endswith("quality_report.json")],
+            key=lambda p: p.last_modified or datetime.min,
+            reverse=True,
+        )
+        if not report_paths:
+            return None
+        file_client = fs_client.get_file_client(report_paths[0].name)
+        content = file_client.download_file().readall().decode("utf-8")
+        return json.loads(content)
+    except Exception as e:
+        st.warning(f"Could not load quality report from ADLS: {e}")
+        return None
+
+
 def list_job_executions(limit: int = 10) -> list:
     """Return the most recent Container Apps Job executions."""
     token = _mgmt_token()
@@ -268,6 +378,8 @@ conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
 job_name = os.environ.get("CONTAINER_APPS_JOB_NAME", "")
 cred = _get_credential()
 
+log_ws = os.environ.get("LOG_ANALYTICS_WORKSPACE_ID", "")
+
 st.sidebar.markdown("**Status**")
 st.sidebar.markdown(
     f"{'🟢' if conn_str else '🔴'} ADLS Storage {'connected' if conn_str else 'not configured'}"
@@ -277,6 +389,9 @@ st.sidebar.markdown(
 )
 st.sidebar.markdown(
     f"{'🟢' if cred else '🟡'} Azure credentials {'ready' if cred else 'unavailable (az login?)'}"
+)
+st.sidebar.markdown(
+    f"{'🟢' if log_ws else '🟡'} Log Analytics {'configured' if log_ws else 'not configured (execution logs disabled)'}"
 )
 
 st.sidebar.divider()
@@ -670,6 +785,41 @@ with tab_events:
             mime="text/csv",
         )
 
+    # ── Quality Report ──
+    st.divider()
+    st.subheader("Extraction Quality Report")
+    with st.spinner("Loading quality report..."):
+        qr = load_quality_report_from_adls()
+    if qr is None:
+        st.info(
+            "No quality report found. Run the pipeline with `--stage process` "
+            "to generate one."
+        )
+    else:
+        sv = qr.get("schema_validity", {})
+        cd = qr.get("confidence_distribution", {})
+        qcol1, qcol2, qcol3, qcol4 = st.columns(4)
+        qcol1.metric("Total events", qr.get("total_predictions", 0))
+        qcol2.metric(
+            "Schema valid",
+            sv.get("valid_schemas", 0),
+            delta=f"{sv.get('validity_rate', 0):.0%}",
+        )
+        qcol3.metric(
+            "Mean confidence",
+            f"{cd.get('mean_confidence', 0):.2f}",
+        )
+        qcol4.metric(
+            "Flagged for review",
+            "Yes" if sv.get("flag_for_review") else "No",
+        )
+        with st.expander("Confidence distribution details"):
+            dist_data = {k: round(v, 3) for k, v in cd.items() if isinstance(v, float)}
+            st.json(dist_data)
+        ts = qr.get("timestamp", "")
+        if ts:
+            st.caption(f"Report generated: {ts[:19].replace('T', ' ')} UTC")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 3 — Run History
@@ -731,3 +881,51 @@ with tab_history:
         # Quick stats
         status_counts = history_df["Status"].value_counts()
         st.caption(" · ".join(f"{v} {k}" for k, v in status_counts.items()))
+
+        # ── Per-execution log lines ──
+        st.subheader("Execution Logs")
+        if not os.environ.get("LOG_ANALYTICS_WORKSPACE_ID"):
+            st.info(
+                "Set LOG_ANALYTICS_WORKSPACE_ID to enable per-execution log inspection."
+            )
+        else:
+            exec_names = [ex.get("name", "") for ex in executions if ex.get("name")]
+            selected_exec = st.selectbox(
+                "Select execution to inspect", options=exec_names
+            )
+            if selected_exec and st.button("Load logs", key="load_logs"):
+                with st.spinner("Fetching logs from Log Analytics..."):
+                    log_lines = fetch_execution_logs(selected_exec, limit=50)
+                if log_lines:
+                    st.code("\n".join(log_lines), language="text")
+                else:
+                    st.info("No log entries found.")
+
+        # ── Dead-letter inspection ──
+        st.subheader("Extraction Failures (Dead-letter)")
+        with st.spinner("Loading failure records..."):
+            failures_data = load_failures_from_adls()
+        if not failures_data:
+            st.info(
+                "No extraction failures on record. Failures are written to failures_{run_id}.jsonl."
+            )
+        else:
+            failures_df = pd.DataFrame(failures_data)
+            st.caption(f"{len(failures_df)} failed article(s) across all runs")
+            reason_col = "reason" if "reason" in failures_df.columns else None
+            if reason_col:
+                reason_counts = failures_df[reason_col].value_counts()
+                st.caption(
+                    "By reason: "
+                    + ", ".join(f"{r}: {n}" for r, n in reason_counts.items())
+                )
+            display_fail_cols = [
+                c
+                for c in ["url", "title", "reason", "lang"]
+                if c in failures_df.columns
+            ]
+            st.dataframe(
+                failures_df[display_fail_cols] if display_fail_cols else failures_df,
+                use_container_width=True,
+                height=300,
+            )

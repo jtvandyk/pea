@@ -43,6 +43,7 @@ from src.acquisition.relevance_filter import RelevanceFilter
 from src.acquisition.storage import (
     save_results,
     sync_checkpoint_from_adls,
+    upload_checkpoint,
 )
 from src.acquisition.processing import process_events
 from src.acquisition.predictions import run_predictions
@@ -296,6 +297,12 @@ def run_pipeline(
         domain=domain,
     )
     log.info(f"Results saved to {out_path}")
+
+    # Always push the final checkpoint state to ADLS, even when save_results
+    # returns early (zero events). Covers runs where <10 articles were processed
+    # and the periodic upload inside extract_events never fired.
+    if upload_to:
+        upload_checkpoint(upload_to, effective_output_dir)
 
     log.info("=== Pipeline complete ===")
     return events

@@ -40,12 +40,20 @@ log = logging.getLogger(__name__)
 
 
 def _parse_event_date(date_str: str) -> Optional[datetime]:
-    """Parse event_date field; returns None if unparseable."""
+    """
+    Parse event_date field; returns None if unparseable.
+
+    Only accepts fully-specified dates (YYYY-MM-DD or YYYYMMDD).
+    Partial strings like "2025-03" or "2025" are rejected rather than
+    being silently coerced to Jan 1 / first of month, which would produce
+    false date-proximity matches in deduplication.
+    """
     if not date_str:
         return None
-    for fmt in ("%Y-%m-%d", "%Y%m%d", "%Y-%m", "%Y"):
+    s = str(date_str).strip()
+    for fmt in ("%Y-%m-%d", "%Y%m%d"):
         try:
-            return datetime.strptime(str(date_str)[: len(fmt)], fmt)
+            return datetime.strptime(s, fmt)
         except ValueError:
             continue
     return None

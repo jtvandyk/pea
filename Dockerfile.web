@@ -4,9 +4,7 @@ WORKDIR /app
 COPY requirements-web.txt .
 RUN pip install --no-cache-dir -r requirements-web.txt
 
-COPY src/web/ ./src/web/
-COPY src/__init__.py ./src/__init__.py
-COPY src/constants.py ./src/constants.py
+COPY src/ ./src/
 
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8501

@@ -208,15 +208,31 @@ ACTION_GROUP_ID=$(az monitor action-group create \
   --action email pea-admin "$ALERT_EMAIL" \
   --query id --output tsv)
 
-# Alert fires when a job execution ends in a Failed state.
-az monitor scheduled-query create \
-  --name pea-job-failure-alert \
+LOG_WORKSPACE_RESOURCE_ID="$(az monitor log-analytics workspace show \
   --resource-group "$RESOURCE_GROUP" \
-  --scopes "$(az monitor log-analytics workspace show \
-    --resource-group "$RESOURCE_GROUP" \
-    --workspace-name "$LOG_WORKSPACE" --query id --output tsv)" \
+  --workspace-name "$LOG_WORKSPACE" --query id --output tsv)"
+
+# Alert 1: pipeline code explicitly logged "Pipeline failed" (unhandled exception).
+az monitor scheduled-query create \
+  --name pea-pipeline-exception-alert \
+  --resource-group "$RESOURCE_GROUP" \
+  --scopes "$LOG_WORKSPACE_RESOURCE_ID" \
   --condition "count > 0" \
   --condition-query "ContainerAppConsoleLogs_CL | where Log_s contains 'Pipeline failed'" \
+  --window-size 10 \
+  --evaluation-frequency 10 \
+  --severity 2 \
+  --action-groups "$ACTION_GROUP_ID" \
+  --output none
+
+# Alert 2: Container Apps itself marked the job execution as Failed (covers
+# container crashes, OOM kills, and replica timeouts that produce no console log).
+az monitor scheduled-query create \
+  --name pea-job-execution-failed-alert \
+  --resource-group "$RESOURCE_GROUP" \
+  --scopes "$LOG_WORKSPACE_RESOURCE_ID" \
+  --condition "count > 0" \
+  --condition-query "ContainerAppSystemLogs_CL | where Type_s == 'JobExecutionStatus' and Status_s == 'Failed'" \
   --window-size 10 \
   --evaluation-frequency 10 \
   --severity 2 \
