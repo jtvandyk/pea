@@ -21,7 +21,7 @@ LOCATION="${LOCATION:-eastus}"
 # Fill these in from the output of infra/setup.sh:
 ACR_NAME="${ACR_NAME:?Set ACR_NAME to your Azure Container Registry name}"
 STORAGE_ACCOUNT="${STORAGE_ACCOUNT:?Set STORAGE_ACCOUNT to your storage account name}"
-STORAGE_CONTAINER="${STORAGE_CONTAINER:-pea-data}"
+ADLS_FILESYSTEM="${ADLS_FILESYSTEM:-pea-data}"
 
 KV_NAME="${KV_NAME:-pea-kv}"
 IDENTITY_NAME="${IDENTITY_NAME:-pea-identity}"
@@ -30,13 +30,13 @@ LOG_WORKSPACE="${LOG_WORKSPACE:-pea-logs}"
 ALERT_EMAIL="${ALERT_EMAIL:?Set ALERT_EMAIL to receive job-failure notifications}"
 IMAGE="${IMAGE:-$ACR_NAME.azurecr.io/pea-pipeline:latest}"
 
-STORAGE_URL="https://$STORAGE_ACCOUNT.blob.core.windows.net"
+STORAGE_URL="https://$STORAGE_ACCOUNT.dfs.core.windows.net"
 
 echo "=== PEA Azure Container Apps deployment ==="
 echo "Resource group : $RESOURCE_GROUP"
 echo "Location       : $LOCATION"
 echo "ACR            : $ACR_NAME"
-echo "Storage        : $STORAGE_ACCOUNT"
+echo "Storage (ADLS) : $STORAGE_ACCOUNT / $ADLS_FILESYSTEM"
 echo "Image          : $IMAGE"
 echo ""
 
@@ -164,7 +164,7 @@ az containerapp job create \
     "--countries" "NG,ZA,UG,DZ" \
     "--days" "2" \
     "--resume" \
-    "--upload-to" "az://$STORAGE_CONTAINER/runs" \
+    "--upload-to" "abfss://$ADLS_FILESYSTEM/runs" \
     "--workers" "4" \
     "--rpm-limit" "450" \
   --output none
@@ -197,7 +197,7 @@ az containerapp job create \
 #     --args "--stage" "all" "--countries" "NG,ZA,UG,DZ" \
 #            "--backfill-from" "2024-01-01" "--backfill-to" "2024-12-31" \
 #            "--backfill-window-days" "30" "--workers" "8" \
-#            "--upload-to" "az://pea-data/backfill"
+#            "--upload-to" "abfss://pea-data/backfill"
 
 # ── 8. Azure Monitor alert on job failure ─────────────────────────────────────
 echo "--- Creating job-failure alert ---"
@@ -234,7 +234,7 @@ echo "  az containerapp job start --name pea-backfill --resource-group $RESOURCE
 echo "    --args \"--stage\" \"all\" \"--countries\" \"NG,ZA,UG,DZ\" \\"
 echo "           \"--backfill-from\" \"2024-01-01\" \"--backfill-to\" \"2024-12-31\" \\"
 echo "           \"--backfill-window-days\" \"30\" \"--workers\" \"8\" \\"
-echo "           \"--upload-to\" \"az://$STORAGE_CONTAINER/backfill\""
+echo "           \"--upload-to\" \"abfss://$ADLS_FILESYSTEM/backfill\""
 echo ""
 echo "To watch execution logs:"
 echo "  az containerapp job execution list --name pea-daily --resource-group $RESOURCE_GROUP --output table"

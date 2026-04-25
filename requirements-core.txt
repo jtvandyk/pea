@@ -15,8 +15,8 @@ openai>=1.30.0
 # Geocoding
 geopy>=2.4.0
 
-# Azure Storage
-azure-storage-blob>=12.19.0
+# Azure Storage (ADLS Gen2; azure-storage-blob is a transitive dependency)
+azure-storage-file-datalake>=12.14.0
 azure-identity>=1.16.0
 
 # Data Processing

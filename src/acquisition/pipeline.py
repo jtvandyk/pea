@@ -33,6 +33,8 @@ from typing import Optional
 
 import src.acquisition.gdelt_discovery as _gdelt
 import src.acquisition.bbc_discovery as _bbc
+import src.acquisition.worldnews_discovery as _worldnews
+import src.acquisition.file_discovery as _file_src
 from src.acquisition.scraper import scrape_articles
 from src.acquisition.geocoder import geocode_events
 from src.acquisition.translator import translate_articles
@@ -40,7 +42,7 @@ from src.acquisition.extractor import extract_events
 from src.acquisition.relevance_filter import RelevanceFilter
 from src.acquisition.storage import (
     save_results,
-    sync_checkpoint_from_blob,
+    sync_checkpoint_from_adls,
 )
 from src.acquisition.processing import process_events
 from src.acquisition.predictions import run_predictions
@@ -92,6 +94,7 @@ def run_pipeline(
     api_key: Optional[str] = None,
     upload_to: Optional[str] = None,
     source: str = "gdelt",
+    file_path: Optional[str] = None,
     geocode: bool = True,
     resume: bool = False,
     relevance_threshold: float = 0.30,
@@ -120,9 +123,9 @@ def run_pipeline(
     effective_output_dir.mkdir(parents=True, exist_ok=True)
     run_id = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
 
-    # Sync checkpoint from blob before reading it (enables resume after container restart)
+    # Sync checkpoint from ADLS before reading it (enables resume after container restart)
     if resume and upload_to:
-        sync_checkpoint_from_blob(upload_to, effective_output_dir)
+        sync_checkpoint_from_adls(upload_to, effective_output_dir)
 
     # Stage 1: Discovery — skipped when articles are pre-supplied (e.g. backfill mode)
     if articles is not None:
@@ -130,7 +133,7 @@ def run_pipeline(
     else:
         articles = []
 
-        if source in ("gdelt", "both"):
+        if source in ("gdelt", "both", "all"):
             log.info("--- Stage 1a: GDELT Discovery ---")
             gdelt_articles = _gdelt.discover_articles(
                 query=query, countries=countries, days=days, max_results=max_articles
@@ -138,7 +141,7 @@ def run_pipeline(
             log.info(f"GDELT: {len(gdelt_articles)} candidate articles")
             articles.extend(gdelt_articles)
 
-        if source in ("bbc", "both"):
+        if source in ("bbc", "both", "all"):
             log.info("--- Stage 1b: BBC Monitoring Discovery ---")
             bbc_articles = _bbc.discover_articles(
                 query=query,
@@ -150,17 +153,35 @@ def run_pipeline(
             log.info(f"BBC Monitoring: {len(bbc_articles)} candidate articles")
             articles.extend(bbc_articles)
 
-        # Deduplicate by URL when using both sources
-        if source == "both":
+        if source in ("worldnews", "all"):
+            log.info("--- Stage 1c: World News API Discovery ---")
+            wn_articles = _worldnews.discover_articles(
+                query=query, countries=countries, days=days, max_results=max_articles
+            )
+            log.info(f"World News API: {len(wn_articles)} candidate articles")
+            articles.extend(wn_articles)
+
+        if source == "file":
+            log.info("--- Stage 1: File/ADLS Input ---")
+            file_articles = _file_src.discover_articles_from_file(
+                path=file_path, countries=countries
+            )
+            log.info(f"File source: {len(file_articles)} articles loaded")
+            articles.extend(file_articles)
+
+        # Deduplicate by URL whenever multiple sources may overlap
+        if source not in ("gdelt", "bbc", "worldnews", "file"):
             seen = set()
             deduped = []
             for a in articles:
                 if a["url"] not in seen:
                     seen.add(a["url"])
                     deduped.append(a)
-            log.info(
-                f"After dedup: {len(deduped)} articles ({len(articles) - len(deduped)} duplicates removed)"
-            )
+            if len(deduped) < len(articles):
+                log.info(
+                    f"After dedup: {len(deduped)} articles "
+                    f"({len(articles) - len(deduped)} duplicates removed)"
+                )
             articles = deduped
 
     log.info(f"Discovered {len(articles)} candidate articles total")
@@ -279,6 +300,7 @@ def run_pipeline_multi_codebook(
     api_key: Optional[str] = None,
     upload_to: Optional[str] = None,
     source: str = "gdelt",
+    file_path: Optional[str] = None,
     geocode: bool = True,
     resume: bool = False,
     relevance_threshold: float = 0.30,
@@ -312,7 +334,7 @@ def run_pipeline_multi_codebook(
     log.info(f"Merged GDELT query: '{merged_query}'")
 
     articles: list = []
-    if source in ("gdelt", "both"):
+    if source in ("gdelt", "both", "all"):
         log.info("--- Stage 1a: GDELT Discovery (merged query) ---")
         gdelt_articles = _gdelt.discover_articles(
             query=merged_query, countries=countries, days=days, max_results=max_articles
@@ -320,7 +342,7 @@ def run_pipeline_multi_codebook(
         log.info(f"GDELT: {len(gdelt_articles)} candidate articles")
         articles.extend(gdelt_articles)
 
-    if source in ("bbc", "both"):
+    if source in ("bbc", "both", "all"):
         log.info("--- Stage 1b: BBC Monitoring Discovery ---")
         bbc_articles = _bbc.discover_articles(
             query=merged_query,
@@ -332,7 +354,23 @@ def run_pipeline_multi_codebook(
         log.info(f"BBC Monitoring: {len(bbc_articles)} candidate articles")
         articles.extend(bbc_articles)
 
-    if source == "both":
+    if source in ("worldnews", "all"):
+        log.info("--- Stage 1c: World News API Discovery (merged query) ---")
+        wn_articles = _worldnews.discover_articles(
+            query=merged_query, countries=countries, days=days, max_results=max_articles
+        )
+        log.info(f"World News API: {len(wn_articles)} candidate articles")
+        articles.extend(wn_articles)
+
+    if source == "file":
+        log.info("--- Stage 1: File/ADLS Input ---")
+        file_articles = _file_src.discover_articles_from_file(
+            path=file_path, countries=countries
+        )
+        log.info(f"File source: {len(file_articles)} articles loaded")
+        articles.extend(file_articles)
+
+    if source not in ("gdelt", "bbc", "worldnews", "file"):
         seen: set = set()
         deduped = []
         for a in articles:
@@ -395,7 +433,7 @@ def run_pipeline_multi_codebook(
         checkpoint_path = str(effective_output_dir / "checkpoint.txt")
 
         if resume and upload_to:
-            sync_checkpoint_from_blob(upload_to, effective_output_dir)
+            sync_checkpoint_from_adls(upload_to, effective_output_dir)
 
         events, failures = extract_events(
             domain_articles,
@@ -492,8 +530,23 @@ def main():
     parser.add_argument(
         "--source",
         default="gdelt",
-        choices=["gdelt", "bbc", "both"],
-        help="Discovery source: 'gdelt' (default), 'bbc' (BBC Monitoring), or 'both'",
+        choices=["gdelt", "bbc", "worldnews", "file", "both", "all"],
+        help=(
+            "Discovery source: 'gdelt' (default), 'bbc' (BBC Monitoring), "
+            "'worldnews' (World News API — requires WORLDNEWS_API_KEY), "
+            "'file' (pre-scraped file — requires --file-path), "
+            "'both' (gdelt + bbc), 'all' (gdelt + bbc + worldnews)"
+        ),
+    )
+    parser.add_argument(
+        "--file-path",
+        default=None,
+        help=(
+            "Path to a pre-scraped articles file when --source file is used. "
+            "Accepts local paths (.csv, .json, .jsonl) or ADLS Gen2 paths "
+            "(abfss://filesystem/path/to/file.csv). "
+            "Required columns: url, title, text, date, country."
+        ),
     )
     parser.add_argument(
         "--no-geocode", action="store_true", help="Skip geocoding step (Nominatim OSM)"
@@ -535,7 +588,10 @@ def main():
     parser.add_argument(
         "--upload-to",
         default=None,
-        help="Upload outputs after run: 's3://bucket/prefix' or 'az://container/prefix'",
+        help=(
+            "Upload outputs after run: 's3://bucket/prefix' or "
+            "'abfss://filesystem/prefix' (Azure Data Lake Storage Gen2)"
+        ),
     )
     parser.add_argument(
         "--stage",
@@ -636,6 +692,12 @@ def main():
     )
     args = parser.parse_args()
 
+    if args.source == "file" and not args.file_path:
+        parser.error("--file-path is required when --source file is used")
+
+    if args.backfill_from and args.source == "file":
+        parser.error("--source file cannot be used with --backfill-from")
+
     output_dir = Path(args.output_dir)
     domains = [d.strip() for d in args.domains.split(",") if d.strip()]
 
@@ -664,6 +726,7 @@ def main():
                 api_key=args.api_key,
                 upload_to=args.upload_to,
                 source=args.source,
+                file_path=args.file_path,
                 geocode=not args.no_geocode,
                 resume=args.resume,
                 relevance_threshold=args.relevance_threshold,
@@ -732,6 +795,7 @@ def main():
                 api_key=args.api_key,
                 upload_to=args.upload_to,
                 source=args.source,
+                file_path=args.file_path,
                 geocode=not args.no_geocode,
                 resume=args.resume,
                 relevance_threshold=args.relevance_threshold,

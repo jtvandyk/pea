@@ -114,62 +114,68 @@ def flatten_for_csv(event: dict) -> dict:
     return row
 
 
-def _az_client(conn_str: Optional[str] = None) -> "BlobServiceClient":
-    """Return a BlobServiceClient using managed identity or a connection string.
+def _az_client(conn_str: Optional[str] = None) -> "DataLakeServiceClient":
+    """Return a DataLakeServiceClient using managed identity or a connection string.
 
-    Managed identity (Container Apps): set AZURE_STORAGE_ACCOUNT_URL.
+    Managed identity (Container Apps): set AZURE_STORAGE_ACCOUNT_URL to the
+    DFS endpoint, e.g. https://<account>.dfs.core.windows.net.
     Local dev: set AZURE_STORAGE_CONNECTION_STRING (or pass conn_str directly).
     """
     try:
-        from azure.storage.blob import BlobServiceClient
+        from azure.storage.file_datalake import DataLakeServiceClient
     except ImportError:
         raise ImportError(
-            "azure-storage-blob is required: pip install azure-storage-blob"
+            "azure-storage-file-datalake is required: "
+            "pip install azure-storage-file-datalake"
         )
     account_url = os.environ.get("AZURE_STORAGE_ACCOUNT_URL")
     if account_url:
         from azure.identity import DefaultAzureCredential
-        return BlobServiceClient(account_url, credential=DefaultAzureCredential())
+        return DataLakeServiceClient(account_url, credential=DefaultAzureCredential())
     if conn_str:
-        return BlobServiceClient.from_connection_string(conn_str)
+        return DataLakeServiceClient.from_connection_string(conn_str)
     raise RuntimeError(
-        "Set AZURE_STORAGE_ACCOUNT_URL (managed identity) "
+        "Set AZURE_STORAGE_ACCOUNT_URL (managed identity, DFS endpoint) "
         "or AZURE_STORAGE_CONNECTION_STRING (local dev)"
     )
 
 
-def sync_checkpoint_from_blob(upload_to: str, output_dir: Path) -> bool:
+def sync_checkpoint_from_adls(upload_to: str, output_dir: Path) -> bool:
     """
-    Download checkpoint.txt from Azure Blob to output_dir before a --resume run.
+    Download checkpoint.txt from ADLS Gen2 to output_dir before a --resume run.
     Returns True if a checkpoint was found and downloaded, False otherwise.
-    Only operates on az:// destinations; no-op for s3:// or if no connection string.
+    Only operates on abfss:// destinations; no-op for s3://.
     """
-    if not upload_to.startswith("az://"):
+    if not upload_to.startswith("abfss://"):
         return False
     conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
-    container, prefix = upload_to[5:].split("/", 1)
-    blob_name = f"{prefix}/checkpoint.txt"
+    filesystem, prefix = upload_to[8:].split("/", 1)
+    file_path = f"{prefix}/checkpoint.txt"
     try:
         client = _az_client(conn_str)
-        blob = client.get_blob_client(container, blob_name)
+        file_client = client.get_file_system_client(filesystem).get_file_client(file_path)
         output_dir.mkdir(parents=True, exist_ok=True)
         local_path = output_dir / "checkpoint.txt"
         with open(local_path, "wb") as f:
-            f.write(blob.download_blob().readall())
+            f.write(file_client.download_file().readall())
         lines = len(local_path.read_text().splitlines())
-        log.info(f"Resumed checkpoint from blob ({lines} URLs already processed)")
+        log.info(f"Resumed checkpoint from ADLS ({lines} URLs already processed)")
         return True
     except Exception as e:
-        if "BlobNotFound" in str(e) or "404" in str(e):
-            log.info("No checkpoint found in blob — starting fresh")
+        if "PathNotFound" in str(e) or "404" in str(e):
+            log.info("No checkpoint found in ADLS — starting fresh")
         else:
-            log.warning(f"Could not sync checkpoint from blob: {e}")
+            log.warning(f"Could not sync checkpoint from ADLS: {e}")
         return False
 
 
+# Backward-compatible alias
+sync_checkpoint_from_blob = sync_checkpoint_from_adls
+
+
 def upload_checkpoint(upload_to: str, output_dir: Path) -> None:
-    """Upload checkpoint.txt to Azure Blob (called periodically during a run)."""
-    if not upload_to.startswith("az://"):
+    """Upload checkpoint.txt to ADLS Gen2 (called periodically during a run)."""
+    if not upload_to.startswith("abfss://"):
         return
     cp = output_dir / "checkpoint.txt"
     if not cp.exists():
@@ -185,9 +191,10 @@ def _upload_outputs(destination: str, paths: list[Path]) -> None:
     Upload a list of local files to cloud storage.
 
     destination format:
-      's3://bucket/prefix'   — AWS S3 (requires boto3, AWS credentials in env)
-      'az://container/prefix' — Azure Blob (requires azure-storage-blob,
-                                AZURE_STORAGE_CONNECTION_STRING in env)
+      's3://bucket/prefix'        — AWS S3 (requires boto3, AWS credentials in env)
+      'abfss://filesystem/prefix' — Azure Data Lake Storage Gen2
+                                    (requires azure-storage-file-datalake,
+                                     AZURE_STORAGE_CONNECTION_STRING in env)
     """
     if destination.startswith("s3://"):
         try:
@@ -201,21 +208,22 @@ def _upload_outputs(destination: str, paths: list[Path]) -> None:
             s3.upload_file(str(p), bucket, key)
             log.info(f"Uploaded to s3://{bucket}/{key}")
 
-    elif destination.startswith("az://"):
+    elif destination.startswith("abfss://"):
         conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
-        container, prefix = destination[5:].split("/", 1)
+        filesystem, prefix = destination[8:].split("/", 1)
         client = _az_client(conn_str)
+        fs_client = client.get_file_system_client(filesystem)
         for p in paths:
-            blob_name = f"{prefix}/{p.name}"
-            blob = client.get_blob_client(container, blob_name)
+            file_path = f"{prefix}/{p.name}"
+            file_client = fs_client.get_file_client(file_path)
             with open(p, "rb") as f:
-                blob.upload_blob(f, overwrite=True)
-            log.info(f"Uploaded to az://{container}/{blob_name}")
+                file_client.upload_data(f.read(), overwrite=True)
+            log.info(f"Uploaded to abfss://{filesystem}/{file_path}")
 
     else:
         raise ValueError(
             f"Unsupported upload destination '{destination}'. "
-            "Use 's3://bucket/prefix' or 'az://container/prefix'."
+            "Use 's3://bucket/prefix' or 'abfss://filesystem/prefix'."
         )
 
 

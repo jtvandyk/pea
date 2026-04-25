@@ -29,7 +29,7 @@ import plotly.express as px
 import requests
 import streamlit as st
 from azure.identity import DefaultAzureCredential, CredentialUnavailableError
-from azure.storage.blob import BlobServiceClient
+from azure.storage.file_datalake import DataLakeServiceClient
 
 # ── Page config ──────────────────────────────────────────────────────────────
 
@@ -110,14 +110,19 @@ def _mgmt_token() -> Optional[str]:
         return None
 
 
-def _blob_client() -> Optional[BlobServiceClient]:
+def _adls_client() -> Optional[DataLakeServiceClient]:
     conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
-    if not conn_str:
-        return None
+    account_url = os.environ.get("AZURE_STORAGE_ACCOUNT_URL", "")
     try:
-        return BlobServiceClient.from_connection_string(conn_str)
+        if account_url:
+            cred = _get_credential()
+            if cred:
+                return DataLakeServiceClient(account_url, credential=cred)
+        if conn_str:
+            return DataLakeServiceClient.from_connection_string(conn_str)
     except Exception:
-        return None
+        pass
+    return None
 
 
 def trigger_pipeline_job(pipeline_args: list) -> dict:
@@ -219,32 +224,33 @@ def list_job_executions(limit: int = 10) -> list:
 
 
 @st.cache_data(ttl=120)
-def load_events_from_blob() -> pd.DataFrame:
+def load_events_from_adls() -> pd.DataFrame:
     """
-    Load all events_*.jsonl files from Azure Blob Storage and return a DataFrame.
+    Load all events_*.jsonl files from ADLS Gen2 and return a DataFrame.
     Cached for 2 minutes to avoid hammering storage on every rerender.
     """
-    client = _blob_client()
+    client = _adls_client()
     if client is None:
         return pd.DataFrame()
 
-    container_name = os.environ.get("BLOB_CONTAINER_NAME", "pea-outputs")
+    filesystem_name = os.environ.get("BLOB_CONTAINER_NAME", "pea-outputs")
     prefix = os.environ.get("BLOB_PREFIX", "runs")
 
     try:
-        container = client.get_container_client(container_name)
-        blobs = list(container.list_blobs(name_starts_with=prefix))
-        event_blobs = [
-            b for b in blobs if b.name.endswith(".jsonl") and "/events_" in b.name
+        fs_client = client.get_file_system_client(filesystem_name)
+        paths = list(fs_client.get_paths(path=prefix, recursive=True))
+        event_paths = [
+            p for p in paths
+            if p.name.endswith(".jsonl") and "/events_" in p.name
         ]
 
-        if not event_blobs:
+        if not event_paths:
             return pd.DataFrame()
 
         all_events = []
-        for blob in event_blobs:
-            bc = container.get_blob_client(blob.name)
-            content = bc.download_blob().readall().decode("utf-8")
+        for path in event_paths:
+            file_client = fs_client.get_file_client(path.name)
+            content = file_client.download_file().readall().decode("utf-8")
             for line in content.splitlines():
                 if line.strip():
                     try:
@@ -266,8 +272,12 @@ def load_events_from_blob() -> pd.DataFrame:
         return df
 
     except Exception as e:
-        st.warning(f"Could not load events from blob storage: {e}")
+        st.warning(f"Could not load events from ADLS storage: {e}")
         return pd.DataFrame()
+
+
+# Backward-compatible alias
+load_events_from_blob = load_events_from_adls
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -283,7 +293,7 @@ cred = _get_credential()
 
 st.sidebar.markdown("**Status**")
 st.sidebar.markdown(
-    f"{'🟢' if conn_str else '🔴'} Blob Storage {'connected' if conn_str else 'not configured'}"
+    f"{'🟢' if conn_str else '🔴'} ADLS Storage {'connected' if conn_str else 'not configured'}"
 )
 st.sidebar.markdown(
     f"{'🟢' if job_name else '🔴'} Job: `{job_name or 'not configured'}`"
@@ -336,10 +346,14 @@ with tab_launch:
 
         source = st.radio(
             "News source",
-            options=["gdelt", "bbc", "both"],
+            options=["gdelt", "bbc", "worldnews", "both", "all"],
             index=0,
             horizontal=True,
-            help="GDELT: broad coverage. BBC Monitoring: deeper African coverage. Both: combined + deduplicated.",
+            help=(
+                "gdelt: broad coverage. bbc: BBC Monitoring. "
+                "worldnews: World News API (requires WORLDNEWS_API_KEY). "
+                "both: gdelt + bbc. all: gdelt + bbc + worldnews."
+            ),
         )
 
         days = st.slider("Days back to search", min_value=1, max_value=90, value=14)
@@ -377,8 +391,8 @@ with tab_launch:
         upload_dest = st.text_input(
             "Upload outputs to",
             value=upload_to,
-            placeholder="az://pea-outputs/runs",
-            help="Azure Blob destination for outputs. Leave blank to skip upload.",
+            placeholder="abfss://pea-outputs/runs",
+            help="ADLS Gen2 destination for outputs. Leave blank to skip upload.",
         )
 
     st.divider()
@@ -459,8 +473,8 @@ with tab_events:
         if st.button("Refresh data", use_container_width=True):
             st.cache_data.clear()
 
-    with st.spinner("Loading events from blob storage..."):
-        df = load_events_from_blob()
+    with st.spinner("Loading events from ADLS storage..."):
+        df = load_events_from_adls()
 
     if df.empty:
         st.info(

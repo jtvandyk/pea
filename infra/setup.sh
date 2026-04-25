@@ -27,7 +27,7 @@ RESOURCE_GROUP="pea-rg"
 LOCATION="eastus"                     # az account list-locations -o table
 ACR_NAME="pearegistry${RANDOM}"       # must be globally unique; auto-randomised
 STORAGE_ACCOUNT="peastorage${RANDOM}" # must be globally unique; auto-randomised
-BLOB_CONTAINER="pea-outputs"
+ADLS_FILESYSTEM="pea-outputs"
 
 # ── Colours for output ────────────────────────────────────────────────────────
 
@@ -62,15 +62,16 @@ ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].v
 
 log "ACR ready: $ACR_LOGIN_SERVER"
 
-# ── 3. Storage Account + Blob Container ───────────────────────────────────────
+# ── 3. Storage Account (ADLS Gen2) + Filesystem ───────────────────────────────
 
-log "Creating storage account: $STORAGE_ACCOUNT"
+log "Creating storage account (ADLS Gen2): $STORAGE_ACCOUNT"
 az storage account create \
     --name "$STORAGE_ACCOUNT" \
     --resource-group "$RESOURCE_GROUP" \
     --location "$LOCATION" \
     --sku Standard_LRS \
     --kind StorageV2 \
+    --enable-hierarchical-namespace true \
     --output none
 
 STORAGE_CONN_STR=$(az storage account show-connection-string \
@@ -78,13 +79,14 @@ STORAGE_CONN_STR=$(az storage account show-connection-string \
     --resource-group "$RESOURCE_GROUP" \
     -o tsv)
 
-log "Creating blob container: $BLOB_CONTAINER"
-az storage container create \
-    --name "$BLOB_CONTAINER" \
-    --connection-string "$STORAGE_CONN_STR" \
+log "Creating ADLS filesystem: $ADLS_FILESYSTEM"
+az storage fs create \
+    --name "$ADLS_FILESYSTEM" \
+    --account-name "$STORAGE_ACCOUNT" \
+    --auth-mode login \
     --output none
 
-log "Storage ready: $STORAGE_ACCOUNT / $BLOB_CONTAINER"
+log "ADLS Gen2 ready: $STORAGE_ACCOUNT / $ADLS_FILESYSTEM"
 
 # ── 4. Summary: values needed for next steps ──────────────────────────────────
 
@@ -109,7 +111,7 @@ echo "  ACR_LOGIN_SERVER=$ACR_LOGIN_SERVER"
 echo "  ACR_USERNAME=$ACR_USERNAME"
 echo "  ACR_PASSWORD=$ACR_PASSWORD"
 echo "  STORAGE_ACCOUNT=$STORAGE_ACCOUNT"
-echo "  BLOB_CONTAINER=$BLOB_CONTAINER"
+echo "  ADLS_FILESYSTEM=$ADLS_FILESYSTEM"
 echo "  SUBSCRIPTION_ID=$SUBSCRIPTION_ID"
 echo ""
 echo "--- Next steps ---------------------------------------------"

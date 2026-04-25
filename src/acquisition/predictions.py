@@ -119,7 +119,7 @@ def run_predictions(
         input_path:  Path to events_consolidated.jsonl
                      (default: data/processed/events_consolidated.jsonl)
         output_dir:  Output directory (default: data/predictions/)
-        upload_to:   Optional az:// or s3:// destination for outputs
+        upload_to:   Optional abfss:// or s3:// destination for outputs
 
     Returns:
         Dict containing all computed estimates and reports.

@@ -408,7 +408,7 @@ def process_events(
         provider:         LLM provider for rechecking (always 'azure')
         model:            Model/deployment name for rechecking
         api_key:          API key (defaults to env var for provider)
-        upload_to:        Optional az:// or s3:// destination for outputs
+        upload_to:        Optional abfss:// or s3:// destination for outputs
 
     Returns:
         List of consolidated event dicts written to output_dir.

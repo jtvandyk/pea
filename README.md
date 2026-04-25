@@ -1,6 +1,6 @@
 # Protest Event Analysis (PEA)
 
-Automated pipeline for collecting structured protest event data from African news sources. Discovers articles via GDELT and BBC Monitoring, extracts structured events using an Azure-hosted LLM, and writes research-ready JSONL/CSV to Azure Blob Storage on a daily cron schedule.
+Automated pipeline for collecting structured protest event data from African news sources. Discovers articles via GDELT, BBC Monitoring, and World News API, extracts structured events using an Azure-hosted LLM, and writes research-ready JSONL/CSV to Azure Data Lake Storage Gen2 on a daily cron schedule.
 
 | | |
 |---|---|
@@ -21,11 +21,16 @@ Articles flow through six stages in the `acquire` step. Stages 1–3 run once an
 ┌─────────────────────────────────────────────────────────────────────┐
 │  SHARED  (all domains)                                              │
 │                                                                     │
-│  1a. GDELT DOC 2.0        1b. BBC Monitoring      2. Scraper       │
-│  One query per country    Optional: --source bbc  newspaper3k +    │
-│  FIPS sourcecountry       or --source both        requests fallback │
-│  filter + keyword tags    Civil_unrest topic       user-agent       │
-│                           ISO3 country codes       rotation         │
+│  1a. GDELT DOC 2.0        1b. BBC Monitoring      1c. World News   │
+│  One query per country    Optional: --source bbc  API (optional)   │
+│  FIPS sourcecountry       or --source both/all    --source worldnews│
+│  filter + keyword tags    Civil_unrest topic       or --source all  │
+│                           ISO3 country codes                        │
+│                                                                     │
+│  1d. File / ADLS input    2. Scraper                               │
+│  --source file            newspaper3k + requests fallback           │
+│  Pre-scraped CSV/JSONL    user-agent rotation                       │
+│  from local or ADLS path  (skipped if text pre-populated)          │
 └───────────────────────────────────────┬─────────────────────────────┘
                                         │ article text
                   ┌─────────────────────┼──────────────────────┐
@@ -104,10 +109,10 @@ Code changes flow from a `git push` to a running scheduled job with no manual st
     --countries NG,ZA,UG,DZ
     --days 2
     --resume
-    --upload-to az://pea-data/runs
+    --upload-to abfss://pea-data/runs
          │
          ▼
-  Azure Blob Storage  (az://pea-data/runs)
+  Azure Data Lake Storage Gen2  (abfss://pea-data/runs)
   events_{run_id}.jsonl   summary_{run_id}.json   failures_{run_id}.jsonl
          │
          ▼
@@ -131,9 +136,11 @@ cp .env.example .env   # then fill in your Azure credentials
 ```
 AZURE_FOUNDRY_API_KEY=             # required
 AZURE_OPENAI_ENDPOINT=             # required  e.g. https://<resource>.openai.azure.com/openai/v1
-AZURE_STORAGE_CONNECTION_STRING=   # optional  needed for --upload-to az://...
+AZURE_STORAGE_CONNECTION_STRING=   # optional  needed for --upload-to abfss://...
+AZURE_STORAGE_ACCOUNT_URL=         # optional  DFS endpoint (managed identity)
 BBC_MONITORING_USER_NAME=          # optional  needed for --source bbc or both
 BBC_MONITORING_USER_PASSWORD=      # optional
+WORLDNEWS_API_KEY=                 # optional  needed for --source worldnews or all
 ```
 
 ```bash
@@ -158,11 +165,21 @@ python -m src.acquisition.pipeline \
 # Full pipeline — acquire → process → predict
 python -m src.acquisition.pipeline --stage all --countries ZA --days 30
 
+# Use World News API as the source (requires WORLDNEWS_API_KEY)
+python -m src.acquisition.pipeline --source worldnews --countries ZA --days 7
+
+# Ingest a pre-scraped CSV file (skips scraper stage for these articles)
+python -m src.acquisition.pipeline --source file --file-path /data/articles.csv --countries ZA
+
+# Ingest pre-scraped articles from ADLS Gen2
+python -m src.acquisition.pipeline --source file \
+  --file-path abfss://my-filesystem/input/articles.csv --countries ZA
+
 # Resume after a crash (skips URLs already in checkpoint.txt)
 python -m src.acquisition.pipeline --resume
 
-# Upload outputs to Azure Blob after run
-python -m src.acquisition.pipeline --upload-to az://my-container/pea/runs
+# Upload outputs to ADLS Gen2 after run
+python -m src.acquisition.pipeline --upload-to abfss://my-filesystem/pea/runs
 ```
 
 ### 3. Outputs
@@ -197,7 +214,7 @@ az account set --subscription <your-subscription-id>
 chmod +x infra/setup.sh && ./infra/setup.sh
 ```
 
-`setup.sh` creates a resource group (`pea-rg`), an Azure Container Registry, and a Storage Account with a `pea-outputs` blob container. It prints all values needed for the next steps.
+`setup.sh` creates a resource group (`pea-rg`), an Azure Container Registry, and an ADLS Gen2 storage account (hierarchical namespace enabled) with a `pea-outputs` filesystem. It prints all values needed for the next steps.
 
 ### Step 2 — Configure GitHub Secrets
 
@@ -218,6 +235,7 @@ Then push to `main`. GitHub Actions builds both Docker images and pushes them to
 ```bash
 export ACR_NAME=<from-setup-output>
 export STORAGE_ACCOUNT=<from-setup-output>
+export ADLS_FILESYSTEM=pea-outputs     # matches ADLS_FILESYSTEM in setup.sh
 export AZURE_FOUNDRY_API_KEY=<your-foundry-key>
 export ALERT_EMAIL=<your-email>
 chmod +x infra/deploy.sh && ./infra/deploy.sh
@@ -230,7 +248,7 @@ chmod +x infra/deploy.sh && ./infra/deploy.sh
 | Log Analytics workspace + Container Apps Environment | Runtime environment |
 | Key Vault | Stores Foundry API key (+ optional BBC credentials) |
 | User-assigned managed identity | Keyless auth to ACR, Key Vault, Blob Storage |
-| **`pea-daily`** Container Apps Job | Cron `0 6 * * *` (06:00 UTC), 2 CPU / 4 GB, runs `--stage all --countries NG,ZA,UG,DZ --days 2 --resume` |
+| **`pea-daily`** Container Apps Job | Cron `0 6 * * *` (06:00 UTC), 2 CPU / 4 GB, runs `--stage all --countries NG,ZA,UG,DZ --days 2 --resume --upload-to abfss://<filesystem>/runs` |
 | **`pea-backfill`** Container Apps Job | Manual trigger, 4 CPU / 8 GB — pass `--args` at trigger time |
 | Azure Monitor alert | Emails `ALERT_EMAIL` when `Pipeline failed` appears in logs |
 
@@ -245,7 +263,7 @@ az containerapp job start --name pea-backfill --resource-group pea-rg \
   --args "--stage" "all" "--countries" "NG,ZA,UG,DZ" \
          "--backfill-from" "2024-01-01" "--backfill-to" "2024-12-31" \
          "--backfill-window-days" "30" "--workers" "8" \
-         "--upload-to" "az://pea-data/backfill"
+         "--upload-to" "abfss://pea-data/backfill"
 
 # Watch execution logs
 az containerapp job execution list \
@@ -260,7 +278,7 @@ git push origin main
 | Item | Required for |
 |------|-------------|
 | Azure Container Registry + GitHub Secrets | Docker CI workflow |
-| Azure Storage Account | `--upload-to az://...` |
+| Azure Storage Account (ADLS Gen2, HNS enabled) | `--upload-to abfss://...` |
 | ACLED API token | Recall validation (`acled_validator.py` not yet built) |
 | GLOCON data access | `glocon_validator.py` (applied 2026-04-05) |
 
@@ -286,6 +304,28 @@ Keywords are managed in [configs/keywords.yaml](configs/keywords.yaml):
 [src/acquisition/bbc_discovery.py](src/acquisition/bbc_discovery.py) queries BBC Monitoring using the `Civil_unrest` topic filter and ISO3 country codes. Requires `BBC_MONITORING_USER_NAME` and `BBC_MONITORING_USER_PASSWORD`.
 
 Enable with `--source bbc` or `--source both`. When `--source both`, results are deduplicated by URL before scraping.
+
+### Stage 1c — Discovery (World News API, optional)
+
+[src/acquisition/worldnews_discovery.py](src/acquisition/worldnews_discovery.py) queries the [worldnewsapi.com](https://worldnewsapi.com) search-news endpoint. One paginated query per country. Requires `WORLDNEWS_API_KEY`.
+
+Enable with `--source worldnews` (standalone) or `--source all` (GDELT + BBC + World News). Results are deduplicated by URL with the other sources.
+
+Rate limits: 60 req/min, 1 concurrent, 50 points/day on the free tier — suitable for targeted daily runs.
+
+### Stage 1d — File / ADLS input (optional)
+
+[src/acquisition/file_discovery.py](src/acquisition/file_discovery.py) ingests pre-scraped articles from a local or ADLS Gen2 file, bypassing the scraper stage.
+
+**Use when:** articles are already collected and stored as CSV/JSON (e.g., from a media monitoring service or internal corpus).
+
+Enable with `--source file --file-path <path>`. Supported path formats:
+- Local: `/path/to/articles.csv`, `./data/articles.jsonl`
+- ADLS Gen2: `abfss://filesystem/path/to/articles.csv`
+
+**Required columns:** `url`, `title`, `text`, `date` (YYYY-MM-DD), `country` (ISO2).
+
+Since `text` is pre-populated, the scraper skips the network fetch for these articles. They proceed through the relevance filter, translation, and extraction stages normally.
 
 ### Stage 2 — Scraping
 
@@ -380,7 +420,7 @@ Use `--geocode-workers` to parallelise dispatch; the default is 4 concurrent wor
 [src/acquisition/storage.py](src/acquisition/storage.py) writes JSONL, CSV, and a run summary JSON. It also derives a `turmoil_level` field (high/medium/low) from event type and state response severity.
 
 Optional cloud upload via `--upload-to`:
-- `az://container/prefix` — Azure Blob Storage (`AZURE_STORAGE_CONNECTION_STRING`)
+- `abfss://filesystem/prefix` — Azure Data Lake Storage Gen2 (`AZURE_STORAGE_CONNECTION_STRING` or managed identity via `AZURE_STORAGE_ACCOUNT_URL` set to the DFS endpoint `https://<account>.dfs.core.windows.net`)
 - `s3://bucket/prefix` — AWS S3 (`boto3`)
 
 ### Processing stage (`--stage process`)
@@ -441,7 +481,7 @@ python -m src.acquisition.pipeline \
   --backfill-window-days 30 \
   --workers 8 \
   --rpm-limit 450 \
-  --upload-to az://my-container/pea/backfill
+  --upload-to abfss://my-filesystem/pea/backfill
 ```
 
 - `--backfill-window-days` (default 30) controls how many days each GDELT query spans
@@ -930,11 +970,16 @@ Pipeline run  →  data/raw/protest/all_events.jsonl
 python -m src.acquisition.pipeline [OPTIONS]
 
 Discovery & scope:
-  --query TEXT                Keywords for GDELT (space-separated)
+  --query TEXT                Keywords for GDELT/World News API (space-separated)
   --countries TEXT            ISO2 codes, comma-separated [default: NG,ZA,UG,DZ]
   --days INT                  Lookback window in days [default: 7]
   --max-articles INT          Article cap [default: 50]
-  --source TEXT               gdelt | bbc | both [default: gdelt]
+  --source TEXT               gdelt | bbc | worldnews | file | both | all [default: gdelt]
+                              both = gdelt + bbc; all = gdelt + bbc + worldnews
+  --file-path TEXT            Path to pre-scraped articles file (required for --source file)
+                              Local: /path/to/articles.csv
+                              ADLS: abfss://filesystem/path/to/articles.csv
+                              Required columns: url, title, text, date, country
 
 Domain & codebook:
   --domains TEXT              Comma-separated codebook domains [default: protest]
@@ -975,7 +1020,7 @@ Historical backfill:
 
 Output & storage:
   --output-dir PATH           Output directory [default: data/raw/]
-  --upload-to TEXT            az://container/prefix or s3://bucket/prefix
+  --upload-to TEXT            abfss://filesystem/prefix (ADLS Gen2) or s3://bucket/prefix
 ```
 
 ---

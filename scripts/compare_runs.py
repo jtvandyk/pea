@@ -1,20 +1,20 @@
 """
 compare_runs.py — compare two PEA pipeline run summaries side by side.
 
-Supports local file paths and Azure blob URLs (az://container/prefix).
+Supports local file paths and ADLS Gen2 URLs (abfss://filesystem/prefix).
 
 Usage:
     # Compare against saved baseline
-    python scripts/compare_runs.py az://pea-data/runs/summary_<run_id>.json
+    python scripts/compare_runs.py abfss://pea-data/runs/summary_<run_id>.json
 
-    # Set a blob summary as the new baseline
-    python scripts/compare_runs.py --set-baseline az://pea-data/runs/summary_<run_id>.json
+    # Set an ADLS summary as the new baseline
+    python scripts/compare_runs.py --set-baseline abfss://pea-data/runs/summary_<run_id>.json
 
-    # List available summary files in blob storage
+    # List available summary files in ADLS
     python scripts/compare_runs.py --list
 
-    # Compare two specific summaries (local or blob)
-    python scripts/compare_runs.py az://pea-data/runs/summary_A.json az://pea-data/runs/summary_B.json
+    # Compare two specific summaries (local or ADLS)
+    python scripts/compare_runs.py abfss://pea-data/runs/summary_A.json abfss://pea-data/runs/summary_B.json
 
 Requires AZURE_STORAGE_CONNECTION_STRING in environment (or .env file).
 """
@@ -30,51 +30,57 @@ from pathlib import Path
 BASELINE_PATH = Path("data/validation/baseline_summary.json")
 
 
-def _blob_client():
-    from azure.storage.blob import BlobServiceClient
+def _adls_client():
+    from azure.storage.file_datalake import DataLakeServiceClient
     conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
     if not conn_str:
         print("ERROR: AZURE_STORAGE_CONNECTION_STRING not set. Run: set -a; source .env; set +a")
         sys.exit(1)
-    return BlobServiceClient.from_connection_string(conn_str)
+    return DataLakeServiceClient.from_connection_string(conn_str)
 
 
-def _parse_blob_url(url: str):
-    """az://container/path/to/blob → (container, blob_path)"""
-    parts = url[5:].split("/", 1)
+def _parse_adls_url(url: str):
+    """abfss://filesystem/path/to/file → (filesystem, file_path)"""
+    parts = url[8:].split("/", 1)
     return parts[0], parts[1] if len(parts) > 1 else ""
 
 
 def _load(path: str) -> dict:
-    if path.startswith("az://"):
-        container, blob_path = _parse_blob_url(path)
-        client = _blob_client().get_blob_client(container, blob_path)
-        data = client.download_blob().readall()
+    if path.startswith("abfss://"):
+        filesystem, file_path = _parse_adls_url(path)
+        client = _adls_client()
+        file_client = client.get_file_system_client(filesystem).get_file_client(file_path)
+        data = file_client.download_file().readall()
         return json.loads(data)
     with open(path) as f:
         return json.load(f)
 
 
 def _save(data: dict, path: str):
-    if path.startswith("az://"):
-        container, blob_path = _parse_blob_url(path)
-        client = _blob_client().get_blob_client(container, blob_path)
-        client.upload_blob(json.dumps(data, indent=2).encode(), overwrite=True)
+    if path.startswith("abfss://"):
+        filesystem, file_path = _parse_adls_url(path)
+        client = _adls_client()
+        file_client = client.get_file_system_client(filesystem).get_file_client(file_path)
+        file_client.upload_data(json.dumps(data, indent=2).encode(), overwrite=True)
     else:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
             json.dump(data, f, indent=2)
 
 
-def _list_summaries(container: str = "pea-data", prefix: str = "runs/summary_"):
-    blobs = _blob_client().get_container_client(container).list_blobs(name_starts_with=prefix)
-    results = sorted([b.name for b in blobs], reverse=True)
+def _list_summaries(filesystem: str = "pea-data", prefix: str = "runs/summary_"):
+    fs_client = _adls_client().get_file_system_client(filesystem)
+    paths = list(fs_client.get_paths(path="runs", recursive=True))
+    results = sorted(
+        [p.name for p in paths if p.name.startswith(prefix)],
+        reverse=True,
+    )
     if not results:
-        print("No summary files found in blob storage.")
+        print("No summary files found in ADLS storage.")
         return
-    print(f"\nAvailable summaries in az://{container}/{prefix}*\n")
+    print(f"\nAvailable summaries in abfss://{filesystem}/{prefix}*\n")
     for name in results:
-        print(f"  az://{container}/{name}")
+        print(f"  abfss://{filesystem}/{name}")
     print()
 
 
@@ -130,9 +136,9 @@ def set_baseline(source_path: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Compare two PEA run summaries (local or Azure blob)")
-    parser.add_argument("--set-baseline", metavar="PATH", help="Save a summary as the new baseline (local or az://)")
-    parser.add_argument("--list", action="store_true", help="List available summary files in blob storage")
-    parser.add_argument("new_run", nargs="?", help="New run summary to compare (local path or az://container/blob)")
+    parser.add_argument("--set-baseline", metavar="PATH", help="Save a summary as the new baseline (local or abfss://)")
+    parser.add_argument("--list", action="store_true", help="List available summary files in ADLS storage")
+    parser.add_argument("new_run", nargs="?", help="New run summary to compare (local path or abfss://filesystem/blob)")
     parser.add_argument("baseline", nargs="?", default=str(BASELINE_PATH), help="Baseline to compare against (default: data/validation/baseline_summary.json)")
     args = parser.parse_args()
 
@@ -141,7 +147,7 @@ if __name__ == "__main__":
     elif args.set_baseline:
         set_baseline(args.set_baseline)
     elif args.new_run:
-        if not args.new_run.startswith("az://") and not Path(args.baseline).exists():
+        if not args.new_run.startswith("abfss://") and not Path(args.baseline).exists():
             print(f"No baseline found at {args.baseline}. Run with --set-baseline first.")
             sys.exit(1)
         compare(args.baseline, args.new_run)
