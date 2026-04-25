@@ -17,17 +17,23 @@
 #   5. Annotate.
 #   6. Export: Projects → Export → JSON → save to data/annotation/
 #   7. python -m src.annotation.import_annotations \
-#        --annotations data/annotation/label_studio_export.json
+#        --annotations data/annotation/label_studio_export.json \
+#        --upload-to abfss://pea-outputs/annotation
 #
 # Volumes:
 #   label_studio_data  — Label Studio DB, projects, user accounts (persisted)
 #   ./data/annotation  — shared with host so export/import scripts can read/write directly
 #
-# Environment variables:
+# Environment variables (set in .env):
 #   LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED=true
 #     Allows Label Studio to serve files from the local annotation volume.
 #   LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT=/label-studio/files
 #     Root for local file serving — maps to ./data/annotation on the host.
+#   AZURE_STORAGE_CONNECTION_STRING (optional)
+#     When set, the backup sidecar uploads hourly tarballs of the label_studio_data
+#     volume to Azure Blob Storage so annotations survive container recreation.
+#   LABEL_STUDIO_BACKUP_CONTAINER (optional, default: pea-outputs)
+#     Blob container name for the backup sidecar.
 
 services:
   label-studio:
@@ -50,6 +56,48 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # Backup sidecar — uploads hourly tarball of label_studio_data to Azure Blob.
+  # Requires AZURE_STORAGE_CONNECTION_STRING in the environment.
+  # Set LABEL_STUDIO_BACKUP_CONTAINER to override the default container (pea-outputs).
+  # If AZURE_STORAGE_CONNECTION_STRING is not set the sidecar sleeps harmlessly.
+  label-studio-backup:
+    image: mcr.microsoft.com/azure-cli:latest
+    volumes:
+      - label_studio_data:/label-studio/data:ro
+    environment:
+      - AZURE_STORAGE_CONNECTION_STRING
+      - LABEL_STUDIO_BACKUP_CONTAINER=${LABEL_STUDIO_BACKUP_CONTAINER:-pea-outputs}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        # Wait for Label Studio to initialise before first backup
+        sleep 60
+        while true; do
+          if [ -z "$$AZURE_STORAGE_CONNECTION_STRING" ]; then
+            echo "AZURE_STORAGE_CONNECTION_STRING not set — backup skipped"
+          else
+            FNAME="label_studio_$$(date +%Y%m%dT%H%M%S).tar.gz"
+            tar czf "/tmp/$$FNAME" -C / label-studio/data 2>/dev/null
+            if az storage blob upload \
+                --connection-string "$$AZURE_STORAGE_CONNECTION_STRING" \
+                --container-name "$$LABEL_STUDIO_BACKUP_CONTAINER" \
+                --name "label-studio/backups/$$FNAME" \
+                --file "/tmp/$$FNAME" \
+                --overwrite \
+                --output none 2>&1; then
+              echo "Backup uploaded: $$FNAME"
+            else
+              echo "Backup upload failed: $$FNAME"
+            fi
+            rm -f "/tmp/$$FNAME"
+          fi
+          sleep 3600
+        done
+    restart: unless-stopped
+    depends_on:
+      label-studio:
+        condition: service_healthy
 
 volumes:
   label_studio_data:
