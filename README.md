@@ -1,103 +1,143 @@
 # Protest Event Analysis (PEA)
 
-An automated pipeline for collecting structured protest event data from African news sources. Discovers articles via GDELT and BBC Monitoring, extracts structured protest events using an LLM, and produces research-ready JSONL/CSV datasets with geocoordinates and statistical prevalence estimates.
+Automated pipeline for collecting structured protest event data from African news sources. Discovers articles via GDELT and BBC Monitoring, extracts structured events using an Azure-hosted LLM, and writes research-ready JSONL/CSV to Azure Blob Storage on a daily cron schedule.
 
-**Codebook:** v2.3 (Halterman & Keith 2025, Type III stipulative definitions)  
-**Target geography:** Nigeria (NG), South Africa (ZA), Uganda (UG), Algeria (DZ)  
-**LLM backend:** Azure AI Foundry (`AZURE_FOUNDRY_API_KEY` + `AZURE_OPENAI_ENDPOINT`)
-
----
-
-## Pipeline Overview
-
-The pipeline runs in three independent stages. Each stage reads from the previous stage's output directory.
-
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│  STAGE 1 — ACQUIRE                                             acquire│
-│                                                                       │
-│  ┌──────────────┐    ┌──────────────┐    ┌───────────────────────┐  │
-│  │  1a. GDELT   │    │ 1b. BBC Mon. │    │  2. Scraper           │  │
-│  │  DOC 2.0 API │    │  (optional)  │    │  newspaper3k +        │  │
-│  │  per-country │ ──►│              │ ──►│  requests fallback    │  │
-│  │  FIPS filter │    │  Civil_unrest│    │  user-agent rotation  │  │
-│  └──────────────┘    │  topic filter│    └───────────┬───────────┘  │
-│                      └──────────────┘                │               │
-│                                                       ▼               │
-│                                         ┌───────────────────────┐   │
-│                                         │  2.5 Relevance Filter │   │
-│                                         │  DeBERTa zero-shot NLI│   │
-│                                         │  per-domain threshold  │   │
-│                                         │  keyword fallback      │   │
-│                                         └───────────┬───────────┘   │
-│                                                      │               │
-│  ┌───────────────────────────────┐    ┌─────────────▼─────────────┐ │
-│  │  4. LLM Extraction            │◄───│  3. Translation           │ │
-│  │  Azure AI Foundry             │    │  langdetect + Google      │ │
-│  │  Codebook v2.3 in SYSTEM      │    │  Translate (free tier)    │ │
-│  │  Few-shot examples in USER    │    │  Native langs: skip       │ │
-│  │  Prompt caching (~36% saving) │    └───────────────────────────┘ │
-│  └───────────────┬───────────────┘                                   │
-│                  │                                                    │
-│                  ▼                                                    │
-│  ┌───────────────────────────────┐    ┌───────────────────────────┐ │
-│  │  4.5 Geocoding                │    │  5. Storage               │ │
-│  │  Nominatim (OSM)              │ ──►│  data/raw/<domain>/       │ │
-│  │  venue → city → region →      │    │  JSONL + CSV + summary    │ │
-│  │  country fallback             │    │  + dead-letter file       │ │
-│  └───────────────────────────────┘    └───────────────────────────┘ │
-└──────────────────────────────────────────────────────────────────────┘
-
-  Multi-domain mode (--domains protest,drone):
-  Stages 1–3 run once (shared scrape + translate), then Stages 2.5–5
-  run independently per domain. An article can qualify for both.
-
-┌──────────────────────────────────────────────────────────────────────┐
-│  STAGE 2 — PROCESS                                            process │
-│                                                                       │
-│  data/raw/<domain>/all_events.jsonl                                   │
-│       │                                                               │
-│       ├─► Geography filter (remove off-target countries)             │
-│       ├─► Deduplication (country + city fuzzy ±3 days + type         │
-│       │   + TF-IDF claims similarity ≥0.20; null-city safe)          │
-│       ├─► LLM re-verification of medium/low confidence events        │
-│       └─► Quality control → data/processed/                          │
-└──────────────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────────────┐
-│  STAGE 3 — PREDICT                                            predict │
-│                                                                       │
-│  data/processed/events_consolidated.jsonl                             │
-│       │                                                               │
-│       ├─► Prevalence estimates per country + event type               │
-│       ├─► Prediction-Powered Inference (Angelopoulos et al. 2023)    │
-│       │   accounts for LLM misclassification in confidence intervals  │
-│       └─► data/predictions/                                           │
-└──────────────────────────────────────────────────────────────────────┘
-```
+| | |
+|---|---|
+| **Codebook** | v2.3 (Halterman & Keith 2025, Type III stipulative definitions) |
+| **Target geography** | Nigeria (NG), South Africa (ZA), Uganda (UG), Algeria (DZ) |
+| **LLM backend** | Azure AI Foundry — `--model` sets the deployment name (default: `gpt-4.1`) |
+| **Production schedule** | Daily at 06:00 UTC via Azure Container Apps Job (`pea-daily`) |
 
 ---
 
-## Quick Start
+## Architecture
+
+### Pipeline stages
+
+Articles flow through six stages in the `acquire` step. Stages 1–3 run once and are shared across all active domains; stages 2.5–5 run independently per domain so an article can qualify as both a protest event and a drone event.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  SHARED  (all domains)                                              │
+│                                                                     │
+│  1a. GDELT DOC 2.0        1b. BBC Monitoring      2. Scraper       │
+│  One query per country    Optional: --source bbc  newspaper3k +    │
+│  FIPS sourcecountry       or --source both        requests fallback │
+│  filter + keyword tags    Civil_unrest topic       user-agent       │
+│                           ISO3 country codes       rotation         │
+└───────────────────────────────────────┬─────────────────────────────┘
+                                        │ article text
+                  ┌─────────────────────┼──────────────────────┐
+                  ▼                     ▼                      ▼
+           protest domain          drone domain          (future domains)
+┌──────────────────────────────────────────────────────────────────────┐
+│  PER DOMAIN                                                          │
+│                                                                      │
+│  2.5 Relevance filter              3. Translation                    │
+│  DeBERTa NLI, threshold 0.30       langdetect + Google Translate     │
+│  (keyword fallback if offline)     Native langs skip translation     │
+│  batched inference, size 32                                          │
+│           │                                                          │
+│           ▼                                                          │
+│  4. LLM Extraction                 4.5 Geocoding                    │
+│  Azure AI Foundry                  Nominatim OSM (free, no key)     │
+│  Codebook v2.3 in SYSTEM_PROMPT    venue → city → region → country  │
+│  Few-shot examples in USER_PROMPT  disk-cached per location string  │
+│  Prompt caching: ~36% cost saving  up to 4 parallel workers         │
+│           │                                                          │
+│           ▼                                                          │
+│  5. Storage                                                          │
+│  data/raw/<domain>/  JSONL + CSV + run summary + dead-letter file   │
+└──────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────┐
+│  STAGE 2 — PROCESS                             --stage process       │
+│                                                                      │
+│  data/raw/<domain>/all_events.jsonl                                  │
+│    ├─► Geography filter (remove off-target countries)               │
+│    ├─► Deduplication  (country + city fuzzy ±3 days + event type    │
+│    │   + TF-IDF claims similarity ≥0.20; null-city safe)            │
+│    ├─► LLM re-verification of medium/low confidence events          │
+│    └─► Quality control  →  data/processed/                          │
+└──────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────┐
+│  STAGE 3 — PREDICT                             --stage predict       │
+│                                                                      │
+│  data/processed/events_consolidated.jsonl                            │
+│    ├─► Prevalence estimates per country + event type                 │
+│    ├─► Prediction-Powered Inference (Angelopoulos et al. 2023)      │
+│    │   corrects for LLM misclassification in confidence intervals   │
+│    └─► data/predictions/                                             │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### Azure deployment
+
+Code changes flow from a `git push` to a running scheduled job with no manual steps after initial setup.
+
+```
+  git push origin main
+         │
+         ▼
+  GitHub Actions  (.github/workflows/docker.yml)
+  ├── Build pea-pipeline image  (Dockerfile)
+  ├── Build pea-dashboard image (Dockerfile.web)
+  ├── Push both images to ACR with :latest and :<sha> tags
+  └── Update pea-daily and pea-backfill jobs to the new image
+         │
+         ▼
+  Azure Container Registry (ACR)
+  pea-pipeline:latest   pea-pipeline:<sha>
+         │
+         ├──────────────────────────────────────┐
+         ▼                                      ▼
+  pea-daily                             pea-backfill
+  Trigger: cron  0 6 * * *  (06:00 UTC) Trigger: manual
+  2 CPU / 4 GB RAM                      4 CPU / 8 GB RAM
+  Replica timeout: 4 h                  Replica timeout: 24 h
+  Retry limit: 2                        Retry limit: 1
+                                        (pass --args at trigger time)
+  Command:
+    --stage all
+    --countries NG,ZA,UG,DZ
+    --days 2
+    --resume
+    --upload-to az://pea-data/runs
+         │
+         ▼
+  Azure Blob Storage  (az://pea-data/runs)
+  events_{run_id}.jsonl   summary_{run_id}.json   failures_{run_id}.jsonl
+         │
+         ▼
+  Azure Monitor — scheduled query alert
+  Fires when Log Analytics sees "Pipeline failed"
+  Notifies: ALERT_EMAIL via action group
+```
+
+Secrets (Foundry API key, optional BBC credentials) are stored in Azure Key Vault and injected at runtime via a user-assigned managed identity — no credentials in environment variables on the Container Apps Job.
+
+---
+
+## Quick Start — local
 
 ### 1. Environment
 
 ```bash
-cp .env.example .env
-# Fill in Azure credentials
+cp .env.example .env   # then fill in your Azure credentials
 ```
 
 ```
 AZURE_FOUNDRY_API_KEY=             # required
-AZURE_OPENAI_ENDPOINT=             # required (e.g. https://<resource>.openai.azure.com/openai/v1)
-AZURE_STORAGE_CONNECTION_STRING=   # optional — --upload-to az://...
-BBC_MONITORING_USER_NAME=          # optional — --source bbc or both
-BBC_MONITORING_USER_PASSWORD=      # optional — --source bbc or both
+AZURE_OPENAI_ENDPOINT=             # required  e.g. https://<resource>.openai.azure.com/openai/v1
+AZURE_STORAGE_CONNECTION_STRING=   # optional  needed for --upload-to az://...
+BBC_MONITORING_USER_NAME=          # optional  needed for --source bbc or both
+BBC_MONITORING_USER_PASSWORD=      # optional
 ```
 
 ```bash
-python -m venv venv
-source venv/bin/activate
+python -m venv venv && source venv/bin/activate
 pip install -r requirements-core.txt
 ```
 
@@ -109,37 +149,20 @@ python -m src.acquisition.pipeline --countries ZA --days 7
 
 # Multi-country, 30-day window
 python -m src.acquisition.pipeline \
-  --model gpt-4.1 \
-  --countries NG,ZA,UG,DZ \
-  --days 30 \
-  --max-articles 200
+  --model gpt-4.1 --countries NG,ZA,UG,DZ --days 30 --max-articles 200
 
-# Adjust relevance filter threshold (default 0.30 — conservative/high recall)
-python -m src.acquisition.pipeline --countries ZA --days 30 \
-  --relevance-threshold 0.50
-
-# Multi-domain: scrape once, extract protest events AND drone events
+# Multi-domain: scrape once, extract protest AND drone events
 python -m src.acquisition.pipeline \
-  --domains protest,drone \
-  --countries NG,ZA,UG,DZ \
-  --days 7
+  --domains protest,drone --countries NG,ZA,UG,DZ --days 7
 
-# Historical backfill with concurrent workers
-python -m src.acquisition.pipeline \
-  --domains protest \
-  --countries ZA \
-  --backfill-from 2025-01-01 --backfill-to 2025-12-31 \
-  --workers 8 --rpm-limit 450
-
-# Resume after a crash
-python -m src.acquisition.pipeline --resume
-
-# Run all three stages end-to-end
+# Full pipeline — acquire → process → predict
 python -m src.acquisition.pipeline --stage all --countries ZA --days 30
 
+# Resume after a crash (skips URLs already in checkpoint.txt)
+python -m src.acquisition.pipeline --resume
+
 # Upload outputs to Azure Blob after run
-python -m src.acquisition.pipeline \
-  --upload-to az://my-container/pea/runs
+python -m src.acquisition.pipeline --upload-to az://my-container/pea/runs
 ```
 
 ### 3. Outputs
@@ -148,10 +171,10 @@ Output is written to `data/raw/<domain>/` (domain defaults to `protest`).
 
 | File | Stage | Contents |
 |------|-------|----------|
-| `data/raw/<domain>/events_{run_id}.jsonl` | acquire | Extracted protest events (primary) |
+| `data/raw/<domain>/events_{run_id}.jsonl` | acquire | Extracted events — primary output |
 | `data/raw/<domain>/events_{run_id}.csv` | acquire | Same events, spreadsheet-friendly |
 | `data/raw/<domain>/summary_{run_id}.json` | acquire | Run metadata: counts by country, type, turmoil level |
-| `data/raw/<domain>/failures_{run_id}.jsonl` | acquire | Articles that failed all extraction retries |
+| `data/raw/<domain>/failures_{run_id}.jsonl` | acquire | Articles that failed all retries (dead-letter) |
 | `data/raw/<domain>/all_events.jsonl` | acquire | Cumulative append across all runs |
 | `data/raw/<domain>/checkpoint.txt` | acquire | Processed URLs — used by `--resume` |
 | `data/processed/events_consolidated.jsonl` | process | Deduplicated, quality-controlled events |
@@ -162,7 +185,88 @@ Output is written to `data/raw/<domain>/` (domain defaults to `protest`).
 
 ---
 
-## Stage Detail
+## Production Deployment (Azure)
+
+Run the two provisioning scripts once. After that, every push to `main` updates the running jobs automatically via GitHub Actions.
+
+### Step 1 — Provision Azure resources
+
+```bash
+az login
+az account set --subscription <your-subscription-id>
+chmod +x infra/setup.sh && ./infra/setup.sh
+```
+
+`setup.sh` creates a resource group (`pea-rg`), an Azure Container Registry, and a Storage Account with a `pea-outputs` blob container. It prints all values needed for the next steps.
+
+### Step 2 — Configure GitHub Secrets
+
+In your repo: **Settings → Secrets and variables → Actions**
+
+| Secret | Where to get it |
+|--------|----------------|
+| `ACR_LOGIN_SERVER` | Printed by `setup.sh` |
+| `ACR_USERNAME` | Printed by `setup.sh` |
+| `ACR_PASSWORD` | Printed by `setup.sh` |
+| `AZURE_CREDENTIALS` | `az ad sp create-for-rbac --sdk-auth` output |
+| `AZURE_RESOURCE_GROUP` | `pea-rg` (default) |
+
+Then push to `main`. GitHub Actions builds both Docker images and pushes them to ACR.
+
+### Step 3 — Deploy Container Apps Jobs
+
+```bash
+export ACR_NAME=<from-setup-output>
+export STORAGE_ACCOUNT=<from-setup-output>
+export AZURE_FOUNDRY_API_KEY=<your-foundry-key>
+export ALERT_EMAIL=<your-email>
+chmod +x infra/deploy.sh && ./infra/deploy.sh
+```
+
+`deploy.sh` creates:
+
+| Resource | Purpose |
+|----------|---------|
+| Log Analytics workspace + Container Apps Environment | Runtime environment |
+| Key Vault | Stores Foundry API key (+ optional BBC credentials) |
+| User-assigned managed identity | Keyless auth to ACR, Key Vault, Blob Storage |
+| **`pea-daily`** Container Apps Job | Cron `0 6 * * *` (06:00 UTC), 2 CPU / 4 GB, runs `--stage all --countries NG,ZA,UG,DZ --days 2 --resume` |
+| **`pea-backfill`** Container Apps Job | Manual trigger, 4 CPU / 8 GB — pass `--args` at trigger time |
+| Azure Monitor alert | Emails `ALERT_EMAIL` when `Pipeline failed` appears in logs |
+
+### Ongoing operations
+
+```bash
+# Trigger pea-daily immediately (outside its schedule)
+az containerapp job start --name pea-daily --resource-group pea-rg
+
+# Run a historical backfill
+az containerapp job start --name pea-backfill --resource-group pea-rg \
+  --args "--stage" "all" "--countries" "NG,ZA,UG,DZ" \
+         "--backfill-from" "2024-01-01" "--backfill-to" "2024-12-31" \
+         "--backfill-window-days" "30" "--workers" "8" \
+         "--upload-to" "az://pea-data/backfill"
+
+# Watch execution logs
+az containerapp job execution list \
+  --name pea-daily --resource-group pea-rg --output table
+
+# Deploy a code change — just push to main; GitHub Actions handles the rest
+git push origin main
+```
+
+### Pending infrastructure
+
+| Item | Required for |
+|------|-------------|
+| Azure Container Registry + GitHub Secrets | Docker CI workflow |
+| Azure Storage Account | `--upload-to az://...` |
+| ACLED API token | Recall validation (`acled_validator.py` not yet built) |
+| GLOCON data access | `glocon_validator.py` (applied 2026-04-05) |
+
+---
+
+## Stage Reference
 
 ### Stage 1a — Discovery (GDELT)
 
@@ -279,7 +383,7 @@ Optional cloud upload via `--upload-to`:
 - `az://container/prefix` — Azure Blob Storage (`AZURE_STORAGE_CONNECTION_STRING`)
 - `s3://bucket/prefix` — AWS S3 (`boto3`)
 
-### Stage 2 (outer) — Processing
+### Processing stage (`--stage process`)
 
 [src/acquisition/processing.py](src/acquisition/processing.py) reads `data/raw/<domain>/all_events.jsonl` and produces a clean dataset.
 
@@ -288,7 +392,7 @@ Optional cloud upload via `--upload-to`:
 3. **LLM re-verification** — borderline medium/low confidence events re-examined with chain-of-thought prompting
 4. **Quality control** — schema validity checks and confidence distribution report
 
-### Stage 3 (outer) — Predictions
+### Predictions stage (`--stage predict`)
 
 [src/acquisition/predictions.py](src/acquisition/predictions.py) applies **Prediction-Powered Inference** (Angelopoulos et al. 2023) to generate statistically valid prevalence estimates that account for LLM misclassification rates. Raw averaging of LLM predictions propagates classification error into the point estimate and is methodologically incorrect.
 
@@ -414,9 +518,7 @@ Extended (from criminalisation of protest literature): `legal_criminalisation`, 
 
 ---
 
-## Infrastructure
-
-### Docker
+## Docker
 
 ```bash
 docker build -t pea .
@@ -425,20 +527,7 @@ docker run --env-file .env pea --countries ZA --days 7
 
 The multi-stage Dockerfile uses `requirements-core.txt` (pipeline dependencies only). ML packages (`torch`, `transformers`) are in `requirements.txt` for local development.
 
-> **Note:** `torch` in `requirements-core.txt` currently pulls the CUDA build. Pin to a CPU wheel URL in the Dockerfile for production to avoid a 2 GB image layer.
-
-### GitHub Actions
-
-`.github/workflows/docker.yml` builds and pushes the Docker image to Azure Container Registry on every push to `main`. Requires `ACR_LOGIN_SERVER`, `ACR_USERNAME`, and `ACR_PASSWORD` in GitHub Secrets.
-
-### Pending Infrastructure
-
-| Item | Required for |
-|------|-------------|
-| Azure Container Registry + GitHub Secrets | Docker CI workflow |
-| Azure Storage Account | `--upload-to az://...` |
-| ACLED API token | Recall validation (`acled_validator.py` not yet built) |
-| GLOCON data access | `glocon_validator.py` (applied 2026-04-05) |
+> **Note:** `torch` in `requirements-core.txt` currently pulls the CUDA build. For production, pin to a CPU wheel URL in the Dockerfile to avoid a 2 GB image layer.
 
 ---
 
