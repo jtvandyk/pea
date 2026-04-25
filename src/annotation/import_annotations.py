@@ -314,9 +314,14 @@ def import_annotations(
     output_dir: Path,
     promote_to_examples: int = 0,
     examples_path: Optional[Path] = None,
+    upload_to: Optional[str] = None,
 ) -> dict:
     """
     Process a Label Studio export file and write output files.
+
+    upload_to: optional cloud destination for the three output files.
+      Accepts 's3://bucket/prefix' or 'abfss://filesystem/prefix'.
+      Requires AZURE_STORAGE_CONNECTION_STRING (ADLS) or AWS credentials (S3).
 
     Returns a summary dict.
     """
@@ -376,6 +381,17 @@ def import_annotations(
     with open(stats_path, "w", encoding="utf-8") as f:
         json.dump(stats, f, indent=2)
 
+    # Upload to cloud storage before printing summary so any errors surface early
+    if upload_to:
+        try:
+            from src.acquisition.storage import _upload_outputs
+
+            _upload_outputs(upload_to, [reviewed_path, training_path, stats_path])
+            log.info(f"Annotation outputs uploaded to {upload_to}")
+            stats["uploaded_to"] = upload_to
+        except Exception as exc:
+            log.warning(f"Cloud upload failed (files saved locally): {exc}")
+
     # Console summary
     print("\n" + "=" * 55)
     print("ANNOTATION IMPORT SUMMARY")
@@ -395,6 +411,8 @@ def import_annotations(
     print(f"  {reviewed_path}")
     print(f"  {training_path}")
     print(f"  {stats_path}")
+    if upload_to:
+        print(f"  → uploaded to {upload_to}")
     target = 200
     remaining = max(0, target - stats["training_pairs"])
     if remaining > 0:
@@ -459,6 +477,16 @@ if __name__ == "__main__":
             "configs/extraction_examples.yaml."
         ),
     )
+    parser.add_argument(
+        "--upload-to",
+        default=None,
+        metavar="DEST",
+        help=(
+            "Upload the three output files to cloud storage after writing. "
+            "Accepts 'abfss://filesystem/prefix' (Azure ADLS Gen2, requires "
+            "AZURE_STORAGE_CONNECTION_STRING) or 's3://bucket/prefix' (AWS S3)."
+        ),
+    )
     args = parser.parse_args()
 
     import_annotations(
@@ -466,4 +494,5 @@ if __name__ == "__main__":
         output_dir=Path(args.output_dir),
         promote_to_examples=args.promote_to_examples,
         examples_path=Path(args.examples_path) if args.examples_path else None,
+        upload_to=args.upload_to,
     )
