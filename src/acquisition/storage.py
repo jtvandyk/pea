@@ -15,7 +15,10 @@ import os
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from azure.storage.file_datalake import DataLakeServiceClient
 
 from src.metrics import count_by
 
@@ -133,6 +136,7 @@ def _az_client(conn_str: Optional[str] = None) -> "DataLakeServiceClient":
     account_url = os.environ.get("AZURE_STORAGE_ACCOUNT_URL")
     if account_url:
         from azure.identity import DefaultAzureCredential
+
         return DataLakeServiceClient(account_url, credential=DefaultAzureCredential())
     if conn_str:
         return DataLakeServiceClient.from_connection_string(conn_str)
@@ -155,7 +159,9 @@ def sync_checkpoint_from_adls(upload_to: str, output_dir: Path) -> bool:
     file_path = f"{prefix}/checkpoint.txt"
     try:
         client = _az_client(conn_str)
-        file_client = client.get_file_system_client(filesystem).get_file_client(file_path)
+        file_client = client.get_file_system_client(filesystem).get_file_client(
+            file_path
+        )
         output_dir.mkdir(parents=True, exist_ok=True)
         local_path = output_dir / "checkpoint.txt"
         with open(local_path, "wb") as f:
@@ -326,7 +332,9 @@ def save_results(
     )
     by_turmoil = "  " + "\n  ".join(
         f"{lv:<30s} {n}"
-        for lv, n in sorted(summary["events_by_turmoil_level"].items(), key=lambda x: -x[1])
+        for lv, n in sorted(
+            summary["events_by_turmoil_level"].items(), key=lambda x: -x[1]
+        )
     )
     log.info(
         f"RUN SUMMARY — {run_id}\n"
@@ -353,5 +361,3 @@ def save_results(
             log.warning(f"Cloud upload failed (results saved locally): {e}")
 
     return output_dir
-
-

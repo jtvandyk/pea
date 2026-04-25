@@ -73,12 +73,15 @@ def _build_task(event: dict, article_text: Optional[str] = None) -> dict:
     claims = event.get("claims") or []
     claims_display = "; ".join(str(c) for c in claims) if claims else "(none)"
 
-    location_parts = filter(None, [
-        event.get("venue"),
-        event.get("city"),
-        event.get("region"),
-        event.get("country"),
-    ])
+    location_parts = filter(
+        None,
+        [
+            event.get("venue"),
+            event.get("city"),
+            event.get("region"),
+            event.get("country"),
+        ],
+    )
     location_display = ", ".join(location_parts) or "(unknown)"
 
     # Truncate article text for display — annotators need context, not full text
@@ -88,24 +91,23 @@ def _build_task(event: dict, article_text: Optional[str] = None) -> dict:
     return {
         "data": {
             # Fields shown in the labeling interface
-            "article_title":    event.get("article_title") or "(no title)",
-            "article_date":     event.get("article_date") or "",
-            "article_url":      event.get("article_url") or "",
-            "article_text":     text_excerpt,
-            "event_type":       event.get("event_type") or "",
-            "confidence":       event.get("confidence") or "",
-            "event_date":       event.get("event_date") or "",
-            "organizer":        event.get("organizer") or "(unknown)",
+            "article_title": event.get("article_title") or "(no title)",
+            "article_date": event.get("article_date") or "",
+            "article_url": event.get("article_url") or "",
+            "article_text": text_excerpt,
+            "event_type": event.get("event_type") or "",
+            "confidence": event.get("confidence") or "",
+            "event_date": event.get("event_date") or "",
+            "organizer": event.get("organizer") or "(unknown)",
             "location_display": location_display,
-            "crowd_size":       str(event.get("crowd_size") or "(not reported)"),
-            "state_response":   event.get("state_response") or "none",
-            "outcome":          event.get("outcome") or "",
-            "claims_display":   claims_display,
-
+            "crowd_size": str(event.get("crowd_size") or "(not reported)"),
+            "state_response": event.get("state_response") or "none",
+            "outcome": event.get("outcome") or "",
+            "claims_display": claims_display,
             # Hidden fields passed through for training data assembly
-            "_source_event":    json.dumps(event, ensure_ascii=False),
-            "_priority_score":  round(_priority_score(event), 3),
-            "_tier":            _tier(event),
+            "_source_event": json.dumps(event, ensure_ascii=False),
+            "_priority_score": round(_priority_score(event), 3),
+            "_tier": _tier(event),
             "_relevance_score": event.get("_relevance_score", None),
             "_relevance_source": event.get("_relevance_source", None),
         }
@@ -176,6 +178,7 @@ def export_tasks(
 
 if __name__ == "__main__":
     import logging as _logging
+
     _logging.basicConfig(level=_logging.INFO, format="%(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(
@@ -192,15 +195,20 @@ if __name__ == "__main__":
         help="Output path for Label Studio JSON",
     )
     parser.add_argument(
-        "--max-tasks", type=int, default=200,
+        "--max-tasks",
+        type=int,
+        default=200,
         help="Max annotation tasks to export [default: 200]",
     )
     parser.add_argument(
-        "--tiers", default="1,2",
+        "--tiers",
+        default="1,2",
         help="Comma-separated tiers to include: 1=low conf, 2=medium, 3=high [default: 1,2]",
     )
     parser.add_argument(
-        "--sample-rate", type=float, default=0.10,
+        "--sample-rate",
+        type=float,
+        default=0.10,
         help="Fraction of high-confidence (tier 3) events to include [default: 0.10]",
     )
     args = parser.parse_args()

@@ -26,7 +26,8 @@ def quality_report(events: list) -> dict:
     """
     n = len(events)
     valid = sum(
-        1 for e in events
+        1
+        for e in events
         if e.get("event_type") in VALID_EVENT_TYPES
         and CONF_FLOAT_SCORE.get(e.get("confidence", ""), 0.0) >= 0.70
     )

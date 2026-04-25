@@ -218,8 +218,7 @@ def load_events_from_adls() -> pd.DataFrame:
         fs_client = client.get_file_system_client(filesystem_name)
         paths = list(fs_client.get_paths(path=prefix, recursive=True))
         event_paths = [
-            p for p in paths
-            if p.name.endswith(".jsonl") and "/events_" in p.name
+            p for p in paths if p.name.endswith(".jsonl") and "/events_" in p.name
         ]
 
         if not event_paths:

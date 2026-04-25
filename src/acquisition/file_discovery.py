@@ -44,7 +44,7 @@ def _read_adls(path: str):
             "pip install azure-storage-file-datalake"
         )
 
-    without_scheme = path[len("abfss://"):]
+    without_scheme = path[len("abfss://") :]
     filesystem, _, file_path = without_scheme.partition("/")
 
     account_url = os.environ.get("AZURE_STORAGE_ACCOUNT_URL")
@@ -106,16 +106,15 @@ def discover_articles_from_file(
     if countries:
         before = len(df)
         df = df[df["country"].str.upper().isin([c.upper() for c in countries])]
-        log.info(
-            f"Country filter ({countries}): {len(df)}/{before} rows retained"
-        )
+        log.info(f"Country filter ({countries}): {len(df)}/{before} rows retained")
 
     if df.empty:
         log.warning("No articles after country filter — check country codes in file.")
         return []
 
     extra_cols = [
-        c for c in df.columns
+        c
+        for c in df.columns
         if c not in _REQUIRED_COLUMNS and not str(c).startswith("_")
     ]
 
@@ -130,7 +129,8 @@ def discover_articles_from_file(
             "seendate": format_seendate(str(row["date"])),
             "sourcecountry": str(row["country"]).upper(),
             "sourcelanguage": (
-                str(row["language"]) if "language" in df.columns and pd.notna(row.get("language"))
+                str(row["language"])
+                if "language" in df.columns and pd.notna(row.get("language"))
                 else "en"
             ),
             "domain": "",

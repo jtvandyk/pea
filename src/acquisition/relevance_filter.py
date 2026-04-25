@@ -24,7 +24,6 @@ so the pipeline continues without interruption.
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
@@ -40,8 +39,16 @@ _DOMAIN_CONFIG: dict = {
         "rejection_label": "unrelated news or institutional meeting",
         "keyword_key": "protest_signals",
         "keyword_fallback": {
-            "protest", "demonstration", "strike", "march", "riot",
-            "unrest", "rally", "uprising", "blockade", "clashes",
+            "protest",
+            "demonstration",
+            "strike",
+            "march",
+            "riot",
+            "unrest",
+            "rally",
+            "uprising",
+            "blockade",
+            "clashes",
         },
     },
     "drone": {
@@ -49,8 +56,18 @@ _DOMAIN_CONFIG: dict = {
         "rejection_label": "unrelated news with no drone or UAV involvement",
         "keyword_key": "drone_signals",
         "keyword_fallback": {
-            "drone", "uav", "unmanned", "quadcopter", "bayraktar", "shahed",
-            "reaper", "mq-9", "tb2", "fpv", "loitering munition", "airstrike",
+            "drone",
+            "uav",
+            "unmanned",
+            "quadcopter",
+            "bayraktar",
+            "shahed",
+            "reaper",
+            "mq-9",
+            "tb2",
+            "fpv",
+            "loitering munition",
+            "airstrike",
         },
     },
 }
@@ -99,7 +116,9 @@ class RelevanceFilter:
                         ignores this (per-string match is effectively free).
         """
         if domain not in _DOMAIN_CONFIG:
-            raise ValueError(f"Unknown domain '{domain}'. Valid: {list(_DOMAIN_CONFIG)}")
+            raise ValueError(
+                f"Unknown domain '{domain}'. Valid: {list(_DOMAIN_CONFIG)}"
+            )
         self.threshold = threshold
         self.model_name = model_name
         self.domain = domain
