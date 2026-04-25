@@ -17,6 +17,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from src.metrics import count_by
+
 log = logging.getLogger(__name__)
 
 # Protects the cumulative all_events.jsonl append when extract_events() uses
@@ -298,11 +300,11 @@ def save_results(
         "timestamp": datetime.utcnow().isoformat(),
         "total_events": len(events),
         "total_failures": len(failures) if failures else 0,
-        "events_by_country": _count_by(events, "country"),
-        "events_by_type": _count_by(events, "event_type"),
-        "events_by_state_response": _count_by(events, "state_response"),
-        "events_by_turmoil_level": _count_by(events, "turmoil_level"),
-        "events_by_confidence": _count_by(events, "confidence"),
+        "events_by_country": count_by(events, "country"),
+        "events_by_type": count_by(events, "event_type"),
+        "events_by_state_response": count_by(events, "state_response"),
+        "events_by_turmoil_level": count_by(events, "turmoil_level"),
+        "events_by_confidence": count_by(events, "confidence"),
         "output_files": {
             "jsonl": str(jsonl_path),
             "csv": str(csv_path),
@@ -314,26 +316,26 @@ def save_results(
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
 
-    # Print summary to console
-    print("\n" + "=" * 60)
-    print(f"RUN SUMMARY — {run_id}")
-    print("=" * 60)
-    print(f"Total events extracted: {len(events)}")
-    print("\nBy country:")
-    for country, count in sorted(
-        summary["events_by_country"].items(), key=lambda x: -x[1]
-    ):
-        print(f"  {country:30s} {count}")
-    print("\nBy event type:")
-    for etype, count in sorted(summary["events_by_type"].items(), key=lambda x: -x[1]):
-        print(f"  {etype:30s} {count}")
-    print("\nBy turmoil level:")
-    for level, count in sorted(
-        summary["events_by_turmoil_level"].items(), key=lambda x: -x[1]
-    ):
-        print(f"  {level:30s} {count}")
-    print(f"\nOutput: {output_dir}")
-    print("=" * 60 + "\n")
+    by_country = "  " + "\n  ".join(
+        f"{c:<30s} {n}"
+        for c, n in sorted(summary["events_by_country"].items(), key=lambda x: -x[1])
+    )
+    by_type = "  " + "\n  ".join(
+        f"{t:<30s} {n}"
+        for t, n in sorted(summary["events_by_type"].items(), key=lambda x: -x[1])
+    )
+    by_turmoil = "  " + "\n  ".join(
+        f"{lv:<30s} {n}"
+        for lv, n in sorted(summary["events_by_turmoil_level"].items(), key=lambda x: -x[1])
+    )
+    log.info(
+        f"RUN SUMMARY — {run_id}\n"
+        f"Total events extracted: {len(events)}\n"
+        f"By country:\n{by_country}\n"
+        f"By event type:\n{by_type}\n"
+        f"By turmoil level:\n{by_turmoil}\n"
+        f"Output: {output_dir}"
+    )
 
     # Upload to cloud storage if requested
     if upload_to:
@@ -353,10 +355,3 @@ def save_results(
     return output_dir
 
 
-def _count_by(events: list[dict], field: str) -> dict:
-    """Count events by a given field value."""
-    counts = {}
-    for event in events:
-        val = event.get(field) or "unknown"
-        counts[str(val)] = counts.get(str(val), 0) + 1
-    return dict(sorted(counts.items(), key=lambda x: -x[1]))

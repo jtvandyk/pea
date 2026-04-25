@@ -29,42 +29,14 @@ from typing import Optional
 
 import requests
 
+from src.constants import ISO2_TO_ISO3
+
 log = logging.getLogger(__name__)
 
 BBC_BASE_URL = "https://monitoring.bbc.co.uk"
 BBC_LOGIN_URL = f"{BBC_BASE_URL}/api/v0/login"
 BBC_SEARCH_URL = f"{BBC_BASE_URL}/api/v0/search"
 BBC_PRODUCT_URL = f"{BBC_BASE_URL}/api/v0/product"
-
-# ISO2 → ISO3 mapping for the target countries
-ISO2_TO_ISO3 = {
-    "ZA": "ZAF",
-    "NG": "NGA",
-    "DZ": "DZA",
-    "UG": "UGA",
-    "KE": "KEN",
-    "GH": "GHA",
-    "ET": "ETH",
-    "TZ": "TZA",
-    "SD": "SDN",
-    "EG": "EGY",
-    "SN": "SEN",
-    "ZW": "ZWE",
-    "IN": "IND",
-    "PK": "PAK",
-    "BD": "BGD",
-    "ID": "IDN",
-    "PH": "PHL",
-    "TH": "THA",
-    "VN": "VNM",
-    "BR": "BRA",
-    "MX": "MEX",
-    "CO": "COL",
-    "AR": "ARG",
-    "PE": "PER",
-    "IQ": "IRQ",
-    "MM": "MMR",
-}
 
 # BBC Monitoring topic codes relevant to protest/unrest.
 # Note: Civil_unrest is sparsely tagged for Africa — don't use as a hard filter;

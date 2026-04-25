@@ -31,15 +31,22 @@ import logging
 import os
 import random
 import re
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional
 
 import yaml
 
 from src.acquisition._rate_limit import SlidingWindowLimiter
+from src.acquisition.storage import upload_checkpoint
+from src.constants import CONFIGS_DIR
 
 log = logging.getLogger(__name__)
+
+_CODEBOOK_PATH = CONFIGS_DIR / "protest_codebook.yaml"
+_EXAMPLES_PATH = CONFIGS_DIR / "extraction_examples.yaml"
 
 
 def _build_codebook_context(codebook_path: Path) -> str:
@@ -59,7 +66,8 @@ def _build_codebook_context(codebook_path: Path) -> str:
     if not event_types:
         return ""
 
-    lines = ["\n\n== FULL EVENT TYPE DEFINITIONS (Codebook v2.3) ==\n"]
+    version = cb.get("metadata", {}).get("version", "unknown")
+    lines = [f"\n\n== FULL EVENT TYPE DEFINITIONS (Codebook v{version}) ==\n"]
     for event_type, details in event_types.items():
         lines.append(f"TYPE: {event_type.upper()}")
         definition = details.get("definition", "").strip()
@@ -81,15 +89,11 @@ def _build_codebook_context(codebook_path: Path) -> str:
         if rules:
             lines.append("DECISION RULES:")
             for rule in rules:
-                lines.append(f"  → {rule}")
+                lines.append(f"  -> {rule}")
 
         lines.append("")
 
     return "\n".join(lines)
-
-
-_CODEBOOK_PATH = Path(__file__).parent.parent.parent / "configs" / "protest_codebook.yaml"
-_EXAMPLES_PATH = Path(__file__).parent.parent.parent / "configs" / "extraction_examples.yaml"
 
 
 def _build_few_shot_examples(
@@ -152,7 +156,7 @@ def _build_few_shot_examples(
         lines.append(json.dumps(ex.get("extracted_events", []), indent=2))
         lines.append("")
 
-    lines.append("== END OF EXAMPLES — NOW PROCESS THE REAL ARTICLE BELOW ==")
+    lines.append("== END OF EXAMPLES -- NOW PROCESS THE REAL ARTICLE BELOW ==")
     lines.append("")
     return "\n".join(lines)
 
@@ -181,7 +185,7 @@ Return an empty array [] immediately if the article is primarily about ANY of:
 == STEP 2: APPLY MINIMUM CRITERIA ==
 
 An article ONLY qualifies if ALL of the following are true:
-1. ≥2 people act together (exception: hunger_strike can be 1 person)
+1. >=2 people act together (exception: hunger_strike can be 1 person)
 2. In a public setting
 3. With explicit political motivation, demand, or grievance
 4. Outside normal institutional channels
@@ -190,9 +194,9 @@ An article ONLY qualifies if ALL of the following are true:
 == STEP 3: EXTRACT EVENTS ==
 
 For qualifying articles, extract each distinct protest event. Follow these rules:
-1. Extract ONLY information explicitly stated — do not infer or hallucinate.
+1. Extract ONLY information explicitly stated -- do not infer or hallucinate.
 2. If a field is not mentioned, use null.
-3. One article may describe multiple distinct events — return all of them.
+3. One article may describe multiple distinct events -- return all of them.
 4. For location, prefer the most specific level available (city > region > country).
    If the article names a specific venue, landmark, or neighbourhood, extract it into "venue".
 5. For actor names, use the full organisation/group name as given in the article.
@@ -220,7 +224,7 @@ For qualifying articles, extract each distinct protest event. Follow these rules
 11. duration: how long the event lasted if stated (e.g. "3 hours", "2 days").
 12. state_actors: list specific police units, military branches, or security forces named.
 13. confidence: "high" (clear, unambiguous protest), "medium" (some ambiguity), "low" (borderline).
-    Do NOT use "unknown" — always choose high, medium, or low.
+    Do NOT use "unknown" -- always choose high, medium, or low.
 
 Return ONLY a valid JSON array. No preamble, no explanation, no markdown fences.
 If the article contains no qualifying protest events, return: []
@@ -285,7 +289,7 @@ def _call_azure(
 
     Prompt caching is automatic for gpt-4o-mini on Azure OpenAI when the
     prompt prefix exceeds 1024 tokens. The system prompt + codebook injection
-    (~29k tokens) is an ideal cache target — all per-article variation is in
+    (~29k tokens) is an ideal cache target -- all per-article variation is in
     the user message, leaving the system prefix identical across a run.
     Cached tokens are billed at 50% of the standard input rate.
     Returns the assistant response text, or None on failure.
@@ -307,8 +311,6 @@ def _call_azure(
         )
 
         # Log prompt-caching savings when the API reports them.
-        # cached_tokens > 0 means the system prompt prefix was served from
-        # cache at 50% cost. Logged at DEBUG so it doesn't clutter INFO runs.
         usage = getattr(response, "usage", None)
         if usage:
             details = getattr(usage, "prompt_tokens_details", None)
@@ -323,7 +325,6 @@ def _call_azure(
         return response.choices[0].message.content
     except APIStatusError as e:
         log.warning(f"Azure API error {e.status_code}: {e.message}")
-        # Surface content filter hits with a sentinel so callers can skip retries
         if e.status_code == 400 and "content_filter" in str(e.message):
             return "__CONTENT_FILTERED__"
         return None
@@ -332,31 +333,26 @@ def _call_azure(
         return None
 
 
-
 def _clean_json(text: str) -> str:
     """Remove common LLM JSON formatting issues."""
-    # Strip markdown code fences
     if "```" in text:
         parts = text.split("```")
         text = parts[1] if len(parts) > 1 else text
         if text.startswith("json"):
             text = text[4:]
-    # Remove trailing commas before ] or } (invalid JSON)
     text = re.sub(r",\s*([\]}])", r"\1", text)
     return text.strip()
 
 
-def _parse_events(raw: str) -> list[dict]:
+def _parse_events(raw: str) -> list:
     """Extract a JSON array of events from the LLM response string."""
     text = _clean_json(raw)
 
-    # Try direct parse
     try:
         result = json.loads(text)
         if isinstance(result, list):
             return result
         if isinstance(result, dict):
-            # Model wrapped the array: {"events": [...]} or {"data": [...]}
             for val in result.values():
                 if isinstance(val, list):
                     return val
@@ -365,12 +361,11 @@ def _parse_events(raw: str) -> list[dict]:
     except json.JSONDecodeError:
         pass
 
-    # Find the outermost [...] block
     start = text.find("[")
     end = text.rfind("]")
     if start != -1 and end != -1 and end > start:
         try:
-            cleaned = _clean_json(text[start : end + 1])
+            cleaned = _clean_json(text[start: end + 1])
             return json.loads(cleaned)
         except json.JSONDecodeError:
             pass
@@ -388,14 +383,14 @@ def extract_from_article(
     system_prompt: Optional[str] = None,
     few_shot_examples: Optional[str] = None,
     limiter: Optional[SlidingWindowLimiter] = None,
-) -> Optional[list[dict]]:
+) -> Optional[list]:
     """
     Run LLM extraction on a single article.
     Returns list of extracted event dicts, or None on total failure.
 
     system_prompt: override the default SYSTEM_PROMPT (built from protest codebook).
     few_shot_examples: override the default _FEW_SHOT_EXAMPLES string.
-    limiter: shared rate limiter — acquired before every Azure call, including
+    limiter: shared rate limiter -- acquired before every Azure call, including
         retries, so retry storms cannot burst past the RPM ceiling.
     """
     resolved_system = system_prompt if system_prompt is not None else SYSTEM_PROMPT
@@ -433,7 +428,7 @@ def extract_from_article(
 
         if raw == "__CONTENT_FILTERED__":
             log.warning(
-                "Content filtered by Azure policy (violence:medium) — skipping retries"
+                "Content filtered by Azure policy (violence:medium) -- skipping retries"
             )
             return None
 
@@ -445,10 +440,8 @@ def extract_from_article(
 
         events = _parse_events(raw)
 
-        if events is not None:  # empty list is valid (no events in article)
-            # Discard any non-dict items
+        if events is not None:
             events = [e for e in events if isinstance(e, dict)]
-            # Backfill metadata fields the LLM may have omitted
             for event in events:
                 event.setdefault("article_url", article.get("url", ""))
                 event.setdefault("article_title", article.get("title", ""))
@@ -479,7 +472,7 @@ _PROVIDER_DEFAULT_MODELS = {
 
 
 def extract_events(
-    articles: list[dict],
+    articles: list,
     model: Optional[str] = None,
     api_key: Optional[str] = None,
     provider: str = "azure",
@@ -492,14 +485,14 @@ def extract_events(
     rpm_limit: int = 450,
     examples_sample_n: int = 5,
     examples_seed: Optional[int] = None,
-) -> tuple[list[dict], list[dict]]:
+) -> tuple:
     """
     Run LLM extraction across all scraped articles via Azure AI Foundry.
 
     Args:
         articles: list of article dicts with 'text_en' field
         model: deployment name in your Azure AI Foundry project (e.g. 'gpt-4.1')
-        api_key: API key — defaults to AZURE_FOUNDRY_API_KEY env var
+        api_key: API key -- defaults to AZURE_FOUNDRY_API_KEY env var
         provider: always 'azure' (kept for interface compatibility)
         rate_limit_delay: seconds between requests (sequential mode only; ignored when workers>1)
         checkpoint_path: path to checkpoint file; processed URLs are skipped on resume
@@ -513,12 +506,9 @@ def extract_events(
                    headroom under the 500 RPM gpt-4o-mini limit).
 
     Returns:
-        (events, failures) — flat list of extracted event dicts, and list of
+        (events, failures) -- flat list of extracted event dicts, and list of
         articles that failed extraction after all retries.
     """
-    import threading
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-
     if provider != "azure":
         raise ValueError(
             f"Provider '{provider}' is not supported. This pipeline uses Azure AI Foundry only."
@@ -536,17 +526,14 @@ def extract_events(
     log.info(f"LLM provider: {provider} | model: {resolved_model}")
 
     # Build system prompt ONCE before the article loop so all workers share the
-    # identical byte sequence — prerequisite for Azure prompt cache hits.
+    # identical byte sequence -- prerequisite for Azure prompt cache hits.
     if codebook_path is not None:
         run_system = _BASE_SYSTEM_PROMPT + _build_codebook_context(codebook_path)
         log.info(f"Using custom codebook: {codebook_path}")
     else:
         run_system = SYSTEM_PROMPT
 
-    # Rebuild few-shot examples for this run. A run-stable seed keeps the
-    # sampled subset identical across all articles in the run (so Azure
-    # prompt caching keeps hitting) while varying across runs (so promoted
-    # examples rotate in and out as the pool grows).
+    # Rebuild few-shot examples for this run with a run-stable seed.
     resolved_seed = (
         examples_seed if examples_seed is not None else time.time_ns()
     )
@@ -560,7 +547,7 @@ def extract_events(
         log.info(f"Using custom examples: {examples_path}")
 
     # Load already-processed URLs if resuming
-    done_urls: set[str] = set()
+    done_urls: set = set()
     if checkpoint_path:
         cp = Path(checkpoint_path)
         if cp.exists():
@@ -568,10 +555,13 @@ def extract_events(
             log.info(f"Checkpoint: skipping {len(done_urls)} already-processed URLs")
 
     todo_articles = [a for a in articles if a.get("url", "") not in done_urls]
-    log.info(f"Articles to process: {len(todo_articles)} (skipping {len(articles) - len(todo_articles)} checkpointed)")
+    log.info(
+        f"Articles to process: {len(todo_articles)} "
+        f"(skipping {len(articles) - len(todo_articles)} checkpointed)"
+    )
 
-    all_events: list[dict] = []
-    failures: list[dict] = []
+    all_events: list = []
+    failures: list = []
     _checkpoint_lock = threading.Lock()
 
     def _write_checkpoint(url: str) -> None:
@@ -584,7 +574,7 @@ def extract_events(
     def _process_one(
         article: dict,
         limiter: Optional[SlidingWindowLimiter] = None,
-    ) -> tuple[str, Optional[list[dict]]]:
+    ) -> tuple:
         url = article.get("url", "")
         events = extract_from_article(
             article,
@@ -602,24 +592,17 @@ def extract_events(
     if workers > 1:
         log.info(f"Concurrent extraction: {workers} workers, rpm_limit={rpm_limit}")
 
-        # Single sliding-window limiter shared across all worker threads. Acquire
-        # happens inside extract_from_article, so retries are counted too —
-        # a retry storm cannot burst past rpm_limit.
         _limiter = SlidingWindowLimiter(max_requests=rpm_limit, window_seconds=60.0)
 
-        results: list[tuple[str, Optional[list[dict]]]] = []
+        results: list = []
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {pool.submit(_process_one, a, _limiter): a for a in todo_articles}
             for i, future in enumerate(as_completed(futures)):
                 url, events = future.result()
                 results.append((url, events))
-                # Periodic blob upload (every 10 completions)
-                if upload_to and (i + 1) % 10 == 0:
-                    from src.acquisition.storage import upload_checkpoint
-                    if checkpoint_path:
-                        upload_checkpoint(upload_to, Path(checkpoint_path).parent)
+                if upload_to and checkpoint_path and (i + 1) % 10 == 0:
+                    upload_checkpoint(upload_to, Path(checkpoint_path).parent)
 
-        # Collect results in stable order for deterministic output
         for url, events in results:
             if events:
                 all_events.extend(events)
@@ -632,7 +615,6 @@ def extract_events(
                     "lang": article.get("text_lang", "unknown"),
                 })
     else:
-        # Sequential mode (default): preserves original order and per-article delay.
         for i, article in enumerate(todo_articles):
             url = article.get("url", "")
             url_display = url[:70]
@@ -641,12 +623,12 @@ def extract_events(
             url, events = _process_one(article)
 
             if events:
-                log.info(f"  ✓ Found {len(events)} event(s)")
+                log.info(f"  [OK] Found {len(events)} event(s)")
                 all_events.extend(events)
             elif events is not None and len(events) == 0:
-                log.info("  — No events found")
+                log.info("  [--] No events found")
             else:
-                log.warning(f"  ✗ Extraction failed: {url_display}")
+                log.warning(f"  [FAIL] Extraction failed: {url_display}")
                 failures.append({
                     "url": url,
                     "title": article.get("title", ""),
@@ -654,10 +636,8 @@ def extract_events(
                     "lang": article.get("text_lang", "unknown"),
                 })
 
-            if upload_to and (i + 1) % 10 == 0:
-                from src.acquisition.storage import upload_checkpoint
-                if checkpoint_path:
-                    upload_checkpoint(upload_to, Path(checkpoint_path).parent)
+            if upload_to and checkpoint_path and (i + 1) % 10 == 0:
+                upload_checkpoint(upload_to, Path(checkpoint_path).parent)
 
             if i < len(todo_articles) - 1:
                 time.sleep(rate_limit_delay)

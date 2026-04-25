@@ -23,14 +23,13 @@ so the pipeline continues without interruption.
 """
 
 import logging
-from pathlib import Path
 from typing import Optional
 
 import yaml
 
-log = logging.getLogger(__name__)
+from src.constants import KEYWORDS_PATH
 
-_KEYWORDS_PATH = Path(__file__).parent.parent.parent / "configs" / "keywords.yaml"
+log = logging.getLogger(__name__)
 
 # Per-domain NLI label config.  Each domain maps to a positive hypothesis
 # and a rejection label used in the zero-shot classifier.
@@ -105,7 +104,7 @@ class RelevanceFilter:
         self.domain = domain
         self.batch_size = max(1, int(batch_size))
         self._classifier = None
-        self._domain_signals = _load_domain_signals(_KEYWORDS_PATH, domain)
+        self._domain_signals = _load_domain_signals(KEYWORDS_PATH, domain)
         self._model_available = False
         self._positive_labels = _DOMAIN_CONFIG[domain]["positive_labels"]
         self._rejection_label = _DOMAIN_CONFIG[domain]["rejection_label"]

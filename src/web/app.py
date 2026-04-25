@@ -31,6 +31,8 @@ import streamlit as st
 from azure.identity import DefaultAzureCredential, CredentialUnavailableError
 from azure.storage.file_datalake import DataLakeServiceClient
 
+from src.constants import WEB_COUNTRY_DISPLAY
+
 # ── Page config ──────────────────────────────────────────────────────────────
 
 st.set_page_config(
@@ -42,31 +44,7 @@ st.set_page_config(
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-COUNTRIES = {
-    "Nigeria": "NG",
-    "South Africa": "ZA",
-    "Uganda": "UG",
-    "Algeria": "DZ",
-    "Libya": "LY",
-    "Angola": "AO",
-    "Kenya": "KE",
-    "Somalia": "SO",
-    "Tanzania": "TZ",
-    "Ghana": "GH",
-    "Ethiopia": "ET",
-    "Senegal": "SN",
-    "Zimbabwe": "ZW",
-    "Cameroon": "CM",
-    "Sudan": "SD",
-    "South Sudan": "SS",
-    "Mozambique": "MZ",
-    "Zambia": "ZM",
-    "Mali": "ML",
-    "Niger": "NE",
-    "Rwanda": "RW",
-    "DRC": "CD",
-    "Ivory Coast": "CI",
-}
+COUNTRIES = WEB_COUNTRY_DISPLAY
 
 EVENT_TYPES = [
     "demonstration_march",

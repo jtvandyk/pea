@@ -29,49 +29,15 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional
 
+from src.constants import (
+    CONF_FLOAT_SCORE,
+    CONF_RANK_SCORE,
+    TARGET_COUNTRY_NAMES,
+    VALID_EVENT_TYPES,
+)
+from src.metrics import count_by, quality_report
+
 log = logging.getLogger(__name__)
-
-# Default target countries for Africa focus (lowercase for comparison)
-DEFAULT_TARGET_COUNTRIES = {
-    "nigeria",
-    "south africa",
-    "uganda",
-    "algeria",
-    "libya",
-    "angola",
-    "kenya",
-    "somalia",
-    "tanzania",
-    "ghana",
-    "ethiopia",
-    "senegal",
-    "zimbabwe",
-    "cameroon",
-    "ivory coast",
-    "côte d'ivoire",
-    "democratic republic of the congo",
-    "drc",
-    "sudan",
-    "south sudan",
-    "mozambique",
-    "zambia",
-    "malawi",
-    "rwanda",
-    "burundi",
-    "mali",
-    "niger",
-    "chad",
-    "mauritania",
-    "guinea",
-    "sierra leone",
-    "liberia",
-    "togo",
-    "benin",
-    "central african republic",
-}
-
-# Confidence string → numeric score for ranking duplicates
-_CONF_SCORE = {"high": 3, "medium": 2, "low": 1}
 
 
 def _parse_event_date(date_str: str) -> Optional[datetime]:
@@ -95,13 +61,12 @@ def _fuzzy_match(a: str, b: str, threshold: float = 0.7) -> bool:
     )
 
 
-def _tokenise(text: str) -> list[str]:
+def _tokenise(text: str) -> list:
     """Lowercase, split on non-alpha, filter short tokens."""
-    import re
     return [t for t in re.split(r"[^a-z]+", text.lower()) if len(t) > 2]
 
 
-def _tfidf_cosine(a_tokens: list[str], b_tokens: list[str], idf: dict) -> float:
+def _tfidf_cosine(a_tokens: list, b_tokens: list, idf: dict) -> float:
     """
     Compute TF-IDF cosine similarity between two token lists.
     idf is a pre-computed {token: idf_weight} dict.
@@ -110,7 +75,7 @@ def _tfidf_cosine(a_tokens: list[str], b_tokens: list[str], idf: dict) -> float:
     if not a_tokens or not b_tokens:
         return 0.0
 
-    def tfidf_vec(tokens: list[str]) -> dict:
+    def tfidf_vec(tokens: list) -> dict:
         tf = Counter(tokens)
         n = len(tokens)
         return {t: (tf[t] / n) * idf.get(t, 1.0) for t in tf}
@@ -127,7 +92,7 @@ def _tfidf_cosine(a_tokens: list[str], b_tokens: list[str], idf: dict) -> float:
     return dot / (mag_a * mag_b)
 
 
-def _build_idf(events: list[dict]) -> dict:
+def _build_idf(events: list) -> dict:
     """
     Build a simple IDF table from the claims fields of all events.
     Used to down-weight common words (e.g. 'government', 'workers')
@@ -204,13 +169,13 @@ def _are_duplicates(a: dict, b: dict, idf: Optional[dict] = None) -> bool:
 
 def filter_to_target_countries(
     events: list,
-    target_countries: Optional[set] = None,
+    target_countries: Optional[frozenset] = None,
 ) -> tuple:
     """
     Split events into (kept, removed) based on country filter.
     Returns both lists for audit logging.
     """
-    targets = target_countries or DEFAULT_TARGET_COUNTRIES
+    targets = target_countries if target_countries is not None else TARGET_COUNTRY_NAMES
     kept, removed = [], []
     for event in events:
         country = (event.get("country") or "").lower()
@@ -247,8 +212,8 @@ def deduplicate(events: list) -> tuple:
             kept.append(event)
         else:
             existing = kept[matched_idx]
-            event_score = _CONF_SCORE.get(event.get("confidence", ""), 0)
-            existing_score = _CONF_SCORE.get(existing.get("confidence", ""), 0)
+            event_score = CONF_RANK_SCORE.get(event.get("confidence", ""), 0)
+            existing_score = CONF_RANK_SCORE.get(existing.get("confidence", ""), 0)
             claims_sim = round(_claims_similarity(event, existing, idf), 3)
             duplicates_log.append(
                 {
@@ -281,13 +246,9 @@ def recheck_borderline(
     Updates event_type and confidence in-place where the re-classification differs.
     Returns the updated events list.
     """
-    from src.acquisition.extractor import _call_azure, SYSTEM_PROMPT
+    from src.acquisition.extractor import SYSTEM_PROMPT, _call_azure
 
-    valid_types = {
-        "demonstration_march", "strike_boycott", "occupation_seizure",
-        "confrontation", "petition_signature", "vigil", "hunger_strike", "riot",
-    }
-    valid_types_str = ", ".join(sorted(valid_types))
+    valid_types_str = ", ".join(sorted(VALID_EVENT_TYPES))
 
     borderline = [e for e in events if e.get("confidence") in ("medium", "low")]
     log.info(f"Re-checking {len(borderline)} borderline events via {provider}/{model}")
@@ -318,9 +279,9 @@ def recheck_borderline(
             data = json.loads(m.group())
             new_type = data.get("event_type", "")
             new_conf = data.get("confidence", "")
-            if new_type in valid_types and new_type != event.get("event_type"):
+            if new_type in VALID_EVENT_TYPES and new_type != event.get("event_type"):
                 log.info(
-                    f"  Re-classified: {event.get('event_type')} → {new_type}"
+                    f"  Re-classified: {event.get('event_type')} -> {new_type}"
                 )
                 event["event_type"] = new_type
                 event["_reclassified"] = True
@@ -336,61 +297,13 @@ def recheck_borderline(
 
 def run_quality_control(events: list) -> dict:
     """Return schema validity + confidence distribution report for a list of events."""
-    import numpy as np
-
-    _CONF_TO_SCORE = {"high": 0.85, "medium": 0.70, "low": 0.50}
-    valid_types = {
-        "demonstration_march",
-        "strike_boycott",
-        "occupation_seizure",
-        "confrontation",
-        "petition_signature",
-        "vigil",
-        "hunger_strike",
-        "riot",
-    }
-
-    n = len(events)
-    valid = sum(
-        1 for e in events
-        if e.get("event_type") in valid_types
-        and _CONF_TO_SCORE.get(e.get("confidence", ""), 0.0) >= 0.70
-    )
-    scores = [_CONF_TO_SCORE.get(e.get("confidence", ""), 0.60) for e in events]
-    arr = np.array(scores) if scores else np.array([0.0])
-
-    report = {
-        "schema_validity": {
-            "valid_schemas": valid,
-            "invalid_schemas": n - valid,
-            "validity_rate": valid / n if n else 0,
-            "flag_for_review": (n - valid) > n * 0.1,
-        },
-        "confidence_distribution": {
-            "mean_confidence": float(arr.mean()),
-            "median_confidence": float(np.median(arr)),
-            "std_confidence": float(arr.std()),
-            "min_confidence": float(arr.min()),
-            "max_confidence": float(arr.max()),
-            "percentile_25": float(np.percentile(arr, 25)),
-            "percentile_75": float(np.percentile(arr, 75)),
-        },
-        "total_predictions": n,
-        "events_by_country": {},
-        "events_by_type": {},
-    }
-    for event in events:
-        c = event.get("country", "unknown")
-        t = event.get("event_type", "unknown")
-        report["events_by_country"][c] = report["events_by_country"].get(c, 0) + 1
-        report["events_by_type"][t] = report["events_by_type"].get(t, 0) + 1
-    return report
+    return quality_report(events)
 
 
 def process_events(
     input_path: Optional[Path] = None,
     output_dir: Optional[Path] = None,
-    target_countries: Optional[set] = None,
+    target_countries: Optional[frozenset] = None,
     recheck: bool = True,
     provider: str = "azure",
     model: Optional[str] = None,
@@ -403,7 +316,7 @@ def process_events(
     Args:
         input_path:       Path to all_events.jsonl (default: data/raw/all_events.jsonl)
         output_dir:       Output directory (default: data/processed/)
-        target_countries: Set of lowercase country names to keep (default: Africa)
+        target_countries: frozenset of lowercase country names to keep (default: Africa)
         recheck:          Whether to LLM-recheck medium/low confidence events
         provider:         LLM provider for rechecking (always 'azure')
         model:            Model/deployment name for rechecking
@@ -413,6 +326,11 @@ def process_events(
     Returns:
         List of consolidated event dicts written to output_dir.
     """
+    from src.acquisition.extractor import (
+        _PROVIDER_DEFAULT_MODELS,
+        _PROVIDER_ENV_VARS,
+    )
+
     root = Path(__file__).resolve().parents[2]
     if input_path is None:
         input_path = root / "data" / "raw" / "all_events.jsonl"
@@ -443,11 +361,6 @@ def process_events(
 
     # Step 3: Re-verify borderline events
     if recheck:
-        from src.acquisition.extractor import (
-            _PROVIDER_ENV_VARS,
-            _PROVIDER_DEFAULT_MODELS,
-        )
-
         resolved_key = api_key or os.environ.get(
             _PROVIDER_ENV_VARS.get(provider, ""), ""
         )
@@ -458,10 +371,10 @@ def process_events(
             log.warning(f"No API key for {provider} — skipping borderline re-check")
 
     # Step 4: Quality control
-    quality_report = run_quality_control(events)
+    qc_report = quality_report(events)
     log.info(
-        f"Quality report: {quality_report['schema_validity']['validity_rate']:.0%} schema valid, "
-        f"mean confidence {quality_report['confidence_distribution'].get('mean_confidence', 0):.2f}"
+        f"Quality report: {qc_report['schema_validity']['validity_rate']:.0%} schema valid, "
+        f"mean confidence {qc_report['confidence_distribution'].get('mean_confidence', 0):.2f}"
     )
 
     # Write outputs
@@ -473,7 +386,7 @@ def process_events(
 
     quality_path = output_dir / "quality_report.json"
     with open(quality_path, "w", encoding="utf-8") as f:
-        json.dump(quality_report, f, indent=2, ensure_ascii=False)
+        json.dump(qc_report, f, indent=2, ensure_ascii=False)
     log.info(f"Quality report written: {quality_path}")
 
     if duplicates_log:
@@ -483,30 +396,20 @@ def process_events(
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         log.info(f"Duplicates log written: {dup_path} ({len(duplicates_log)} entries)")
 
-    # Print summary
-    print("\n" + "=" * 60)
-    print("STAGE 2 — PROCESSING SUMMARY")
-    print("=" * 60)
-    print(f"Input events:        {len(raw_events)}")
-    print(
-        f"After geo filter:    {len(raw_events) - len(removed)} ({len(removed)} removed)"
+    # Log summary
+    by_country = count_by(events, "country")
+    by_type = count_by(events, "event_type")
+    log.info(
+        "STAGE 2 SUMMARY | input=%d | after_geo=%d (removed %d) | after_dedup=%d (removed %d)"
+        " | schema_valid=%d/%d | output=%s",
+        len(raw_events),
+        len(raw_events) - len(removed), len(removed),
+        len(events), len(duplicates_log),
+        qc_report["schema_validity"]["valid_schemas"], len(events),
+        output_dir,
     )
-    print(
-        f"After dedup:         {len(events)} ({len(duplicates_log)} duplicates removed)"
-    )
-    print(
-        f"Schema valid:        {quality_report['schema_validity']['valid_schemas']} / {len(events)}"
-    )
-    print("\nBy country:")
-    for c, n in sorted(
-        quality_report["events_by_country"].items(), key=lambda x: -x[1]
-    ):
-        print(f"  {c:35s} {n}")
-    print("\nBy event type:")
-    for t, n in sorted(quality_report["events_by_type"].items(), key=lambda x: -x[1]):
-        print(f"  {t:35s} {n}")
-    print(f"\nOutput: {output_dir}")
-    print("=" * 60 + "\n")
+    log.info("By country: %s", by_country)
+    log.info("By event type: %s", by_type)
 
     # Upload
     if upload_to:

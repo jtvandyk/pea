@@ -28,7 +28,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime
 from typing import Optional
 
 import src.acquisition.gdelt_discovery as _gdelt
@@ -69,17 +69,92 @@ log = logging.getLogger("pipeline")
 # Default output dir — aligns with project data structure
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parents[2] / "data" / "raw"
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
-def _load_checkpoint(output_dir: Path) -> set[str]:
-    """Return set of URLs already processed in a previous run."""
-    cp = output_dir / "checkpoint.txt"
-    return set(cp.read_text().splitlines()) if cp.exists() else set()
+# Maps domain name → default codebook, examples, and GDELT query.
+# Override individual fields via --codebook / --examples / --query CLI flags.
+DOMAIN_CONFIGS: dict = {
+    "protest": {
+        "codebook": _REPO_ROOT / "configs" / "protest_codebook.yaml",
+        "examples": _REPO_ROOT / "configs" / "extraction_examples.yaml",
+        "query": "protest demonstration strike rally march",
+    },
+    "drone": {
+        "codebook": _REPO_ROOT / "configs" / "drone_events_codebook.yaml",
+        "examples": _REPO_ROOT / "configs" / "drone_extraction_examples.yaml",
+        "query": "drone UAV airstrike unmanned aircraft",
+    },
+}
 
 
-def _save_checkpoint(output_dir: Path, url: str) -> None:
-    """Append a processed URL to the checkpoint file."""
-    with open(output_dir / "checkpoint.txt", "a") as f:
-        f.write(url + "\n")
+def _discover_articles(
+    source: str,
+    query: str,
+    countries: list,
+    days: int,
+    max_articles: int,
+    file_path: Optional[str] = None,
+) -> list:
+    """
+    Run Stage 1 discovery for the given source(s).
+
+    Handles single-source and combined-source modes, including URL
+    deduplication when multiple sources may overlap (both / all).
+    """
+    articles: list = []
+
+    if source in ("gdelt", "both", "all"):
+        log.info("--- Stage 1a: GDELT Discovery ---")
+        gdelt_articles = _gdelt.discover_articles(
+            query=query, countries=countries, days=days, max_results=max_articles
+        )
+        log.info(f"GDELT: {len(gdelt_articles)} candidate articles")
+        articles.extend(gdelt_articles)
+
+    if source in ("bbc", "both", "all"):
+        log.info("--- Stage 1b: BBC Monitoring Discovery ---")
+        bbc_articles = _bbc.discover_articles(
+            query=query,
+            countries=countries,
+            days=days,
+            max_results=max_articles,
+            fetch_full_text=True,
+        )
+        log.info(f"BBC Monitoring: {len(bbc_articles)} candidate articles")
+        articles.extend(bbc_articles)
+
+    if source in ("worldnews", "all"):
+        log.info("--- Stage 1c: World News API Discovery ---")
+        wn_articles = _worldnews.discover_articles(
+            query=query, countries=countries, days=days, max_results=max_articles
+        )
+        log.info(f"World News API: {len(wn_articles)} candidate articles")
+        articles.extend(wn_articles)
+
+    if source == "file":
+        log.info("--- Stage 1: File/ADLS Input ---")
+        file_articles = _file_src.discover_articles_from_file(
+            path=file_path, countries=countries
+        )
+        log.info(f"File source: {len(file_articles)} articles loaded")
+        articles.extend(file_articles)
+
+    # Dedup by URL when multiple sources may overlap
+    if source in ("both", "all"):
+        seen: set = set()
+        deduped = []
+        for a in articles:
+            if a["url"] not in seen:
+                seen.add(a["url"])
+                deduped.append(a)
+        if len(deduped) < len(articles):
+            log.info(
+                f"After cross-source dedup: {len(deduped)} articles "
+                f"({len(articles) - len(deduped)} duplicates removed)"
+            )
+        articles = deduped
+
+    return articles
 
 
 def run_pipeline(
@@ -131,58 +206,14 @@ def run_pipeline(
     if articles is not None:
         log.info(f"Using {len(articles)} pre-discovered articles — skipping Stage 1")
     else:
-        articles = []
-
-        if source in ("gdelt", "both", "all"):
-            log.info("--- Stage 1a: GDELT Discovery ---")
-            gdelt_articles = _gdelt.discover_articles(
-                query=query, countries=countries, days=days, max_results=max_articles
-            )
-            log.info(f"GDELT: {len(gdelt_articles)} candidate articles")
-            articles.extend(gdelt_articles)
-
-        if source in ("bbc", "both", "all"):
-            log.info("--- Stage 1b: BBC Monitoring Discovery ---")
-            bbc_articles = _bbc.discover_articles(
-                query=query,
-                countries=countries,
-                days=days,
-                max_results=max_articles,
-                fetch_full_text=True,
-            )
-            log.info(f"BBC Monitoring: {len(bbc_articles)} candidate articles")
-            articles.extend(bbc_articles)
-
-        if source in ("worldnews", "all"):
-            log.info("--- Stage 1c: World News API Discovery ---")
-            wn_articles = _worldnews.discover_articles(
-                query=query, countries=countries, days=days, max_results=max_articles
-            )
-            log.info(f"World News API: {len(wn_articles)} candidate articles")
-            articles.extend(wn_articles)
-
-        if source == "file":
-            log.info("--- Stage 1: File/ADLS Input ---")
-            file_articles = _file_src.discover_articles_from_file(
-                path=file_path, countries=countries
-            )
-            log.info(f"File source: {len(file_articles)} articles loaded")
-            articles.extend(file_articles)
-
-        # Deduplicate by URL whenever multiple sources may overlap
-        if source not in ("gdelt", "bbc", "worldnews", "file"):
-            seen = set()
-            deduped = []
-            for a in articles:
-                if a["url"] not in seen:
-                    seen.add(a["url"])
-                    deduped.append(a)
-            if len(deduped) < len(articles):
-                log.info(
-                    f"After dedup: {len(deduped)} articles "
-                    f"({len(articles) - len(deduped)} duplicates removed)"
-                )
-            articles = deduped
+        articles = _discover_articles(
+            source=source,
+            query=query,
+            countries=countries,
+            days=days,
+            max_articles=max_articles,
+            file_path=file_path,
+        )
 
     log.info(f"Discovered {len(articles)} candidate articles total")
 
@@ -270,24 +301,6 @@ def run_pipeline(
     return events
 
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-
-# Maps domain name → default codebook, examples, and GDELT query.
-# Override individual fields via --codebook / --examples / --query CLI flags.
-DOMAIN_CONFIGS: dict = {
-    "protest": {
-        "codebook": _REPO_ROOT / "configs" / "protest_codebook.yaml",
-        "examples": _REPO_ROOT / "configs" / "extraction_examples.yaml",
-        "query": "protest demonstration strike rally march",
-    },
-    "drone": {
-        "codebook": _REPO_ROOT / "configs" / "drone_events_codebook.yaml",
-        "examples": _REPO_ROOT / "configs" / "drone_extraction_examples.yaml",
-        "query": "drone UAV airstrike unmanned aircraft",
-    },
-}
-
-
 def run_pipeline_multi_codebook(
     domains: list,
     countries: list,
@@ -320,64 +333,24 @@ def run_pipeline_multi_codebook(
 
     Returns {domain: [events]} for all requested domains.
     """
-    from src.acquisition.scraper import scrape_articles
-    from src.acquisition.translator import translate_articles
-
     log.info(f"=== Multi-codebook pipeline: domains={domains} ===")
 
     # --- Stage 1: Discovery (merge GDELT queries across all active domains) ---
-    all_query_terms: set[str] = set()
+    all_query_terms: set = set()
     for d in domains:
         cfg = DOMAIN_CONFIGS.get(d, {})
         all_query_terms.update(cfg.get("query", "").split())
     merged_query = " ".join(sorted(all_query_terms))
     log.info(f"Merged GDELT query: '{merged_query}'")
 
-    articles: list = []
-    if source in ("gdelt", "both", "all"):
-        log.info("--- Stage 1a: GDELT Discovery (merged query) ---")
-        gdelt_articles = _gdelt.discover_articles(
-            query=merged_query, countries=countries, days=days, max_results=max_articles
-        )
-        log.info(f"GDELT: {len(gdelt_articles)} candidate articles")
-        articles.extend(gdelt_articles)
-
-    if source in ("bbc", "both", "all"):
-        log.info("--- Stage 1b: BBC Monitoring Discovery ---")
-        bbc_articles = _bbc.discover_articles(
-            query=merged_query,
-            countries=countries,
-            days=days,
-            max_results=max_articles,
-            fetch_full_text=True,
-        )
-        log.info(f"BBC Monitoring: {len(bbc_articles)} candidate articles")
-        articles.extend(bbc_articles)
-
-    if source in ("worldnews", "all"):
-        log.info("--- Stage 1c: World News API Discovery (merged query) ---")
-        wn_articles = _worldnews.discover_articles(
-            query=merged_query, countries=countries, days=days, max_results=max_articles
-        )
-        log.info(f"World News API: {len(wn_articles)} candidate articles")
-        articles.extend(wn_articles)
-
-    if source == "file":
-        log.info("--- Stage 1: File/ADLS Input ---")
-        file_articles = _file_src.discover_articles_from_file(
-            path=file_path, countries=countries
-        )
-        log.info(f"File source: {len(file_articles)} articles loaded")
-        articles.extend(file_articles)
-
-    if source not in ("gdelt", "bbc", "worldnews", "file"):
-        seen: set = set()
-        deduped = []
-        for a in articles:
-            if a["url"] not in seen:
-                seen.add(a["url"])
-                deduped.append(a)
-        articles = deduped
+    articles = _discover_articles(
+        source=source,
+        query=merged_query,
+        countries=countries,
+        days=days,
+        max_articles=max_articles,
+        file_path=file_path,
+    )
 
     if not articles:
         log.warning("No articles found.")
@@ -580,7 +553,7 @@ def main():
         type=float,
         default=0.30,
         help=(
-            "Minimum relevance score (0–1) for an article to proceed to LLM extraction. "
+            "Minimum relevance score (0-1) for an article to proceed to LLM extraction. "
             "Lower = higher recall (more noise passes). Default: 0.30. "
             "Raise to 0.50 once GLOCON validation confirms filter accuracy."
         ),
@@ -599,9 +572,9 @@ def main():
         choices=["acquire", "process", "predict", "all"],
         help=(
             "Pipeline stage to run: "
-            "'acquire' (default) — GDELT/BBC → extract → data/raw/; "
-            "'process' — dedup + quality control → data/processed/; "
-            "'predict' — PPI + prevalence estimates → data/predictions/; "
+            "'acquire' (default) — GDELT/BBC -> extract -> data/raw/; "
+            "'process' — dedup + quality control -> data/processed/; "
+            "'predict' — PPI + prevalence estimates -> data/predictions/; "
             "'all' — run all three stages in sequence"
         ),
     )
@@ -710,8 +683,6 @@ def main():
 
     if args.stage in ("acquire", "all"):
         if len(domains) > 1:
-            # Multi-domain: scrape once, route to each codebook.
-            # --codebook / --examples CLI overrides are not supported in multi-domain mode.
             if args.codebook or args.examples:
                 parser.error("--codebook and --examples cannot be used with multiple --domains")
             run_pipeline_multi_codebook(
@@ -740,7 +711,6 @@ def main():
             )
         else:
             domain = domains[0] if domains else "protest"
-            # Resolve codebook/examples: explicit CLI flag > domain default > module default
             domain_cfg = DOMAIN_CONFIGS.get(domain, {})
             codebook_path = (
                 Path(args.codebook) if args.codebook
@@ -762,7 +732,6 @@ def main():
                 log.info(f"Fresh run — cleared existing checkpoint for domain '{domain}'")
 
             # Pre-discover articles for backfill mode; normal mode leaves articles=None
-            # so run_pipeline() runs its own discovery.
             backfill_articles = None
             if args.backfill_from:
                 start_date = datetime.strptime(args.backfill_from, "%Y-%m-%d")
@@ -772,7 +741,7 @@ def main():
                     else datetime.utcnow()
                 )
                 log.info(
-                    f"Backfill mode: {start_date.date()} → {end_date.date()} "
+                    f"Backfill mode: {start_date.date()} -> {end_date.date()} "
                     f"(window={args.backfill_window_days}d)"
                 )
                 backfill_articles = _gdelt.discover_articles_date_range(

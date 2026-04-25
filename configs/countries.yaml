@@ -1,0 +1,318 @@
+# Country reference data for the PEA pipeline.
+#
+# Consolidates ISO2, ISO3, FIPS, display names, and target geography flags
+# that were previously scattered across processing.py, gdelt_discovery.py,
+# bbc_discovery.py, and web/app.py.
+#
+# Fields:
+#   iso2   — ISO 3166-1 alpha-2 code (pipeline standard key)
+#   name   — display name (title case)
+#   iso3   — ISO 3166-1 alpha-3 code (BBC Monitoring uses this)
+#   fips   — FIPS 10-4 code (GDELT sourcecountry filter; NOT the same as ISO2)
+#   target — true if in the default Africa processing target set
+#   aliases — alternative lowercase name strings accepted by the country filter
+
+countries:
+
+  # ---------------------------------------------------------------------------
+  # Africa — primary target geography
+  # ---------------------------------------------------------------------------
+
+  - iso2: NG
+    name: Nigeria
+    iso3: NGA
+    fips: NI
+    target: true
+
+  - iso2: ZA
+    name: South Africa
+    iso3: ZAF
+    fips: SF
+    target: true
+
+  - iso2: UG
+    name: Uganda
+    iso3: UGA
+    fips: UG
+    target: true
+
+  - iso2: DZ
+    name: Algeria
+    iso3: DZA
+    fips: AG
+    target: true
+
+  - iso2: KE
+    name: Kenya
+    iso3: KEN
+    fips: KE
+    target: true
+
+  - iso2: GH
+    name: Ghana
+    iso3: GHA
+    fips: GH
+    target: true
+
+  - iso2: ET
+    name: Ethiopia
+    iso3: ETH
+    fips: ET
+    target: true
+
+  - iso2: TZ
+    name: Tanzania
+    iso3: TZA
+    fips: TZ
+    target: true
+
+  - iso2: SD
+    name: Sudan
+    iso3: SDN
+    fips: SU
+    target: true
+
+  - iso2: EG
+    name: Egypt
+    iso3: EGY
+    fips: EG
+    target: true
+
+  - iso2: SN
+    name: Senegal
+    iso3: SEN
+    fips: SG
+    target: true
+
+  - iso2: ZW
+    name: Zimbabwe
+    iso3: ZWE
+    fips: ZI
+    target: true
+
+  - iso2: LY
+    name: Libya
+    iso3: LBY
+    fips: LY
+    target: true
+
+  - iso2: AO
+    name: Angola
+    iso3: AGO
+    fips: AO
+    target: true
+
+  - iso2: SO
+    name: Somalia
+    iso3: SOM
+    fips: SO
+    target: true
+
+  - iso2: CM
+    name: Cameroon
+    iso3: CMR
+    fips: CM
+    target: true
+
+  - iso2: CI
+    name: Ivory Coast
+    iso3: CIV
+    fips: IV
+    target: true
+    aliases:
+      - "côte d'ivoire"
+      - "cote d'ivoire"
+
+  - iso2: CD
+    name: Democratic Republic of the Congo
+    iso3: COD
+    fips: CF
+    target: true
+    aliases:
+      - drc
+      - "dr congo"
+      - "congo kinshasa"
+
+  - iso2: SS
+    name: South Sudan
+    iso3: SSD
+    fips: OD
+    target: true
+
+  - iso2: MZ
+    name: Mozambique
+    iso3: MOZ
+    fips: MZ
+    target: true
+
+  - iso2: ZM
+    name: Zambia
+    iso3: ZMB
+    fips: ZA
+    target: true
+
+  - iso2: MW
+    name: Malawi
+    iso3: MWI
+    fips: MI
+    target: true
+
+  - iso2: RW
+    name: Rwanda
+    iso3: RWA
+    fips: RW
+    target: true
+
+  - iso2: BI
+    name: Burundi
+    iso3: BDI
+    fips: BY
+    target: true
+
+  - iso2: ML
+    name: Mali
+    iso3: MLI
+    fips: ML
+    target: true
+
+  - iso2: NE
+    name: Niger
+    iso3: NER
+    fips: NG
+    target: true
+
+  - iso2: TD
+    name: Chad
+    iso3: TCD
+    fips: CD
+    target: true
+
+  - iso2: MR
+    name: Mauritania
+    iso3: MRT
+    fips: MR
+    target: true
+
+  - iso2: GN
+    name: Guinea
+    iso3: GIN
+    fips: GV
+    target: true
+
+  - iso2: SL
+    name: Sierra Leone
+    iso3: SLE
+    fips: SL
+    target: true
+
+  - iso2: LR
+    name: Liberia
+    iso3: LBR
+    fips: LI
+    target: true
+
+  - iso2: TG
+    name: Togo
+    iso3: TGO
+    fips: TO
+    target: true
+
+  - iso2: BJ
+    name: Benin
+    iso3: BEN
+    fips: BN
+    target: true
+
+  - iso2: CF
+    name: Central African Republic
+    iso3: CAF
+    fips: CT
+    target: true
+
+  # ---------------------------------------------------------------------------
+  # Non-Africa — broader coverage, not in default target set
+  # ---------------------------------------------------------------------------
+
+  - iso2: IN
+    name: India
+    iso3: IND
+    fips: IN
+    target: false
+
+  - iso2: PK
+    name: Pakistan
+    iso3: PAK
+    fips: PK
+    target: false
+
+  - iso2: BD
+    name: Bangladesh
+    iso3: BGD
+    fips: BG
+    target: false
+
+  - iso2: ID
+    name: Indonesia
+    iso3: IDN
+    fips: ID
+    target: false
+
+  - iso2: PH
+    name: Philippines
+    iso3: PHL
+    fips: RP
+    target: false
+
+  - iso2: TH
+    name: Thailand
+    iso3: THA
+    fips: TH
+    target: false
+
+  - iso2: VN
+    name: Vietnam
+    iso3: VNM
+    fips: VM
+    target: false
+
+  - iso2: MM
+    name: Myanmar
+    iso3: MMR
+    fips: BM
+    target: false
+
+  - iso2: BR
+    name: Brazil
+    iso3: BRA
+    fips: BR
+    target: false
+
+  - iso2: MX
+    name: Mexico
+    iso3: MEX
+    fips: MX
+    target: false
+
+  - iso2: CO
+    name: Colombia
+    iso3: COL
+    fips: CO
+    target: false
+
+  - iso2: AR
+    name: Argentina
+    iso3: ARG
+    fips: AR
+    target: false
+
+  - iso2: PE
+    name: Peru
+    iso3: PER
+    fips: PE
+    target: false
+
+  - iso2: IQ
+    name: Iraq
+    iso3: IRQ
+    fips: IZ
+    target: false

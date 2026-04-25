@@ -12,9 +12,10 @@ import logging
 import os
 from datetime import datetime, timedelta
 from typing import Optional
-from urllib.parse import urlparse
 
 import requests
+
+from src.utils import extract_domain, format_seendate
 
 log = logging.getLogger(__name__)
 
@@ -26,30 +27,14 @@ def _api_key() -> Optional[str]:
     return os.environ.get("WORLDNEWS_API_KEY")
 
 
-def _format_seendate(publish_date: str) -> str:
-    """Convert 'YYYY-MM-DD HH:MM:SS' → 'YYYYMMDDTHHMMSSZ'."""
-    try:
-        dt = datetime.strptime(publish_date, "%Y-%m-%d %H:%M:%S")
-        return dt.strftime("%Y%m%dT%H%M%SZ")
-    except Exception:
-        return datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-
-
-def _extract_domain(url: str) -> str:
-    try:
-        return urlparse(url).netloc.replace("www.", "")
-    except Exception:
-        return ""
-
-
 def _article_dict(raw: dict) -> dict:
     return {
         "url": raw.get("url", ""),
         "title": raw.get("title", ""),
-        "seendate": _format_seendate(raw.get("publish_date", "")),
+        "seendate": format_seendate(raw.get("publish_date", "")),
         "sourcecountry": raw.get("source_country", ""),
         "sourcelanguage": raw.get("language", "en"),
-        "domain": _extract_domain(raw.get("url", "")),
+        "domain": extract_domain(raw.get("url", "")),
         "_relevance": None,
         "text": None,
         "text_lang": None,

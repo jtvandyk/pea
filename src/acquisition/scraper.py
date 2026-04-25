@@ -19,11 +19,12 @@ import random
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
-from urllib.parse import urlparse
 
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+from src.utils import extract_domain
 
 log = logging.getLogger(__name__)
 
@@ -62,13 +63,6 @@ def make_session() -> requests.Session:
     session.mount("http://", adapter)
     session.mount("https://", adapter)
     return session
-
-
-def get_domain(url: str) -> str:
-    try:
-        return urlparse(url).netloc.replace("www.", "")
-    except Exception:
-        return ""
 
 
 def scrape_with_newspaper(url: str, session: requests.Session) -> Optional[str]:
@@ -168,7 +162,7 @@ def scrape_article(url: str, session: requests.Session) -> Optional[str]:
     Attempt to scrape an article, trying newspaper3k first then BS4.
     Returns extracted text or None if scraping fails.
     """
-    domain = get_domain(url)
+    domain = extract_domain(url)
 
     if domain in BLOCKED_DOMAINS:
         log.debug(f"Skipping blocked domain: {domain}")
@@ -274,7 +268,7 @@ def scrape_articles(
             return
 
         log.info(f"[{position}/{total}] Scraping: {url[:80]}...")
-        host = get_domain(url)
+        host = extract_domain(url)
         host_lock = throttle.lock_for(host)
 
         # Hold the host lock across wait + fetch so same-host requests

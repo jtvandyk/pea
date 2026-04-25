@@ -11,25 +11,13 @@ Since text is pre-populated, the scraper stage skips these articles automaticall
 import io
 import logging
 import os
-from datetime import datetime
 from typing import Optional
-from urllib.parse import urlparse
+
+from src.utils import extract_domain, format_seendate
 
 log = logging.getLogger(__name__)
 
 _REQUIRED_COLUMNS = {"url", "title", "text", "date", "country"}
-
-
-def _format_seendate(date_str: str) -> str:
-    """Parse flexible date strings → YYYYMMDDTHHMMSSZ."""
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
-        try:
-            dt = datetime.strptime(date_str.strip(), fmt)
-            return dt.strftime("%Y%m%dT%H%M%SZ")
-        except ValueError:
-            continue
-    log.warning(f"Could not parse date '{date_str}'; using current UTC time")
-    return datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
 
 
 def _read_local(path: str):
@@ -139,7 +127,7 @@ def discover_articles_from_file(
             "url": url,
             "title": str(row["title"]),
             "text": str(row["text"]) if pd.notna(row["text"]) else None,
-            "seendate": _format_seendate(str(row["date"])),
+            "seendate": format_seendate(str(row["date"])),
             "sourcecountry": str(row["country"]).upper(),
             "sourcelanguage": (
                 str(row["language"]) if "language" in df.columns and pd.notna(row.get("language"))
@@ -152,10 +140,7 @@ def discover_articles_from_file(
             "events": [],
         }
 
-        try:
-            article["domain"] = urlparse(url).netloc.replace("www.", "")
-        except Exception:
-            pass
+        article["domain"] = extract_domain(url)
 
         for col in extra_cols:
             article[f"_file_{col}"] = row[col]

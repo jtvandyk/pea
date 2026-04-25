@@ -14,21 +14,23 @@ For the Global South focus, this module:
 import logging
 import time
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Optional
 
 import requests
 import yaml
+
+from src.constants import ISO2_TO_FIPS, ISO2_TO_NAME, KEYWORDS_PATH
 
 log = logging.getLogger(__name__)
 
 # GDELT DOC 2.0 API base URL
 GDELT_DOC_API = "https://api.gdeltproject.org/api/v2/doc/doc"
 
-_KEYWORDS_PATH = Path(__file__).parent.parent.parent / "configs" / "keywords.yaml"
+# Backward-compatible alias used by a few callers
+COUNTRY_LABELS = ISO2_TO_NAME
 
 
-def _load_keywords(path: Path) -> dict:
+def _load_keywords(path) -> dict:
     """Load keywords YAML. Returns hardcoded fallback dict on failure."""
     try:
         with open(path) as f:
@@ -48,72 +50,11 @@ def _load_keywords(path: Path) -> dict:
         }
 
 
-_KEYWORDS = _load_keywords(_KEYWORDS_PATH)
+_KEYWORDS = _load_keywords(KEYWORDS_PATH)
 
 # GDELT GKG themes related to protest/unrest — use these as secondary filters
 # Full theme list: http://data.gdeltproject.org/api/v2/guides/LOOKUP-GKGTHEMES.TXT
-PROTEST_THEMES: list[str] = _KEYWORDS.get("protest_themes", [])
-
-# ISO2 → country display name (used for keyword fallback in multi-country queries)
-COUNTRY_LABELS = {
-    "ZA": "South Africa",
-    "NG": "Nigeria",
-    "DZ": "Algeria",
-    "IN": "India",
-    "BR": "Brazil",
-    "PK": "Pakistan",
-    "EG": "Egypt",
-    "ID": "Indonesia",
-    "PH": "Philippines",
-    "MX": "Mexico",
-    "CO": "Colombia",
-    "ET": "Ethiopia",
-    "KE": "Kenya",
-    "GH": "Ghana",
-    "BD": "Bangladesh",
-    "MM": "Myanmar",
-    "TH": "Thailand",
-    "VN": "Vietnam",
-    "AR": "Argentina",
-    "PE": "Peru",
-    "TZ": "Tanzania",
-    "IQ": "Iraq",
-    "SD": "Sudan",
-    "ZW": "Zimbabwe",
-    "UG": "Uganda",
-    "SN": "Senegal",
-}
-
-# ISO2 → GDELT FIPS 10-4 country code (required for sourcecountry filter)
-# GDELT does NOT use ISO2 codes — passing ISO2 silently fails
-ISO2_TO_FIPS = {
-    "ZA": "SF",  # South Africa
-    "NG": "NI",  # Nigeria
-    "DZ": "AG",  # Algeria
-    "UG": "UG",  # Uganda (same in both)
-    "KE": "KE",  # Kenya (same in both)
-    "GH": "GH",  # Ghana (same in both)
-    "ET": "ET",  # Ethiopia (same in both)
-    "TZ": "TZ",  # Tanzania (same in both)
-    "SD": "SU",  # Sudan
-    "EG": "EG",  # Egypt (same in both)
-    "SN": "SG",  # Senegal
-    "ZW": "ZI",  # Zimbabwe
-    "IN": "IN",  # India (same in both)
-    "PK": "PK",  # Pakistan (same in both)
-    "BD": "BG",  # Bangladesh
-    "ID": "ID",  # Indonesia (same in both)
-    "PH": "RP",  # Philippines
-    "TH": "TH",  # Thailand (same in both)
-    "VN": "VM",  # Vietnam
-    "BR": "BR",  # Brazil (same in both)
-    "MX": "MX",  # Mexico (same in both)
-    "CO": "CO",  # Colombia (same in both)
-    "AR": "AR",  # Argentina (same in both)
-    "PE": "PE",  # Peru (same in both)
-    "IQ": "IZ",  # Iraq
-    "MM": "BM",  # Myanmar/Burma
-}
+PROTEST_THEMES: list = _KEYWORDS.get("protest_themes", [])
 
 
 def build_gdelt_query(
