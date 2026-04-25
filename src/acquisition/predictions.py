@@ -27,13 +27,21 @@ from src.metrics import confidence_breakdown, count_by, quality_report
 log = logging.getLogger(__name__)
 
 
-def _estimate_prevalence(events: list, event_type: str, confidence_level: float = 0.95) -> dict:
+def _estimate_prevalence(
+    events: list, event_type: str, confidence_level: float = 0.95
+) -> dict:
     """Binomial prevalence estimate with confidence interval for one event type."""
     from scipy import stats
 
     n = len(events)
     if n == 0:
-        return {"estimate": 0.0, "ci_lower": 0.0, "ci_upper": 0.0, "n_classified": 0, "total_n": 0}
+        return {
+            "estimate": 0.0,
+            "ci_lower": 0.0,
+            "ci_upper": 0.0,
+            "n_classified": 0,
+            "total_n": 0,
+        }
     correct = sum(1 for e in events if e.get("event_type") == event_type)
     prevalence = correct / n
     ci = stats.binom.interval(confidence_level, n, prevalence)
@@ -166,20 +174,30 @@ def run_predictions(
     log.info(
         "STAGE 3 SUMMARY | events=%d | countries=%d | "
         "confidence: high=%d medium=%d low=%d | output=%s",
-        len(events), len(countries), hi, md, lo, output_dir,
+        len(events),
+        len(countries),
+        hi,
+        md,
+        lo,
+        output_dir,
     )
-    for etype, est in sorted(prevalence_by_type.items(), key=lambda x: -x[1]["n_classified"]):
+    for etype, est in sorted(
+        prevalence_by_type.items(), key=lambda x: -x[1]["n_classified"]
+    ):
         if est["n_classified"] > 0:
             log.info(
                 "  %s: %.1f%% [%.1f%%–%.1f%%] n=%d",
-                etype, est["estimate"] * 100,
-                est["ci_lower"] * 100, est["ci_upper"] * 100,
+                etype,
+                est["estimate"] * 100,
+                est["ci_lower"] * 100,
+                est["ci_upper"] * 100,
                 est["n_classified"],
             )
 
     # Upload
     if upload_to:
         from src.acquisition.storage import _upload_outputs
+
         try:
             _upload_outputs(upload_to, [prev_path, conf_path, summary_path])
             log.info(f"Stage 3 outputs uploaded to {upload_to}")

@@ -73,11 +73,11 @@ CEHA_TYPE_COLUMNS: list = [
 
 # Short labels for reporting
 CEHA_TYPE_SHORT: dict = {
-    "tribal/communal/ethnic conflict":         "ethnic_communal",
-    "religious conflict":                      "religious",
-    "socio-political violence against women":  "gender_rights",
-    "climate-related security risks":          "climate_security",
-    "Other":                                   "other",
+    "tribal/communal/ethnic conflict": "ethnic_communal",
+    "religious conflict": "religious",
+    "socio-political violence against women": "gender_rights",
+    "climate-related security risks": "climate_security",
+    "Other": "other",
 }
 
 
@@ -111,18 +111,18 @@ def _normalise_ceha(row: dict) -> dict:
     ]
 
     return {
-        "index":         row.get("Index", ""),
-        "source":        row.get("ACLED/GDELT", ""),
-        "time":          row.get("Time", ""),
-        "country":       row.get("Country", ""),
-        "actor1":        row.get("Actor 1", ""),
-        "actor2":        row.get("Actor 2", ""),
-        "url":           row.get("Article Url", ""),
-        "text":          row.get("Event Description", ""),
-        "relevant":      row.get("Is the event relevant?", "").strip().lower() == "yes",
-        "event_types":   event_types,
-        "split":         row.get("train_dev_test_split", ""),
-        "raw":           row,
+        "index": row.get("Index", ""),
+        "source": row.get("ACLED/GDELT", ""),
+        "time": row.get("Time", ""),
+        "country": row.get("Country", ""),
+        "actor1": row.get("Actor 1", ""),
+        "actor2": row.get("Actor 2", ""),
+        "url": row.get("Article Url", ""),
+        "text": row.get("Event Description", ""),
+        "relevant": row.get("Is the event relevant?", "").strip().lower() == "yes",
+        "event_types": event_types,
+        "split": row.get("train_dev_test_split", ""),
+        "raw": row,
     }
 
 
@@ -159,16 +159,18 @@ def score_with_filter(
     score_map: dict = {}
     for a in kept + rejected:
         score_map[a["_ceha_index"]] = {
-            "score":  a["_relevance_score"],
+            "score": a["_relevance_score"],
             "source": a["_relevance_source"],
-            "kept":   a["_relevance_score"] >= threshold,
+            "kept": a["_relevance_score"] >= threshold,
         }
 
     for e in events:
-        info = score_map.get(e["index"], {"score": 0.0, "source": "unknown", "kept": False})
-        e["_relevance_score"]     = info["score"]
-        e["_relevance_source"]    = info["source"]
-        e["_predicted_relevant"]  = info["kept"]
+        info = score_map.get(
+            e["index"], {"score": 0.0, "source": "unknown", "kept": False}
+        )
+        e["_relevance_score"] = info["score"]
+        e["_relevance_source"] = info["source"]
+        e["_predicted_relevant"] = info["kept"]
 
     return events
 
@@ -184,8 +186,8 @@ def compute_metrics(events: list[dict]) -> dict:
     tn = sum(1 for e in events if not e["relevant"] and not e["_predicted_relevant"])
 
     precision = tp / (tp + fp) if (tp + fp) else 0.0
-    recall    = tp / (tp + fn) if (tp + fn) else 0.0
-    f1        = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+    recall = tp / (tp + fn) if (tp + fn) else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
 
     # Breakdown by country
     by_country: dict = {}
@@ -193,15 +195,19 @@ def compute_metrics(events: list[dict]) -> dict:
         c = e["country"]
         if c not in by_country:
             by_country[c] = {"tp": 0, "fp": 0, "fn": 0, "tn": 0}
-        key = ("tp" if e["relevant"] else "fp") if e["_predicted_relevant"] else ("fn" if e["relevant"] else "tn")
+        key = (
+            ("tp" if e["relevant"] else "fp")
+            if e["_predicted_relevant"]
+            else ("fn" if e["relevant"] else "tn")
+        )
         by_country[c][key] += 1
     for c in by_country:
         v = by_country[c]
         p = v["tp"] / (v["tp"] + v["fp"]) if (v["tp"] + v["fp"]) else 0.0
         r = v["tp"] / (v["tp"] + v["fn"]) if (v["tp"] + v["fn"]) else 0.0
         by_country[c]["precision"] = round(p, 3)
-        by_country[c]["recall"]    = round(r, 3)
-        by_country[c]["f1"]        = round(2 * p * r / (p + r) if (p + r) else 0.0, 3)
+        by_country[c]["recall"] = round(r, 3)
+        by_country[c]["f1"] = round(2 * p * r / (p + r) if (p + r) else 0.0, 3)
 
     # Breakdown by ACLED/GDELT source
     by_source: dict = {}
@@ -209,22 +215,26 @@ def compute_metrics(events: list[dict]) -> dict:
         s = e["source"]
         if s not in by_source:
             by_source[s] = {"tp": 0, "fp": 0, "fn": 0, "tn": 0}
-        key = ("tp" if e["relevant"] else "fp") if e["_predicted_relevant"] else ("fn" if e["relevant"] else "tn")
+        key = (
+            ("tp" if e["relevant"] else "fp")
+            if e["_predicted_relevant"]
+            else ("fn" if e["relevant"] else "tn")
+        )
         by_source[s][key] += 1
     for s in by_source:
         v = by_source[s]
         p = v["tp"] / (v["tp"] + v["fp"]) if (v["tp"] + v["fp"]) else 0.0
         r = v["tp"] / (v["tp"] + v["fn"]) if (v["tp"] + v["fn"]) else 0.0
         by_source[s]["precision"] = round(p, 3)
-        by_source[s]["recall"]    = round(r, 3)
-        by_source[s]["f1"]        = round(2 * p * r / (p + r) if (p + r) else 0.0, 3)
+        by_source[s]["recall"] = round(r, 3)
+        by_source[s]["f1"] = round(2 * p * r / (p + r) if (p + r) else 0.0, 3)
 
     # Recall by CEHA event type (only for relevant events)
     by_type: dict = {}
     for e in events:
         if not e["relevant"]:
             continue
-        for t in (e["event_types"] or ["(unlabelled)"]):
+        for t in e["event_types"] or ["(unlabelled)"]:
             if t not in by_type:
                 by_type[t] = {"total": 0, "recalled": 0}
             by_type[t]["total"] += 1
@@ -235,17 +245,20 @@ def compute_metrics(events: list[dict]) -> dict:
         v["recall"] = round(v["recalled"] / v["total"], 3) if v["total"] else 0.0
 
     return {
-        "precision":  round(precision, 3),
-        "recall":     round(recall, 3),
-        "f1":         round(f1, 3),
-        "tp": tp, "fp": fp, "fn": fn, "tn": tn,
-        "total":      len(events),
+        "precision": round(precision, 3),
+        "recall": round(recall, 3),
+        "f1": round(f1, 3),
+        "tp": tp,
+        "fp": fp,
+        "fn": fn,
+        "tn": tn,
+        "total": len(events),
         "n_relevant": tp + fn,
         "n_predicted_relevant": tp + fp,
         "baseline_f1": "~0.70 (Bai et al. 2025, zero-shot LLMs on CEHA)",
         "by_country": by_country,
-        "by_source":  by_source,
-        "by_type":    by_type,
+        "by_source": by_source,
+        "by_type": by_type,
     }
 
 
@@ -265,12 +278,14 @@ def sweep_thresholds(
         for e in events:
             e["_predicted_relevant"] = e.get("_relevance_score", 0.0) >= thr
         m = compute_metrics(events)
-        results.append({
-            "threshold": thr,
-            "f1":        m["f1"],
-            "precision": m["precision"],
-            "recall":    m["recall"],
-        })
+        results.append(
+            {
+                "threshold": thr,
+                "f1": m["f1"],
+                "precision": m["precision"],
+                "recall": m["recall"],
+            }
+        )
 
     # Restore predictions at 0.30 default
     for e in events:
@@ -297,8 +312,9 @@ def run_validation(
         log.error("No CEHA events loaded — check --ceha-csv path and --split value.")
         return {}
 
-    events = score_with_filter(events, threshold=threshold,
-                               model_name=model_name, use_model=use_model)
+    events = score_with_filter(
+        events, threshold=threshold, model_name=model_name, use_model=use_model
+    )
     metrics = compute_metrics(events)
 
     # Console summary
@@ -306,39 +322,45 @@ def run_validation(
     print("CEHA RELEVANCE VALIDATION REPORT")
     print("=" * 60)
     print(f"Split:          {split}  ({metrics['total']} items)")
-    print(f"Relevant:       {metrics['n_relevant']}  ({metrics['n_relevant']/metrics['total']:.0%})")
+    print(
+        f"Relevant:       {metrics['n_relevant']}  ({metrics['n_relevant']/metrics['total']:.0%})"
+    )
     print(f"Predicted rel:  {metrics['n_predicted_relevant']}")
     print(f"Precision:      {metrics['precision']:.1%}")
     print(f"Recall:         {metrics['recall']:.1%}")
     print(f"F1:             {metrics['f1']:.1%}  (baseline: {metrics['baseline_f1']})")
-    print(f"TP/FP/FN/TN:    {metrics['tp']} / {metrics['fp']} / {metrics['fn']} / {metrics['tn']}")
+    print(
+        f"TP/FP/FN/TN:    {metrics['tp']} / {metrics['fp']} / {metrics['fn']} / {metrics['tn']}"
+    )
     print("\nRecall by CEHA event type (relevant events only):")
     for t, v in sorted(metrics["by_type"].items(), key=lambda x: -x[1]["recall"]):
         bar = "█" * int(v["recall"] * 20)
         print(f"  {t:35s} {v['recall']:.0%}  {bar}  ({v['recalled']}/{v['total']})")
     print("\nF1 by source:")
     for s, v in sorted(metrics["by_source"].items()):
-        print(f"  {s:10s}  F1={v['f1']:.1%}  P={v['precision']:.1%}  R={v['recall']:.1%}")
+        print(
+            f"  {s:10s}  F1={v['f1']:.1%}  P={v['precision']:.1%}  R={v['recall']:.1%}"
+        )
     print("=" * 60 + "\n")
 
     report: dict = {
-        "metrics":  metrics,
+        "metrics": metrics,
         "settings": {
-            "split":      split,
-            "threshold":  threshold,
-            "model":      model_name if use_model else "keyword_fallback",
+            "split": split,
+            "threshold": threshold,
+            "model": model_name if use_model else "keyword_fallback",
         },
         "event_scores": [
             {
-                "index":              e["index"],
-                "country":            e["country"],
-                "source":             e["source"],
-                "relevant":           e["relevant"],
+                "index": e["index"],
+                "country": e["country"],
+                "source": e["source"],
+                "relevant": e["relevant"],
                 "predicted_relevant": e["_predicted_relevant"],
-                "score":              e.get("_relevance_score"),
-                "score_source":       e.get("_relevance_source"),
-                "text_preview":       e["text"][:100],
-                "event_types":        e["event_types"],
+                "score": e.get("_relevance_score"),
+                "score_source": e.get("_relevance_source"),
+                "text_preview": e["text"][:100],
+                "event_types": e["event_types"],
             }
             for e in events
         ],

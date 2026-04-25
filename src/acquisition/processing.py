@@ -102,9 +102,7 @@ def _build_idf(events: list) -> dict:
         return {}
     df: Counter = Counter()
     for event in events:
-        claims_tokens = set(
-            _tokenise(" ".join(event.get("claims") or []))
-        )
+        claims_tokens = set(_tokenise(" ".join(event.get("claims") or [])))
         df.update(claims_tokens)
     return {t: math.log(n / (1 + df[t])) + 1 for t in df}
 
@@ -269,19 +267,19 @@ def recheck_borderline(
             f"and 'confidence' (high/medium/low).\n\n{summary}"
         )
         try:
-            raw = _call_azure(system=SYSTEM_PROMPT, user=user_msg, model=model, api_key=api_key)
+            raw = _call_azure(
+                system=SYSTEM_PROMPT, user=user_msg, model=model, api_key=api_key
+            )
             if not raw:
                 continue
-            m = re.search(r'\{[^{}]+\}', raw, re.DOTALL)
+            m = re.search(r"\{[^{}]+\}", raw, re.DOTALL)
             if not m:
                 continue
             data = json.loads(m.group())
             new_type = data.get("event_type", "")
             new_conf = data.get("confidence", "")
             if new_type in VALID_EVENT_TYPES and new_type != event.get("event_type"):
-                log.info(
-                    f"  Re-classified: {event.get('event_type')} -> {new_type}"
-                )
+                log.info(f"  Re-classified: {event.get('event_type')} -> {new_type}")
                 event["event_type"] = new_type
                 event["_reclassified"] = True
             if new_conf in ("high", "medium", "low"):
@@ -402,9 +400,12 @@ def process_events(
         "STAGE 2 SUMMARY | input=%d | after_geo=%d (removed %d) | after_dedup=%d (removed %d)"
         " | schema_valid=%d/%d | output=%s",
         len(raw_events),
-        len(raw_events) - len(removed), len(removed),
-        len(events), len(duplicates_log),
-        qc_report["schema_validity"]["valid_schemas"], len(events),
+        len(raw_events) - len(removed),
+        len(removed),
+        len(events),
+        len(duplicates_log),
+        qc_report["schema_validity"]["valid_schemas"],
+        len(events),
         output_dir,
     )
     log.info("By country: %s", by_country)

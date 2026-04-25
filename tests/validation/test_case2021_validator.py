@@ -1,4 +1,5 @@
 """Tests for src/validation/case2021_validator.py."""
+
 import csv
 import json
 from pathlib import Path
@@ -21,7 +22,10 @@ from src.validation.case2021_validator import (
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
 
-def make_case_row(id="1", text="Protesters marched through the capital.", sub_type="PEACE_PROTEST") -> dict:
+
+def make_case_row(
+    id="1", text="Protesters marched through the capital.", sub_type="PEACE_PROTEST"
+) -> dict:
     return {"id": id, "EventSnippet": text, "SubType": sub_type}
 
 
@@ -32,12 +36,16 @@ def case_tsv(tmp_path) -> Path:
     rows = [
         make_case_row("1", "Protesters marched through the capital.", "PEACE_PROTEST"),
         make_case_row("2", "Rioters attacked police vehicles.", "VIOL_DEMONSTR"),
-        make_case_row("3", "Police used force against demonstrators.", "FORCE_AGAINST_PROTEST"),
+        make_case_row(
+            "3", "Police used force against demonstrators.", "FORCE_AGAINST_PROTEST"
+        ),
         make_case_row("4", "Warplanes bombed a village.", "AIR_STRIKE"),
         make_case_row("5", "A flood destroyed crops.", "NATURAL_DISASTER"),
     ]
     with open(path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["id", "EventSnippet", "SubType"], delimiter="\t")
+        writer = csv.DictWriter(
+            f, fieldnames=["id", "EventSnippet", "SubType"], delimiter="\t"
+        )
         writer.writeheader()
         writer.writerows(rows)
     return path
@@ -46,6 +54,7 @@ def case_tsv(tmp_path) -> Path:
 # ---------------------------------------------------------------------------
 # _normalise_case
 # ---------------------------------------------------------------------------
+
 
 class TestNormaliseCase:
     def test_protest_subtype_marked(self):
@@ -89,6 +98,7 @@ class TestNormaliseCase:
 # CASE_TO_PEA crosswalk completeness
 # ---------------------------------------------------------------------------
 
+
 class TestCaseToPeaCrosswalk:
     def test_all_protest_subtypes_in_crosswalk(self):
         for sub_type in PROTEST_SUBTYPES:
@@ -96,8 +106,14 @@ class TestCaseToPeaCrosswalk:
 
     def test_crosswalk_values_are_valid_pea_types(self):
         valid = {
-            "demonstration_march", "strike_boycott", "riot", "occupation_seizure",
-            "confrontation", "petition_signature", "vigil", "hunger_strike",
+            "demonstration_march",
+            "strike_boycott",
+            "riot",
+            "occupation_seizure",
+            "confrontation",
+            "petition_signature",
+            "vigil",
+            "hunger_strike",
         }
         for sub_type, pea_type in CASE_TO_PEA.items():
             assert pea_type in valid, f"{sub_type} → {pea_type} is not a valid PEA type"
@@ -106,6 +122,7 @@ class TestCaseToPeaCrosswalk:
 # ---------------------------------------------------------------------------
 # load_case2021
 # ---------------------------------------------------------------------------
+
 
 class TestLoadCase2021:
     def test_loads_all_rows(self, case_tsv):
@@ -127,6 +144,7 @@ class TestLoadCase2021:
 # _events_to_articles
 # ---------------------------------------------------------------------------
 
+
 class TestEventsToArticles:
     def test_creates_article_dicts(self):
         events = [_normalise_case(make_case_row(id="5", text="Crowd gathered."))]
@@ -145,14 +163,15 @@ class TestEventsToArticles:
 # _compute_relevance_metrics
 # ---------------------------------------------------------------------------
 
+
 class TestComputeRelevanceMetrics:
     def _make_event(self, is_protest: bool, predicted: bool, sub_type: str = None):
         if sub_type is None:
             sub_type = "PEACE_PROTEST" if is_protest else "AIR_STRIKE"
         e = _normalise_case(make_case_row(sub_type=sub_type))
-        e["_relevance_score"]    = 0.8 if predicted else 0.1
-        e["_relevance_source"]   = "model"
-        e["_predicted_protest"]  = predicted
+        e["_relevance_score"] = 0.8 if predicted else 0.1
+        e["_relevance_source"] = "model"
+        e["_predicted_protest"] = predicted
         return e
 
     def test_perfect_classifier(self):
@@ -198,15 +217,18 @@ class TestComputeRelevanceMetrics:
 # _compute_extraction_metrics
 # ---------------------------------------------------------------------------
 
+
 class TestComputeExtractionMetrics:
-    def _make_result(self, pea_gold: str, pea_predicted: str, sub_type: str = "PEACE_PROTEST"):
+    def _make_result(
+        self, pea_gold: str, pea_predicted: str, sub_type: str = "PEACE_PROTEST"
+    ):
         return {
-            "id":            "1",
-            "text_preview":  "...",
-            "sub_type":      sub_type,
-            "pea_gold":      pea_gold,
+            "id": "1",
+            "text_preview": "...",
+            "sub_type": sub_type,
+            "pea_gold": pea_gold,
             "pea_predicted": pea_predicted,
-            "correct":       pea_predicted == pea_gold,
+            "correct": pea_predicted == pea_gold,
         }
 
     def test_all_correct(self):
@@ -245,6 +267,7 @@ class TestComputeExtractionMetrics:
 # run_relevance_mode (integration — mocked)
 # ---------------------------------------------------------------------------
 
+
 class TestRunRelevanceModeIntegration:
     def test_scores_attached_and_metrics_returned(self, case_tsv):
         from src.validation.case2021_validator import run_relevance_mode
@@ -253,12 +276,28 @@ class TestRunRelevanceModeIntegration:
 
         mock_filter = MagicMock()
         protest_ids = {e["id"] for e in events if e["is_protest"]}
-        kept = [{"text": e["text"], "title": "", "_case_id": e["id"],
-                 "_relevance_score": 0.8, "_relevance_source": "model"}
-                for e in events if e["id"] in protest_ids]
-        rejected = [{"text": e["text"], "title": "", "_case_id": e["id"],
-                     "_relevance_score": 0.1, "_relevance_source": "model"}
-                    for e in events if e["id"] not in protest_ids]
+        kept = [
+            {
+                "text": e["text"],
+                "title": "",
+                "_case_id": e["id"],
+                "_relevance_score": 0.8,
+                "_relevance_source": "model",
+            }
+            for e in events
+            if e["id"] in protest_ids
+        ]
+        rejected = [
+            {
+                "text": e["text"],
+                "title": "",
+                "_case_id": e["id"],
+                "_relevance_score": 0.1,
+                "_relevance_source": "model",
+            }
+            for e in events
+            if e["id"] not in protest_ids
+        ]
         mock_filter.return_value.filter.return_value = (kept, rejected)
 
         with patch("src.acquisition.relevance_filter.RelevanceFilter", mock_filter):
@@ -267,5 +306,5 @@ class TestRunRelevanceModeIntegration:
         assert "f1" in metrics
         assert "precision" in metrics
         assert "recall" in metrics
-        assert metrics["recall"] == 1.0   # all protest events were "kept"
+        assert metrics["recall"] == 1.0  # all protest events were "kept"
         assert metrics["precision"] == 1.0
