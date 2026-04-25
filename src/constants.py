@@ -6,9 +6,12 @@ lookups that were previously duplicated across extractor.py,
 processing.py, predictions.py, and web/app.py.
 """
 
+import logging
 from pathlib import Path
 
 import yaml
+
+log = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -71,7 +74,11 @@ def _load_country_data() -> dict:
     try:
         with open(CONFIGS_DIR / "countries.yaml", encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
-    except Exception:
+    except FileNotFoundError:
+        log.error("configs/countries.yaml not found — country lookups disabled; check your deployment")
+        return _empty
+    except Exception as e:
+        log.error("Could not load countries.yaml: %s", e, exc_info=True)
         return _empty
 
     countries = raw.get("countries", [])
@@ -88,7 +95,8 @@ def _load_country_data() -> dict:
             continue
         if name:
             iso2_to_name[iso2] = name
-            web_display[name] = iso2
+            if c.get("target"):
+                web_display[name] = iso2
         if c.get("iso3"):
             iso2_to_iso3[iso2] = c["iso3"]
         if c.get("fips"):

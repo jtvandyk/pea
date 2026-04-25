@@ -21,7 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from src.constants import CONF_FLOAT_SCORE, VALID_EVENT_TYPES
+from src.constants import VALID_EVENT_TYPES
 from src.metrics import confidence_breakdown, count_by, quality_report
 
 log = logging.getLogger(__name__)

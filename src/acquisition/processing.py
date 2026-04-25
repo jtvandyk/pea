@@ -30,7 +30,6 @@ from pathlib import Path
 from typing import Optional
 
 from src.constants import (
-    CONF_FLOAT_SCORE,
     CONF_RANK_SCORE,
     TARGET_COUNTRY_NAMES,
     VALID_EVENT_TYPES,
