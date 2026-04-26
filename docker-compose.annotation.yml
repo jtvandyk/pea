@@ -78,17 +78,20 @@ services:
             echo "AZURE_STORAGE_CONNECTION_STRING not set — backup skipped"
           else
             FNAME="label_studio_$$(date +%Y%m%dT%H%M%S).tar.gz"
-            tar czf "/tmp/$$FNAME" -C / label-studio/data 2>/dev/null
-            if az storage blob upload \
-                --connection-string "$$AZURE_STORAGE_CONNECTION_STRING" \
-                --container-name "$$LABEL_STUDIO_BACKUP_CONTAINER" \
-                --name "label-studio/backups/$$FNAME" \
-                --file "/tmp/$$FNAME" \
-                --overwrite \
-                --output none 2>&1; then
-              echo "Backup uploaded: $$FNAME"
+            if tar czf "/tmp/$$FNAME" -C / label-studio/data; then
+              if az storage blob upload \
+                  --connection-string "$$AZURE_STORAGE_CONNECTION_STRING" \
+                  --container-name "$$LABEL_STUDIO_BACKUP_CONTAINER" \
+                  --name "label-studio/backups/$$FNAME" \
+                  --file "/tmp/$$FNAME" \
+                  --overwrite \
+                  --output none 2>&1; then
+                echo "Backup uploaded: $$FNAME"
+              else
+                echo "Backup upload failed: $$FNAME"
+              fi
             else
-              echo "Backup upload failed: $$FNAME"
+              echo "Backup tar failed: $$FNAME (volume unreadable or empty)"
             fi
             rm -f "/tmp/$$FNAME"
           fi

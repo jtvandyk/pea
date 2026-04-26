@@ -20,7 +20,7 @@ In Azure, the app's managed identity is used.
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from io import StringIO
 from typing import Optional
 
@@ -84,6 +84,16 @@ def _mgmt_token() -> Optional[str]:
         return None
     try:
         return cred.get_token("https://management.azure.com/.default").token
+    except Exception:
+        return None
+
+
+def _loganalytics_token() -> Optional[str]:
+    cred = _get_credential()
+    if cred is None:
+        return None
+    try:
+        return cred.get_token("https://api.loganalytics.io/.default").token
     except Exception:
         return None
 
@@ -178,13 +188,14 @@ def fetch_execution_logs(execution_name: str, limit: int = 50) -> list[str]:
     if not workspace_id:
         return ["LOG_ANALYTICS_WORKSPACE_ID not configured — cannot fetch logs."]
 
-    token = _mgmt_token()
+    token = _loganalytics_token()
     if not token:
         return ["Azure credentials unavailable — cannot fetch logs."]
 
+    safe_name = execution_name.replace("'", "''")
     kql = (
         f"ContainerAppConsoleLogs_CL"
-        f" | where ContainerJobExecutionName_s == '{execution_name}'"
+        f" | where ContainerJobExecutionName_s == '{safe_name}'"
         f" | order by TimeGenerated asc"
         f" | project TimeGenerated, Level_s, Log_s"
         f" | take {limit}"
@@ -264,7 +275,7 @@ def load_quality_report_from_adls() -> Optional[dict]:
         paths = list(fs_client.get_paths(path=prefix, recursive=True))
         report_paths = sorted(
             [p for p in paths if p.name.endswith("quality_report.json")],
-            key=lambda p: p.last_modified or datetime.min,
+            key=lambda p: p.last_modified or datetime.min.replace(tzinfo=timezone.utc),
             reverse=True,
         )
         if not report_paths:

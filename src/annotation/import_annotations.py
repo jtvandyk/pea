@@ -376,6 +376,11 @@ def import_annotations(
         for p in training_pairs:
             f.write(json.dumps(p, ensure_ascii=False) + "\n")
 
+    # Set provenance before writing so it lands in both the local file and the
+    # uploaded blob; rolled back below if the upload actually fails.
+    if upload_to:
+        stats["uploaded_to"] = upload_to
+
     # Write stats
     stats_path = output_dir / "annotation_stats.json"
     with open(stats_path, "w", encoding="utf-8") as f:
@@ -388,8 +393,8 @@ def import_annotations(
 
             _upload_outputs(upload_to, [reviewed_path, training_path, stats_path])
             log.info(f"Annotation outputs uploaded to {upload_to}")
-            stats["uploaded_to"] = upload_to
         except Exception as exc:
+            stats.pop("uploaded_to", None)
             log.warning(f"Cloud upload failed (files saved locally): {exc}")
 
     # Console summary
@@ -411,8 +416,8 @@ def import_annotations(
     print(f"  {reviewed_path}")
     print(f"  {training_path}")
     print(f"  {stats_path}")
-    if upload_to:
-        print(f"  → uploaded to {upload_to}")
+    if stats.get("uploaded_to"):
+        print(f"  → uploaded to {stats['uploaded_to']}")
     target = 200
     remaining = max(0, target - stats["training_pairs"])
     if remaining > 0:

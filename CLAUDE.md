@@ -310,14 +310,3 @@ python -m pytest tests/ -q           # must exit 0
 
 Linter config lives in `.flake8` (max-line-length 120, E203 ignored for black compat).
 
-### Dockerfile coupling rule
-
-`Dockerfile.web` copies individual files from `src/` rather than the whole tree. When you add a **new module** anywhere under `src/` that `src/web/app.py` (or anything it imports) depends on, you must also add the corresponding `COPY` line to `Dockerfile.web`. Current explicit copies:
-
-```dockerfile
-COPY src/web/ ./src/web/
-COPY src/__init__.py ./src/__init__.py
-COPY src/constants.py ./src/constants.py
-```
-
-The pipeline `Dockerfile` uses `COPY src/ ./src/` so it picks up new modules automatically.

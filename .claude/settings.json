@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cmd=$(jq -r '.tool_input.command // \"\"'); if echo \"$cmd\" | grep -q 'git commit'; then python -m black --check src/ tests/ && python -m flake8 src/ tests/; fi"
+            "command": "cmd=$(jq -r '.tool_input.command // \"\"'); if echo \"$cmd\" | grep -Eq '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then command -v black >/dev/null && python -m black --check src/ tests/ && command -v flake8 >/dev/null && python -m flake8 src/ tests/; fi"
           }
         ]
       }

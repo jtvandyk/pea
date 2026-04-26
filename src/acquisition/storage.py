@@ -87,9 +87,11 @@ def _derive_turmoil_level(event: dict) -> str:
     Derive turmoil_level (high / medium / low) from extracted event fields.
 
     Logic (evaluated in order):
-      high   — fatalities reported, OR live/rubber ammunition used,
-               OR outcome is 'escalated'
-      medium — teargas/water cannon/dispersal/arrests used, OR injuries reported
+      high   — fatalities reported, OR live_ammunition/rubber_bullets/
+               legal_criminalisation/anti_terrorism_designation/
+               organisational_dissolution used, OR outcome is 'escalated'
+      medium — teargas/water_cannon/dispersal/arrests/ban/curfew/
+               non_association_bail used, OR injuries reported
       low    — everything else
     """
     fatalities = event.get("fatalities")
