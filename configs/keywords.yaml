@@ -17,9 +17,66 @@ protest_themes:
   - TAX_FNCACT_PROTESTER
 
 # Keywords matched against article title to confirm protest relevance.
-# Multilingual signals included for GDELT's mixed-language feeds.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# HOW THESE KEYWORDS ARE USED
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. GDELT title matching (gdelt_discovery.py): each keyword is checked as a
+#    substring of the article title returned by GDELT DOC 2.0. A match on ANY
+#    keyword keeps the article for further processing.
+# 2. Relevance filter fallback (relevance_filter.py): when the DeBERTa NLI
+#    model is unavailable, keyword matching against the full article text acts
+#    as a backup. Keywords here are therefore checked against both title and body.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# HOW TO ADD KEYWORDS IN A NEW LANGUAGE
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Step 1 — Find candidate terms
+#   Search Google News or a regional paper in the target language for known
+#   protest events you can verify (e.g. a specific named march). Look at the
+#   headline vocabulary. Good starting sources per region:
+#     Arabic (DZ/EG/SD): Al Jazeera Arabic, El Bilad, El Watan Arabe, Ennahar
+#     French (DZ/SN/CI): RFI Afrique, Jeune Afrique, Liberté, Le Monde Afrique
+#     Swahili (UG/TZ/KE): Daily Nation Swahili, Mwananchi, Nipashe, BBC Swahili
+#     Amharic (ET): Addis Fortune, BBC Amharic, DW Amharic
+#     Portuguese (MZ/AO): O País, Jornal de Angola, Público Moçambique
+#
+# Step 2 — Assess productivity (not too broad, not too narrow)
+#   A keyword is PRODUCTIVE if searching it on GDELT or a news aggregator
+#   returns mostly protest articles, not noise. Test each candidate:
+#     - Too broad:  "marche" (FR) — matches "marché" (market), "démarche" (approach)
+#                   → use "manifestants" instead (specific to people demonstrating)
+#     - Too narrow: "maandamano ya wafanyikazi" (SW) — full phrase; rarely in titles
+#                   → use "maandamano" alone (demonstration)
+#     - About right: "إضراب" (AR) — appears in news titles specifically for strikes
+#
+# Step 3 — Check encoding
+#   Paste terms directly as UTF-8. Arabic reads right-to-left in the source but
+#   YAML stores it correctly as a Unicode string. Test round-trip with:
+#     python3 -c "import yaml; d=yaml.safe_load(open('configs/keywords.yaml')); print(d['protest_signals'])"
+#
+# Step 4 — Add with a comment indicating language, meaning, and target country
+#   Format: "  - term  # LANG: meaning (ISO2 target country)"
+#   Example: "  - إضراب  # AR: strike (DZ, EG, SD)"
+#
+# Step 5 — Record the source for each term in the comment
+#   This prevents future editors from removing terms they don't recognise.
+#   Example: "  - maandamano  # SW: demonstration/march — BBC Swahili headlines"
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# WHAT TO AVOID
+# ─────────────────────────────────────────────────────────────────────────────
+#   × State-response words alone ("arrestation", "اعتقال") — too broad; fire
+#     when arrest is the article subject, not the protest context
+#   × Organisation names ("COSATU", "NLC") — too narrow and version-sensitive
+#   × Transliterated spellings ("ihtijaj") — GDELT stores native Unicode; ASCII
+#     transliterations will not match
+#   × Very common words ("action", "mouvement") — enormous false-positive rate
+# ─────────────────────────────────────────────────────────────────────────────
+
 protest_signals:
-  # English
+  # ── English ────────────────────────────────────────────────────────────────
   - protest
   - protests
   - protester
@@ -50,18 +107,58 @@ protest_signals:
   - detained
   - arrested
   - dispersed
-  # Spanish / French
-  - manifestation
-  - manifestantes
-  - huelga
-  - paro
-  - grève
-  # Indonesian / Malay
-  - aksi
-  - demonstrasi
-  # Arabic
-  - احتجاج
-  - مظاهرة
+
+  # ── French (DZ, SN, CI, DRC, BF, ML, CM) ──────────────────────────────────
+  # Primary action words — high precision in news headlines
+  - manifestation      # FR: demonstration (DZ, SN, CI, DRC) — RFI, Jeune Afrique
+  - manifestants       # FR: demonstrators (masc. plural — more common than manifestantes)
+  - manifestantes      # FR: demonstrators (fem./mixed plural — retained from v1)
+  - grève              # FR: strike (all Francophone Africa) — RFI, Liberté
+  - grévistes          # FR: strikers — El Watan, Liberté
+  - débrayage          # FR: work stoppage / walkout — Liberté, Le Monde Afrique
+  - émeute             # FR: riot (DZ, DRC, BF) — RFI, Jeune Afrique
+  - émeutes            # FR: riots (plural)
+  - rassemblement      # FR: rally / gathering — Le Monde Afrique, RFI
+  - blocus             # FR: blockade (roads, ports) — common in DZ, DRC service protests
+  - revendications     # FR: demands / grievances — Liberté, TSA-Algérie
+  - contestation       # FR: challenge / protest movement — Jeune Afrique
+  - cortège            # FR: procession / march column — used for large organised marches
+  - huelga             # ES: strike (retained; relevant for Equatorial Guinea)
+  - paro               # ES: work stoppage (retained; relevant for Equatorial Guinea)
+
+  # ── Arabic (DZ, EG, SD, MR, SO) ────────────────────────────────────────────
+  # All terms verified against Al Jazeera Arabic and Algerian press headlines
+  - احتجاج             # AR: protest / objection (DZ, EG, SD) — most common protest word
+  - احتجاجات           # AR: protests (plural) — El Watan Arabe, Ennahar
+  - محتجون             # AR: protesters (active participle) — Al Jazeera Arabic
+  - مظاهرة             # AR: demonstration (DZ, EG) — retained from v1
+  - مظاهرات            # AR: demonstrations (plural)
+  - مسيرة              # AR: march / procession (DZ Hirak usage) — TSA-Algérie, El Bilad
+  - إضراب              # AR: strike (DZ, EG, SD) — Liberté Arabe, Al Jazeera
+  - اعتصام             # AR: sit-in / occupation (DZ, EG) — Ennahar, El Watan Arabe
+  - عصيان              # AR: (civil) disobedience — Al Hiwar, Algerian opposition press
+  - شغب                # AR: riots / unrest (DZ, SD, EG) — Al Jazeera, Ennahar
+  - حراك               # AR: movement / Hirak (DZ-specific; the 2019–2021 movement name)
+  - الحراك             # AR: the Hirak (definite form — dominant in DZ protest coverage)
+  - مقاطعة             # AR: boycott (DZ, EG) — Ennahar, TSA-Algérie
+  - وقفة               # AR: stand / vigil (short public gathering) — common in DZ press
+  - تجمهر              # AR: crowd gathering / assembly — El Watan Arabe
+
+  # ── Swahili (UG, TZ, KE) ───────────────────────────────────────────────────
+  # Verified against Daily Nation Swahili, Mwananchi (TZ), BBC Swahili headlines
+  - mgomo              # SW: strike (UG, TZ, KE) — extremely common in EA labour news
+  - migomo             # SW: strikes (plural) — Mwananchi, Nation Africa
+  - maandamano         # SW: demonstration / march (UG, KE) — BBC Swahili, Daily Monitor
+  - waandamanaji       # SW: demonstrators (UG, KE) — NTV Uganda Swahili feeds
+  - machafuko          # SW: unrest / disorder (UG, TZ) — New Vision, Mwananchi
+  - ghasia             # SW: violence / riots (UG, TZ, KE) — Daily Nation, BBC Swahili
+  - mapigano           # SW: clashes / fighting in protest context (KE, UG) — Nation
+  - kizuizi            # SW: blockade / obstruction (road blocks, UG, TZ)
+  - matakwa            # SW: demands / demands list — used in labour protest coverage
+
+  # ── Indonesian / Malay (ID, MY) ─────────────────────────────────────────────
+  - aksi               # ID/MY: action / protest action — retained from v1
+  - demonstrasi        # ID/MY: demonstration — retained from v1
 
 # Substrings checked against article URL as a fallback relevance signal.
 url_signals:
