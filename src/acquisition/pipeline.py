@@ -298,13 +298,11 @@ def run_pipeline(
     )
     log.info(f"Results saved to {out_path}")
 
-    # Push the final checkpoint to ADLS when save_results returned early
-    # (zero events) and therefore skipped the checkpoint upload. When events
-    # were saved, save_results already included checkpoint.txt in its upload
-    # bundle, so we only act here on the empty case to avoid a double PUT.
-    # Scoped to the domain subdir so multi-domain runs don't collide.
-    if upload_to and not events:
-        upload_checkpoint(f"{upload_to}/{domain}", effective_output_dir)
+    # Always push the final checkpoint state to ADLS, even when save_results
+    # returns early (zero events). Covers runs where <10 articles were processed
+    # and the periodic upload inside extract_events never fired.
+    if upload_to:
+        upload_checkpoint(upload_to, effective_output_dir)
 
     log.info("=== Pipeline complete ===")
     return events
@@ -448,8 +446,6 @@ def run_pipeline_multi_codebook(
             upload_to=upload_to,
             domain=domain,
         )
-        if upload_to and not events:
-            upload_checkpoint(f"{upload_to}/{domain}", effective_output_dir)
         results[domain] = events
 
     log.info(f"=== Multi-codebook pipeline complete: {list(results.keys())} ===")

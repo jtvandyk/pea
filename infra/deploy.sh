@@ -232,7 +232,7 @@ az monitor scheduled-query create \
   --resource-group "$RESOURCE_GROUP" \
   --scopes "$LOG_WORKSPACE_RESOURCE_ID" \
   --condition "count > 0" \
-  --condition-query "ContainerAppSystemLogs_CL | where ContainerAppName_s == 'pea-daily' | where Reason_s == 'JobExecutionFailed'" \
+  --condition-query "ContainerAppSystemLogs_CL | where Type_s == 'JobExecutionStatus' and Status_s == 'Failed'" \
   --window-size 10 \
   --evaluation-frequency 10 \
   --severity 2 \
