@@ -39,6 +39,8 @@ protest_themes:
 #     Arabic (DZ/EG/SD): Al Jazeera Arabic, El Bilad, El Watan Arabe, Ennahar
 #     French (DZ/SN/CI): RFI Afrique, Jeune Afrique, Liberté, Le Monde Afrique
 #     Swahili (UG/TZ/KE): Daily Nation Swahili, Mwananchi, Nipashe, BBC Swahili
+#     Yoruba (NG-SW): BBC Yoruba (bbc.com/yoruba), Alaroye, Iroyin
+#     Igbo (NG-SE): BBC Igbo (bbc.com/igbo), Daily Sun Igbo, Ụzọ Ndụ
 #     Amharic (ET): Addis Fortune, BBC Amharic, DW Amharic
 #     Portuguese (MZ/AO): O País, Jornal de Angola, Público Moçambique
 #
@@ -156,6 +158,28 @@ protest_signals:
   - kizuizi            # SW: blockade / obstruction (road blocks, UG, TZ)
   - matakwa            # SW: demands / demands list — used in labour protest coverage
 
+  # ── Yoruba (NG: Lagos, Oyo, Ogun, Osun, Ekiti, Kwara, Ondo) ────────────────
+  # Verified against BBC Yoruba (bbc.com/yoruba) headline vocabulary.
+  # Yoruba uses tonal diacritics (à á â, ẹ ọ ṣ) — include them; GDELT stores
+  # full Unicode. Both accented and plain forms included where BBC Yoruba varies.
+  - atakò              # YO: protest / opposition — most common in BBC Yoruba headlines
+  - alátakò            # YO: protester (one who opposes) — BBC Yoruba
+  - ìdáwọlé            # YO: strike / work stoppage — BBC Yoruba labour coverage
+  - ìjókòó             # YO: sit-in / sit-down action — BBC Yoruba
+  - ìdàrúdàpọ̀          # YO: unrest / disorder / chaos — BBC Yoruba
+  - ìjàkadì            # YO: struggle / protest action — Alaroye, Iroyin
+  - ìpayàntìtì         # YO: uprising / rebellion — BBC Yoruba political coverage
+
+  # ── Igbo (NG: Anambra, Imo, Enugu, Abia, Rivers, Ebonyi) ───────────────────
+  # Verified against BBC Igbo (bbc.com/igbo) headline vocabulary.
+  # Igbo uses the dotted vowels ị ụ ọ and nasal ṅ — include them.
+  - ngagharị           # IG: protest / agitation / demonstration — primary BBC Igbo term
+  - ndị ngagharị       # IG: protesters (the agitators) — BBC Igbo
+  - esemokwu           # IG: conflict / clashes — BBC Igbo protest coverage
+  - ọrụ nchefuo        # IG: work stoppage / strike (ọrụ=work, nchefuo=abandonment)
+  - nkwupụta           # IG: protest declaration / statement of demands — BBC Igbo
+  - ọchịchọ            # IG: demand / uprising (context-dependent) — BBC Igbo
+
   # ── Indonesian / Malay (ID, MY) ─────────────────────────────────────────────
   - aksi               # ID/MY: action / protest action — retained from v1
   - demonstrasi        # ID/MY: demonstration — retained from v1
@@ -174,9 +198,9 @@ url_signals:
 # Used by RelevanceFilter when domain='drone'
 # =============================================================================
 
-# Keyword signals for drone domain relevance filter fallback.
 drone_signals:
-  # Platform names
+  # ── English — platform names ─────────────────────────────────────────────────
+  # Note: "drone" is used unchanged in SW/YO/IG-language press — covered here.
   - drone
   - drones
   - uav
@@ -201,7 +225,7 @@ drone_signals:
   - loitering munition
   - one-way attack
   - kamikaze drone
-  # Actions
+  # ── English — actions ───────────────────────────────────────────────────────
   - drone strike
   - drone attack
   - drone struck
@@ -212,9 +236,19 @@ drone_signals:
   - drone surveillance
   - drone footage
   - swarm attack
-  # Arabic / multilingual
-  - طائرة مسيّرة
-  - طائرة بدون طيار
+  # ── French (DZ, ML, BF, CI, CM) ────────────────────────────────────────────
+  - frappe de drone        # FR: drone strike — RFI, Le Monde
+  - attaque de drone       # FR: drone attack — RFI Afrique
+  - drone abattu           # FR: drone shot down
+  - engin télépiloté       # FR: remote-piloted vehicle (formal/technical)
+  # ── Arabic (DZ, SD, LY, SO, YE) ────────────────────────────────────────────
+  - طائرة مسيّرة           # AR: drone (lit. remote-controlled aircraft) — Al Jazeera
+  - طائرة بدون طيار        # AR: unmanned aircraft — Al Jazeera, Arabic press
+  - مسيّرة                 # AR: drone (shortened form common in headlines) — Ennahar, TSA
+  - ضربة جوية              # AR: airstrike (broader; includes drone strikes) — Al Jazeera
+  # ── Swahili (UG, TZ, KE, SO) ───────────────────────────────────────────────
+  - shambulio la drone     # SW: drone attack — Nation Africa, BBC Swahili
+  - ndege ya kivita        # SW: military aircraft / combat drone — Mwananchi
 
 drone_url_signals:
   - drone
@@ -223,3 +257,139 @@ drone_url_signals:
   - airstrike
   - shahed
   - bayraktar
+
+# =============================================================================
+# VIOLENT EXTREMISM DOMAIN KEYWORDS
+# Used by RelevanceFilter when domain='violent_extremism'
+# Covers group names, tactic words, and attack vocabulary across all target
+# languages. English group names are used unchanged in most local-language press.
+# =============================================================================
+
+violent_extremism_signals:
+  # ── English — group names ────────────────────────────────────────────────────
+  # Note: these English group names are used unchanged in SW/YO/IG-language press.
+  - boko haram
+  - iswap                     # EN: Islamic State West Africa Province
+  - al-shabaab
+  - al shabaab
+  - jnim                      # EN: Jama'at Nusrat al-Islam wal-Muslimin (Sahel)
+  - aqim                      # EN: Al-Qaeda in the Islamic Maghreb
+  - aqmi                      # EN: same (French acronym used in English press)
+  - ansarul islam
+  - msla                      # EN: Mouvement pour le Salut de l'Azawad
+  - mnla                      # EN: Mouvement National de Libération de l'Azawad
+  - gsk                       # EN: Groupe de Soutien à l'Islam et aux Musulmans
+  # ── English — tactic and status words ────────────────────────────────────────
+  - jihadist
+  - jihadists
+  - insurgent
+  - insurgents
+  - insurgency
+  - extremist
+  - extremists
+  - terrorist
+  - terrorists
+  - terrorism
+  - attack
+  - suicide bomber
+  - suicide bombing
+  - ied
+  - improvised explosive
+  - ambush
+  - massacre
+  - kidnapping
+  - abduction
+  - hostage
+  - counterterrorism
+  - counter-terrorism
+
+  # ── French (DZ, ML, BF, CI, CM, MR, NE) ─────────────────────────────────────
+  # Verified against RFI Afrique, Le Monde Afrique, Jeune Afrique headlines
+  - jihadiste                 # FR: jihadist — RFI, Le Monde Afrique
+  - jihadistes                # FR: jihadists (plural)
+  - terroriste                # FR: terrorist
+  - terroristes               # FR: terrorists (plural)
+  - terrorisme                # FR: terrorism
+  - attentat                  # FR: attack / bombing — most common headline word (FR)
+  - attentats                 # FR: attacks (plural)
+  - groupe armé               # FR: armed group — RFI, Jeune Afrique
+  - groupes armés             # FR: armed groups (plural)
+  - extrémiste                # FR: extremist
+  - extrémistes               # FR: extremists (plural)
+  - djihadiste                # FR: jihadist (alternate spelling common in French press)
+  - insurrection              # FR: insurgency / insurrection — Sahel coverage
+  - embuscade                 # FR: ambush — RFI Afrique, Le Monde
+  - enlèvement                # FR: kidnapping — RFI, Jeune Afrique
+  - prise d'otages            # FR: hostage-taking — RFI Afrique
+  - AQMI                      # FR: Al-Qaeda au Maghreb islamique (acronym in FR press)
+  - JNIM                      # FR: same acronym used in French-language Sahel reporting
+
+  # ── Arabic (DZ, ML, NE, SO, SD, LY) ─────────────────────────────────────────
+  # Verified against Al Jazeera Arabic, Ennahar, El Watan Arabe
+  - إرهاب                     # AR: terrorism — Al Jazeera, Ennahar
+  - إرهابي                    # AR: terrorist (singular)
+  - إرهابيون                  # AR: terrorists (plural) — Al Jazeera
+  - جهاديون                   # AR: jihadists — Al Jazeera Arabic
+  - جهادي                     # AR: jihadist (singular)
+  - متطرفون                   # AR: extremists — Al Jazeera, Arabic press
+  - تنظيم داعش                # AR: ISIS / Daesh organisation — Al Jazeera
+  - داعش                      # AR: Daesh (ISIS shortened form) — dominant in Arabic headlines
+  - بوكو حرام                 # AR: Boko Haram — Al Jazeera Arabic coverage of Nigeria
+  - الشباب                    # AR: Al-Shabaab — Al Jazeera, Ennahar (Somalia coverage)
+  - تفجير                     # AR: bombing / explosion — Ennahar, El Watan
+  - تفجيرات                   # AR: bombings (plural)
+  - هجوم مسلح                 # AR: armed attack — Al Jazeera, Ennahar
+  - كمين                      # AR: ambush — common in Sahel/Mali coverage
+  - خطف                       # AR: kidnapping — Al Jazeera, Ennahar
+  - رهائن                     # AR: hostages — Al Jazeera Arabic
+
+  # ── Swahili (UG, TZ, KE, SO, TZ) ────────────────────────────────────────────
+  # Verified against BBC Swahili, Daily Nation, Mwananchi headlines
+  - ugaidi                    # SW: terrorism — BBC Swahili, Nation Africa
+  - kigaidi                   # SW: terrorist (singular) — BBC Swahili
+  - magaidi                   # SW: terrorists (plural) — BBC Swahili, Daily Nation
+  - waasi                     # SW: rebels / insurgents — Mwananchi, Nation Africa
+  - uasi                      # SW: rebellion / insurgency — BBC Swahili
+  - shambulio                 # SW: attack — BBC Swahili (also appears in drone block)
+  - mlipuko                   # SW: explosion / blast — BBC Swahili, Mwananchi
+  - utekaji nyara             # SW: kidnapping — BBC Swahili
+  - mateka                    # SW: hostages / captives — BBC Swahili
+
+  # ── Yoruba (NG: NE, NW — Boko Haram coverage area) ──────────────────────────
+  # Yoruba-language coverage of Boko Haram/ISWAP is limited; BBC Yoruba uses
+  # English group names. Tactic words are adapted Yoruba.
+  # Verified against BBC Yoruba (bbc.com/yoruba) headline vocabulary.
+  - onijagídìjagan            # YO: terrorist / violent extremist — BBC Yoruba
+  - ikọlù                     # YO: attack — BBC Yoruba
+  - ìjábọ̀                     # YO: shooting / gunfire — BBC Yoruba
+  - ìpànìyàn                  # YO: killing / murder in extremism context — BBC Yoruba
+  - olùkọlù                   # YO: attacker — BBC Yoruba
+  - ajíhàdì                   # YO: jihadist (phonetic adaptation) — BBC Yoruba
+
+  # ── Igbo (NG: NE, SE — Boko Haram + ISWAP coverage area) ────────────────────
+  # Igbo-language coverage of violent extremism uses English group names.
+  # Tactic words draw on BBC Igbo headline vocabulary.
+  # Verified against BBC Igbo (bbc.com/igbo) headline vocabulary.
+  - ndị ajọ ndụ               # IG: terrorists / evil-doers (lit. people of bad life) — BBC Igbo
+  - ndiisi                    # IG: insurgents / militants — BBC Igbo
+  - mwaka                     # IG: attack / assault — BBC Igbo
+  - egbugbu                   # IG: killings / massacre — BBC Igbo
+  - ndị ọ̀tụ̀tụ̀                 # IG: gunmen / attackers — BBC Igbo
+
+violent_extremism_url_signals:
+  - terror
+  - terrorist
+  - jihadist
+  - jihad
+  - boko-haram
+  - bokoharam
+  - al-shabaab
+  - alshabaab
+  - iswap
+  - insurgent
+  - insurgency
+  - extremist
+  - aqim
+  - aqmi
+  - jnim
+  - islamist
