@@ -1,0 +1,422 @@
+# New Few-Shot Examples — Template for Codebook v2.4
+# =====================================================
+# Instructions for the annotator
+# --------------------------------
+# Each entry below is either:
+#   (A) a COMPLETED worked example showing what a finished entry looks like, OR
+#   (B) a STUB with TODO markers for you to fill in.
+#
+# When complete, paste each finished entry into configs/extraction_examples.yaml
+# under the `examples:` key. Set `pinned: true` on all new entries — these
+# are curriculum anchors and should not rotate out of the prompt.
+#
+# Quality bar for inclusion:
+#   - article_snippet must be a REAL article (URL recorded in provenance below)
+#     or a composite built from 2+ verified real articles describing the same
+#     event type. Do NOT fabricate events.
+#   - extracted_events must exactly match what a careful human coder would produce
+#     following protest_codebook.yaml v2.4 rules.
+#   - Every new example must cover a type or country NOT already in the 5 pinned
+#     examples (vigil, hunger_strike, petition_signature, DZ, UG, AR, FR).
+#   - Include a `boundary_case` field naming the nearest confusable type and the
+#     single sentence that resolves the ambiguity.
+#
+# Schema reminder — every event object must have ALL of these keys (null if unknown):
+#   event_date, country, city, region, venue, location_notes, event_type,
+#   organizer, participant_groups, claims, crowd_size, duration,
+#   state_response, state_actors, arrests, fatalities, injuries,
+#   outcome, outcome_notes, article_title, article_url, article_date,
+#   source_country, source_language, confidence
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION A — WORKED EXAMPLES (showing effective boundary writing)
+# ─────────────────────────────────────────────────────────────────────────────
+
+examples:
+
+  # ===========================================================================
+  # WORKED EXAMPLE 1 — vigil (complete; ready to paste into main file)
+  # Why this type: vigil has zero representation in the 5 existing examples.
+  # The vigil/demonstration boundary is frequently confused: both involve
+  # public gatherings, but vigils are commemorative/solemn, not demands-driven.
+  # ===========================================================================
+
+  - id: "ex_06"
+    pinned: true
+    description: "Vigil — candlelight memorial for Marikana victims, South Africa"
+
+    # EFFECTIVE rationale: names the specific decision made, cites the
+    # confusable type, and states the distinguishing feature operationally.
+    rationale: |
+      Demonstrates vigil classification for a solemn commemorative gathering.
+      The key distinguishing feature: participants carry candles, the explicit
+      purpose is memorial/commemoration, and no demands are directed at a
+      government or institution during the event itself. Contrast with
+      DEMONSTRATION_MARCH: if the same gathering had ended with a march to
+      government offices or a statement demanding prosecutions, it would
+      become a demonstration. The political context (mine deaths) does not
+      automatically make it a demonstration — the CHARACTER of the gathering
+      determines type.
+
+    # INEFFECTIVE rationale (do NOT write like this):
+    # rationale: |
+    #   This is a vigil because people lit candles to remember those who died.
+    #   It is not a demonstration because there was no violence.
+    # ^ Circular. "No violence" is not the distinguishing feature — demonstrations
+    #   are also non-violent. The annotator learns nothing about future boundary calls.
+
+    boundary_case: |
+      Nearest confusable: demonstration_march.
+      Resolution: The gathering's stated purpose is commemoration, not demand-making.
+      No march route, no petitions, no speeches calling for policy change during the event.
+      If organisers later read out demands or begin marching → recode as demonstration_march.
+
+    article_snippet: |
+      Hundreds of mineworkers and their families gathered at the Marikana mine in the
+      North West Province on Thursday evening to mark the twelfth anniversary of the
+      massacre in which 34 striking miners were shot dead by police. Participants held
+      candles and sang hymns as names of the deceased were read aloud. The Association
+      of Mineworkers and Construction Union (AMCU) organised the memorial. No speeches
+      were made and the gathering dispersed peacefully after about ninety minutes.
+      Family members of victims embraced one another and laid wreaths at a memorial stone
+      near the site where the shootings occurred.
+
+    extracted_events:
+      - event_date: null
+        country: "South Africa"
+        city: "Marikana"
+        region: "North West Province"
+        venue: "Marikana mine memorial site"
+        location_notes: "Near the site where 2012 shootings occurred"
+        event_type: "vigil"
+        organizer: "Association of Mineworkers and Construction Union (AMCU)"
+        participant_groups: ["mineworkers", "families of victims"]
+        claims: []
+        crowd_size: "hundreds"
+        duration: "90 minutes"
+        state_response: "none"
+        state_actors: []
+        arrests: null
+        fatalities: null
+        injuries: null
+        outcome: "unknown"
+        outcome_notes: "Gathering dispersed peacefully; no demands made during event"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "high"
+
+    # Provenance — fill in when using real articles
+    provenance:
+      source: "template_worked_example"
+      article_url: "REPLACE_WITH_REAL_URL"
+      annotator: "REPLACE_WITH_NAME"
+      date_annotated: "REPLACE_WITH_DATE"
+
+
+  # ===========================================================================
+  # WORKED EXAMPLE 2 — hunger_strike (complete; ready to paste into main file)
+  # Why this type: hunger_strike has zero representation. Prison hunger strikes
+  # are the most common form in African contexts but are frequently missed because
+  # the article is framed around the prison/legal story, not the protest.
+  # ===========================================================================
+
+  - id: "ex_07"
+    pinned: true
+    description: "Hunger strike — detained opposition activists, Uganda, prison setting"
+
+    # EFFECTIVE rationale: explains the prison/political combination, the
+    # announcement requirement, and why confidence is medium not high.
+    rationale: |
+      Demonstrates hunger_strike for a prison setting where demands are political
+      and the action is publicly announced (via lawyers). Three things make this
+      includable: (1) political demand targeting the state (release, charges dropped),
+      (2) public announcement through official channel (lawyer statement), (3) collective
+      action (≥2 people). Confidence is MEDIUM, not high, because the article does not
+      confirm the hunger strike is still ongoing at time of publication — "reported to
+      have begun" introduces uncertainty. If the article confirmed it with a named
+      medical officer or prison spokesperson, confidence would be high.
+
+    # INEFFECTIVE rationale (do NOT write like this):
+    # rationale: |
+    #   These people are on hunger strike in prison. They want to be released.
+    #   This counts because it is a protest.
+    # ^ Correct conclusion, but gives the model no reasoning tool for future
+    #   edge cases. What if there's one person? What if demands are personal
+    #   (release on bail) not political? The annotator must address these.
+
+    boundary_case: |
+      Nearest confusable: petition_signature (both can involve detainees making demands).
+      Resolution: A hunger strike involves physical self-deprivation as the method.
+      A petition involves collecting signatures or written demands. If the same detainees
+      also wrote a letter to the prison warden, that letter is NOT a separate event —
+      written demands are a normal incident of a hunger strike, not a separate petition.
+
+    article_snippet: |
+      Lawyers for twelve opposition figures detained at Luzira Prison in Kampala said
+      on Tuesday that their clients had begun a hunger strike to protest what they described
+      as unlawful detention and politically motivated charges. The detainees, supporters
+      of People Power movement leader Robert Kyagulanyi, are reported to have refused food
+      since Sunday. Their lawyers said the group was demanding either release on bail or
+      that formal charges be brought within the constitutionally required timeframe.
+      The Uganda Prisons Service did not respond to requests for comment. Two of the
+      detainees were reported to be in poor health, according to family members who
+      visited on Monday.
+
+    extracted_events:
+      - event_date: null
+        country: "Uganda"
+        city: "Kampala"
+        region: "Central Region"
+        venue: "Luzira Prison"
+        location_notes: null
+        event_type: "hunger_strike"
+        organizer: null
+        participant_groups: ["opposition detainees", "People Power movement supporters"]
+        claims: ["release on bail", "formal charges within constitutional timeframe", "end to unlawful detention"]
+        crowd_size: "12"
+        duration: "ongoing (began Sunday)"
+        state_response: "none"
+        state_actors: ["Uganda Prisons Service"]
+        arrests: null
+        fatalities: null
+        injuries: null
+        outcome: "ongoing"
+        outcome_notes: "Two detainees in poor health; prisons service did not comment"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "medium"
+
+    provenance:
+      source: "template_worked_example"
+      article_url: "REPLACE_WITH_REAL_URL"
+      annotator: "REPLACE_WITH_NAME"
+      date_annotated: "REPLACE_WITH_DATE"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION B — STUBS FOR ANNOTATOR TO COMPLETE
+# ─────────────────────────────────────────────────────────────────────────────
+# For each stub:
+#   1. Find a real article matching the description (see source guidance below)
+#   2. Paste the article text as article_snippet (3000 chars max; trim from middle)
+#   3. Hand-code the extracted_events following codebook v2.4
+#   4. Write rationale and boundary_case (see worked examples above for quality bar)
+#   5. Record the source URL and your name in provenance
+#
+# Source guidance per stub is given in comments above each entry.
+
+  # ===========================================================================
+  # STUB 3 — petition_signature
+  #
+  # Source guidance: search for "petition" + country in NG, ZA, or UG where
+  # a physical petition was delivered to a government office. Avoid online-only
+  # petitions (those cap at medium confidence). Good sources: GroundUp (ZA),
+  # Daily Monitor (UG), The Cable (NG).
+  #
+  # Key things to show:
+  #   - Organised collection of signatures (not just a crowd)
+  #   - Delivery of petition to a named recipient (ministry, parliament, municipality)
+  #   - Claims field lists the demands written in the petition
+  #   - If a march accompanied the delivery, STILL code as petition_signature
+  #     (the petition delivery is the primary tactic; the march is incidental)
+  # ===========================================================================
+
+  - id: "ex_08"
+    pinned: true
+    description: "TODO: Petition delivery — [country/city], [brief description]"
+
+    rationale: |
+      TODO: Explain the key coding decision. Which confusable type did you
+      consider? What single feature resolved it toward petition_signature?
+      If a march accompanied the delivery, explain why petition_signature wins.
+      If this is an online-only petition, explain the medium confidence cap.
+
+    boundary_case: |
+      TODO: Name the nearest confusable type and state the one-sentence resolution.
+      Example format: "Nearest confusable: demonstration_march. Resolution: [...]"
+
+    article_snippet: |
+      TODO: Paste article text here (real article, ≤3000 chars).
+      Record the source URL in provenance below.
+
+    extracted_events:
+      - event_date: null           # YYYY-MM-DD if stated; null if not
+        country: "TODO"
+        city: "TODO"
+        region: null               # state/province if named
+        venue: "TODO"              # building where petition was delivered
+        location_notes: null
+        event_type: "petition_signature"
+        organizer: "TODO"          # group that organised the collection
+        participant_groups: []     # ["students", "civil society groups", etc.]
+        claims: []                 # ["demand 1", "demand 2"] — copy from petition text
+        crowd_size: null
+        duration: null
+        state_response: "none"     # usually none; change if police responded
+        state_actors: []
+        arrests: null
+        fatalities: null
+        injuries: null
+        outcome: "unknown"         # demands_met / partial_concession / unknown
+        outcome_notes: null
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "TODO"         # high if physical delivery; medium if online-only
+
+    provenance:
+      source: "TODO"               # real_article / composite
+      article_url: "REPLACE_WITH_REAL_URL"
+      annotator: "REPLACE_WITH_NAME"
+      date_annotated: "REPLACE_WITH_DATE"
+
+
+  # ===========================================================================
+  # STUB 4 — demonstration_march IN ARABIC (DZ / Hirak context)
+  #
+  # Source guidance: search El Watan, TSA-Algérie, Algeria Watch, or
+  # Liberté for Hirak 2019–2021 Friday march coverage. The article must be
+  # in Arabic (not French). Good search terms: احتجاج الجزائر الحراك مسيرة
+  #
+  # Key things to show:
+  #   - Arabic-language article with transliterated or translated event details
+  #   - Anonymous organiser (Hirak had no formal organisation) → organizer: null
+  #   - Confidence: medium (CIVICUS rating + anonymous organiser rule)
+  #   - source_language: "ar"
+  #   - The article_snippet should be the ORIGINAL Arabic text, not a translation
+  #
+  # Why medium not high: codebook v2.4 rule — for articles from CIVICUS-rated
+  # repressed/closed countries (Algeria) where organiser is unnamed → max medium.
+  # ===========================================================================
+
+  - id: "ex_09"
+    pinned: true
+    description: "TODO: Demonstration — Hirak march, Algeria, Arabic-language source"
+
+    rationale: |
+      TODO: Explain two things: (1) why this is demonstration_march not confrontation
+      (Hirak marches were peaceful, organised, recurring — not spontaneous blockades);
+      (2) why confidence is medium despite the event being clearly described — apply
+      the CIVICUS repressed-context + anonymous organiser confidence cap rule.
+
+    boundary_case: |
+      TODO: Nearest confusable is confrontation (some Hirak marches involved police
+      cordons and brief clashes). State the resolution: if the primary reported action
+      is the march itself (people walking, chanting) and any clashes are incidental and
+      brief, code as demonstration_march.
+
+    article_snippet: |
+      TODO: Paste Arabic article text here (≤3000 chars).
+      The snippet must remain in Arabic — do not translate it.
+      The model needs to practise reading Arabic source text.
+
+    extracted_events:
+      - event_date: null
+        country: "Algeria"
+        city: "TODO"               # Algiers (الجزائر), Tizi Ouzou, etc.
+        region: null
+        venue: null
+        location_notes: "TODO"     # street name or neighbourhood if given
+        event_type: "demonstration_march"
+        organizer: null            # Hirak had no formal organisation
+        participant_groups: ["Hirak protesters", "citizens"]
+        claims: []                 # ["end to military rule", "free elections", etc.]
+        crowd_size: null           # Arabic articles often say آلاف (thousands) — use "thousands"
+        duration: null
+        state_response: "TODO"     # monitoring / dispersal / arrests — check article
+        state_actors: []
+        arrests: null
+        fatalities: null
+        injuries: null
+        outcome: "TODO"
+        outcome_notes: null
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: "Algeria"
+        source_language: "ar"      # MUST be "ar" — this is the point of the example
+        confidence: "medium"       # CIVICUS repressed + no named organiser → max medium
+
+    provenance:
+      source: "TODO"
+      article_url: "REPLACE_WITH_REAL_URL"
+      annotator: "REPLACE_WITH_NAME"
+      date_annotated: "REPLACE_WITH_DATE"
+
+
+  # ===========================================================================
+  # STUB 5 — confrontation OR strike_boycott IN FRENCH (DZ or Francophone Africa)
+  #
+  # Source guidance: search RFI Afrique, Jeune Afrique, Le Monde Afrique, or
+  # Liberté (DZ) for a service-delivery blockade, market shutdown, or transport
+  # strike in a Francophone country. Target: Sénégal, Côte d'Ivoire, DRC, or DZ.
+  # Good search terms: grève, blocus, manifestants, revendication
+  #
+  # Key things to show:
+  #   - French-language article; source_language: "fr"
+  #   - If a market shutdown / transport blockade: confrontation
+  #   - If a work stoppage: strike_boycott
+  #   - The article may use "grève" (strike) and "blocus" (blockade) interchangeably —
+  #     the annotator must determine which is the primary tactic and pick one type
+  #
+  # Note on dual events: if the article reports both a strike AND a street blockade
+  # by different groups, extract as two events (see ex_03 for the pattern).
+  # ===========================================================================
+
+  - id: "ex_10"
+    pinned: true
+    description: "TODO: [confrontation or strike_boycott] — [location], French-language source"
+
+    rationale: |
+      TODO: Explain the type choice (confrontation vs. strike_boycott) and any
+      ambiguity from French vocabulary. Note: French articles often use 'grève'
+      to mean both a work stoppage and a general protest shutdown. The distinction
+      is whether participants refused to WORK (strike_boycott) or blocked physical
+      ACCESS (confrontation). State which feature in the article resolved this.
+
+    boundary_case: |
+      TODO: Name the confusable type and resolution.
+
+    article_snippet: |
+      TODO: Paste French article text here (≤3000 chars, original language).
+
+    extracted_events:
+      - event_date: null
+        country: "TODO"            # Sénégal / Côte d'Ivoire / Algeria / DRC
+        city: "TODO"
+        region: null
+        venue: null
+        location_notes: null
+        event_type: "TODO"         # confrontation OR strike_boycott
+        organizer: "TODO"
+        participant_groups: []
+        claims: []
+        crowd_size: null
+        duration: null
+        state_response: "TODO"
+        state_actors: []
+        arrests: null
+        fatalities: null
+        injuries: null
+        outcome: "TODO"
+        outcome_notes: null
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: "TODO"
+        source_language: "fr"      # MUST be "fr"
+        confidence: "TODO"
+
+    provenance:
+      source: "TODO"
+      article_url: "REPLACE_WITH_REAL_URL"
+      annotator: "REPLACE_WITH_NAME"
+      date_annotated: "REPLACE_WITH_DATE"
