@@ -459,10 +459,11 @@ An article can qualify for multiple domains — for example, a protest dispersed
 
 **Supported domains:**
 
-| Domain | Codebook | Default query |
-|--------|----------|---------------|
-| `protest` | `configs/protest_codebook.yaml` | `protest demonstration strike rally march` |
-| `drone` | `configs/drone_events_codebook.yaml` | `drone UAV airstrike unmanned aircraft` |
+| Domain | Codebook | Default query | `--domains` support |
+|--------|----------|---------------|---------------------|
+| `protest` | `configs/protest_codebook.yaml` | `protest demonstration strike rally march` | Yes |
+| `drone` | `configs/drone_events_codebook.yaml` | `drone UAV airstrike unmanned aircraft` | Yes |
+| `violent_extremism` | `configs/violent_extremism_codebook.yaml` | — | Pending (use `--codebook` / `--examples` for now) |
 
 Use `--codebook` and `--examples` to supply a custom codebook YAML when running a single domain. These flags are not supported in multi-domain mode.
 
@@ -548,13 +549,25 @@ Extended (from criminalisation of protest literature): `legal_criminalisation`, 
 
 ## Configuration Files
 
+### Active codebooks and examples
+
 | File | Purpose |
 |------|---------|
 | [configs/protest_codebook.yaml](configs/protest_codebook.yaml) | Codebook v2.3 — 8 protest event type definitions with positive/negative examples, decision rules, non-event disqualifiers, African context notes, edge cases, state response vocabulary, confidence guidance |
 | [configs/drone_events_codebook.yaml](configs/drone_events_codebook.yaml) | Drone/UAV event codebook — parallel structure to protest codebook |
-| [configs/extraction_examples.yaml](configs/extraction_examples.yaml) | 3 gold-standard few-shot examples for protest extraction |
+| [configs/violent_extremism_codebook.yaml](configs/violent_extremism_codebook.yaml) | Violent extremism codebook v1.0 — GTD-aligned attack type taxonomy (assassination, bombing, armed assault, etc.); mutually exclusive with the protest codebook. Use with `--codebook` / `--examples` until the domain is wired into `DOMAIN_CONFIGS`. |
+| [configs/extraction_examples.yaml](configs/extraction_examples.yaml) | Gold-standard few-shot examples for protest extraction (5 pinned; promoted entries appended by annotation workflow) |
 | [configs/drone_extraction_examples.yaml](configs/drone_extraction_examples.yaml) | Few-shot examples for drone extraction |
+| [configs/violent_extremism_extraction_examples.yaml](configs/violent_extremism_extraction_examples.yaml) | Few-shot examples for the violent extremism domain (4 pinned entries covering bombing, armed assault, kidnapping, ambiguous criminal/VE cases) |
 | [configs/keywords.yaml](configs/keywords.yaml) | GDELT GKG themes, protest signal keywords (39, multilingual), URL signals |
+| [configs/countries.yaml](configs/countries.yaml) | Single source of truth for 48 countries (34 Africa target + 14 others) — ISO2, ISO3, FIPS, name, aliases. Loaded by `src/constants.py`; powers GDELT queries, BBC Monitoring, and the web dashboard. |
+
+### Templates — use these when extending the pipeline
+
+| File | When to use |
+|------|-------------|
+| [configs/extraction_examples_NEW_template.yaml](configs/extraction_examples_NEW_template.yaml) | Add new few-shot examples for codebook v2.4. Contains worked examples and stubs with TODO markers. Quality bar: real articles, full schema, one new type or country per entry, `boundary_case` field required. Paste finished entries into `configs/extraction_examples.yaml` with `pinned: true`. |
+| [configs/protest_codebook_v24_additions_template.yaml](configs/protest_codebook_v24_additions_template.yaml) | Six targeted decision-rule changes to apply to `protest_codebook.yaml` to produce v2.4: operational threshold for riot vs confrontation, vigil distinction, civic-space modifiers, and others. Apply each change and bump `metadata.version` to `"2.4"`. |
 
 ---
 
@@ -792,6 +805,34 @@ data/raw/protest/all_events.jsonl
 ```
 
 Each annotation session improves the few-shot pool that the next extraction run draws from. The improvement compounds: better examples → fewer type errors → fewer tier-1/2 events exported for annotation → faster future batches.
+
+---
+
+## Evaluation Test Set
+
+[tests/fixtures/test_set_v1.json](tests/fixtures/test_set_v1.json) is a 20-article ground-truth evaluation set for measuring pipeline quality before and after codebook or prompt changes.
+
+**Structure:** 5 articles per target country (NG, ZA, UG, DZ). Each country block contains:
+
+| Slot | Category | What to expect from the pipeline |
+|------|----------|-----------------------------------|
+| `_01`, `_02` | `clear_positive` | High-confidence event with named organiser, explicit claims, no ambiguity — pipeline should return ≥1 event |
+| `_03`, `_04` | `borderline` | Ambiguous framing, implied criteria, or mixed signals — tests confidence calibration |
+| `_05` | `non_event` | Article about an election result, parliamentary session, court ruling, or economic report — pipeline should return `[]` |
+
+**Status:** The fixture ships as a stub — `article.text`, `article.url`, and `ground_truth.events` fields are `"TODO"`. Fill each slot with a real article following the `_meta.instructions` in the file, hand-coding `ground_truth` against `protest_codebook.yaml` *before* running the pipeline.
+
+**Evaluation dimensions tracked:**
+
+| Metric | Definition |
+|--------|------------|
+| `extraction_rate` | % of `clear_positive` articles where the pipeline returns ≥1 event |
+| `rejection_rate` | % of `non_event` articles where the pipeline correctly returns `[]` |
+| `type_accuracy` | % of extracted events where `event_type` matches the ground truth |
+| `false_negative_rate` | % of ground-truth events missing entirely from pipeline output |
+| `confidence_calibration` | Mean pipeline confidence for each category — `clear_positive` should be highest |
+
+**Codebook version:** v2.4. If you complete the test set before applying the v2.4 template changes, code against v2.3 and record the discrepancy in `coding_notes`.
 
 ---
 
