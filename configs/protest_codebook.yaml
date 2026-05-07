@@ -49,7 +49,7 @@ metadata:
   source_datasets: ["ACLED", "PolDem", "FARPE", "Meta Codebook"]
   unit_of_analysis: "Individual protest event"
   minimum_participants: 2
-  llm_backend: "Azure AI Foundry (gpt-4o-mini)"
+  llm_backend: "Azure AI Foundry (gpt-5.4)"
   version: "2.4"
   last_updated: "2026-05-07"
 

@@ -658,7 +658,7 @@ def main():
     parser.add_argument(
         "--model",
         default=None,
-        help="Deployment name in Azure AI Foundry project (default: gpt-4.1)",
+        help="Deployment name in Azure AI Foundry project (default: gpt-5.4)",
     )
     parser.add_argument(
         "--api-key",

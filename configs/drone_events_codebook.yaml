@@ -15,7 +15,7 @@ metadata:
   title: "Comprehensive Drone Event Codebook for LLM Classification"
   version: "1.0"
   last_updated: "April 2026"
-  llm_backend: "Azure AI Foundry (gpt-4o-mini)"
+  llm_backend: "Azure AI Foundry (gpt-5.4)"
   description: >
     Type III stipulative definitions for zero-shot LLM event classification
     of drone/UAV incidents. Designed for extraction from unstructured news

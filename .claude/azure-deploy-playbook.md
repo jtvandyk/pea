@@ -214,7 +214,7 @@ PASS: live Azure Foundry endpoint is reachable and returning JSON.
 If the smoke test fails:
 - 401: foundry key wrong or pasted with whitespace.
 - 404 "deployment not found": the deployment name in the Foundry project
-  doesn't match the script's default (`gpt-4.1`). Set
+  doesn't match the script's default (`gpt-5.4`). Set
   `PEA_SMOKE_MODEL=<your-deployment>` and re-run, or set `SKIP_SMOKE=1`
   if you'll fix it later.
 - Connection error: endpoint URL malformed (most often missing the
