@@ -268,6 +268,7 @@ def save_results(
     failures: Optional[list] = None,
     upload_to: Optional[str] = None,
     domain: str = "protest",
+    degraded_modes: Optional[list] = None,
 ) -> Path:
     """
     Save events to JSONL, CSV, and a run summary file.
@@ -277,6 +278,11 @@ def save_results(
 
     If failures are provided, writes them to failures_{run_id}.jsonl.
     If upload_to is set, uploads all output files to S3 or Azure Blob after writing.
+
+    degraded_modes: list of stage:reason strings (e.g.
+    'relevance_filter:keyword_fallback'). Recorded in the run summary so an
+    operator can tell when a run completed with a stage running below its
+    intended quality bar (model failed to load, fallback path engaged).
 
     Derives turmoil_level for each event before writing.
     Returns the effective output directory (output_dir/domain/).
@@ -332,6 +338,7 @@ def save_results(
         "timestamp": datetime.utcnow().isoformat(),
         "total_events": len(events),
         "total_failures": len(failures) if failures else 0,
+        "degraded_modes": list(degraded_modes) if degraded_modes else [],
         "events_by_country": count_by(events, "country"),
         "events_by_type": count_by(events, "event_type"),
         "events_by_state_response": count_by(events, "state_response"),
