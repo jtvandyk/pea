@@ -274,9 +274,10 @@ The JSON report includes a `match_records` array (one entry per gold event) for 
 
 | Issue | File | Notes |
 |---|---|---|
-| `_article_text` not written to event dicts | `extractor.py`, `storage.py` | Breaks annotation training pair generation |
-| `torch` in requirements-core.txt pulls CUDA build | `Dockerfile` | Need to pin CPU wheel URL explicitly |
 | ACLED validator not yet built | `src/validation/` | Unblocked — ACLED token needed |
+| Single-domain pipeline runs translation **after** relevance filter | `src/acquisition/pipeline.py` (`run_acquire_pipeline`) | Multi-domain path already does translate-first; align them so the NLI relevance filter sees translated text |
+| BBC token has no refresh on 401 | `src/acquisition/bbc_discovery.py` | Long backfills may expire mid-run |
+| Checkpoint append is thread-safe but not crash-atomic | `src/acquisition/extractor.py:_write_checkpoint` | SIGKILL during write can leave a partial line that fails the resume-skip match |
 
 ---
 
@@ -295,6 +296,7 @@ The JSON report includes a `match_records` array (one entry per gold event) for 
 | 2026-04-05 | GLOCON validator (`src/validation/glocon_validator.py`) |
 | 2026-04-05 | Active learning annotation pipeline (Label Studio + export/import scripts) |
 | 2026-04-25 | CI fixes: black formatting, flake8 violations, Dockerfile.web missing src/constants.py |
+| 2026-05-07 | Pre-prod review: documented 8 dashboard env vars in `.env.example`, added startup config-presence assertion, added `scripts/smoke_extract.py` for post-deploy verification |
 
 ---
 
@@ -310,14 +312,8 @@ python -m pytest tests/ -q           # must exit 0
 
 Linter config lives in `.flake8` (max-line-length 120, E203 ignored for black compat).
 
-### Dockerfile coupling rule
+### Docker COPY notes
 
-`Dockerfile.web` copies individual files from `src/` rather than the whole tree. When you add a **new module** anywhere under `src/` that `src/web/app.py` (or anything it imports) depends on, you must also add the corresponding `COPY` line to `Dockerfile.web`. Current explicit copies:
+Both `Dockerfile` and `Dockerfile.web` use `COPY src/ ./src/` and `COPY configs/ ./configs/`, so new modules and new config YAMLs are picked up automatically. If you reintroduce per-file copies in `Dockerfile.web` for image-size reasons, restore the coupling-rule section here.
 
-```dockerfile
-COPY src/web/ ./src/web/
-COPY src/__init__.py ./src/__init__.py
-COPY src/constants.py ./src/constants.py
-```
-
-The pipeline `Dockerfile` uses `COPY src/ ./src/` so it picks up new modules automatically.
+`pipeline.main()` asserts that `configs/protest_codebook.yaml`, `configs/extraction_examples.yaml`, `configs/keywords.yaml`, and `configs/countries.yaml` are present at startup — see `_assert_required_configs()`. If you remove any of those files or rename them, update that allow-list.

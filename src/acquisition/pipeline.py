@@ -72,6 +72,31 @@ DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parents[2] / "data" / "raw"
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# Files the pipeline cannot run without. Missing any of these is a deploy bug,
+# not a runtime soft-fail — the codebook + examples drive ~29k tokens of
+# SYSTEM_PROMPT, and silently losing them collapses extraction quality without
+# any error signal. Crash loud at startup instead.
+_REQUIRED_CONFIGS = [
+    _REPO_ROOT / "configs" / "protest_codebook.yaml",
+    _REPO_ROOT / "configs" / "extraction_examples.yaml",
+    _REPO_ROOT / "configs" / "keywords.yaml",
+    _REPO_ROOT / "configs" / "countries.yaml",
+]
+
+
+def _assert_required_configs() -> None:
+    missing = [
+        str(p.relative_to(_REPO_ROOT)) for p in _REQUIRED_CONFIGS if not p.is_file()
+    ]
+    if missing:
+        raise SystemExit(
+            "Pipeline cannot start — required config files missing from image: "
+            + ", ".join(missing)
+            + ". Verify the Dockerfile copies the configs/ directory and that no "
+            ".dockerignore rule is excluding these YAMLs."
+        )
+
+
 # Maps domain name → default codebook, examples, and GDELT query.
 # Override individual fields via --codebook / --examples / --query CLI flags.
 DOMAIN_CONFIGS: dict = {
@@ -457,6 +482,8 @@ def main():
     from dotenv import load_dotenv
 
     load_dotenv()
+
+    _assert_required_configs()
 
     def _handle_sigterm(signum, frame):
         log.warning("SIGTERM received — checkpoint already persisted; exiting cleanly")
