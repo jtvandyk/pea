@@ -183,6 +183,10 @@ az containerapp job create \
     "--workers" "4" \
     "--rpm-limit" "450" \
   --output none
+# NOTE: --domains is intentionally omitted so the pipeline runs with its
+# default ('protest' only). Adding 'drone' or any future domain to this list
+# requires that domain to be validated against ground truth first — see
+# DOMAIN_CONFIGS in src/acquisition/pipeline.py for the registration gate.
 
 # ── 7. pea-backfill Container Apps Job (manual trigger) ───────────────────────
 echo "--- Creating Container Apps Job: pea-backfill ---"

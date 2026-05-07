@@ -200,7 +200,12 @@ sync_checkpoint_from_blob = sync_checkpoint_from_adls
 
 
 def upload_checkpoint(upload_to: str, output_dir: Path) -> None:
-    """Upload checkpoint.txt to ADLS Gen2 (called periodically during a run)."""
+    """Upload checkpoint.txt to ADLS Gen2 (called periodically during a run).
+
+    Mid-run failures here are non-fatal because the next sync will catch up
+    and the final upload in save_results() is the authoritative one. If the
+    final upload also fails, save_results() raises so the run exits non-zero.
+    """
     if not upload_to.startswith("abfss://"):
         return
     cp = output_dir / "checkpoint.txt"
@@ -209,7 +214,10 @@ def upload_checkpoint(upload_to: str, output_dir: Path) -> None:
     try:
         _upload_outputs(upload_to, [cp])
     except Exception as e:
-        log.warning(f"Checkpoint upload failed (non-fatal): {e}")
+        log.warning(
+            f"Periodic checkpoint upload to {upload_to} failed (will retry "
+            f"at next sync interval, final upload is authoritative): {e}"
+        )
 
 
 def _upload_outputs(destination: str, paths: list[Path]) -> None:
@@ -363,7 +371,13 @@ def save_results(
         f"Output: {output_dir}"
     )
 
-    # Upload to cloud storage if requested
+    # Upload to cloud storage if requested.
+    # The final upload is the only path by which events become visible to the
+    # dashboard and downstream consumers. Silently warning on failure means
+    # the run "succeeds" but no events land in ADLS — the on-call only finds
+    # out when someone notices the empty dashboard. Re-raise instead so the
+    # Container Apps JobExecutionStatus alert (configured in infra/deploy.sh)
+    # fires immediately.
     if upload_to:
         upload_paths = [jsonl_path, csv_path, cumulative_path, summary_path]
         if failures_path:
@@ -376,6 +390,11 @@ def save_results(
             _upload_outputs(upload_to, upload_paths)
             log.info("Cloud upload complete")
         except Exception as e:
-            log.warning(f"Cloud upload failed (results saved locally): {e}")
+            log.error(
+                f"Cloud upload to {upload_to} failed: {e}. "
+                f"Results are saved locally at {output_dir} but will not be "
+                "visible to the dashboard. Failing the run."
+            )
+            raise
 
     return output_dir
