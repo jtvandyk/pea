@@ -366,6 +366,7 @@ def run_pipeline(
                 a["text_lang"] = "unknown"
 
     # Stage 2.5: Relevance filter — rejects non-domain articles before LLM
+    degraded_modes: list = []
     with _stage("relevance_filter"):
         log.info(f"--- Stage 2.5: Relevance Filter (domain={domain}) ---")
         _rf = RelevanceFilter(
@@ -373,6 +374,14 @@ def run_pipeline(
             domain=domain,
             batch_size=relevance_batch_size,
         )
+        if _rf.degraded_mode:
+            log.warning(
+                "Relevance filter running in DEGRADED MODE (NLI model "
+                "unavailable, keyword fallback active). Precision will be "
+                "lower than the configured threshold suggests; this run "
+                "will be flagged in the summary's degraded_modes list."
+            )
+            degraded_modes.append("relevance_filter:keyword_fallback")
         scraped, rf_rejected = _rf.filter(scraped)
         log.info(
             f"Relevance filter: {len(scraped)} kept, {len(rf_rejected)} rejected "
@@ -425,6 +434,7 @@ def run_pipeline(
             failures=failures,
             upload_to=upload_to,
             domain=domain,
+            degraded_modes=degraded_modes,
         )
         log.info(f"Results saved to {out_path}")
 
@@ -470,112 +480,130 @@ def run_pipeline_multi_codebook(
 
     Returns {domain: [events]} for all requested domains.
     """
+    run_id = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    _set_run_id(run_id)
+
     log.info(f"=== Multi-codebook pipeline: domains={domains} ===")
 
     # --- Stage 1: Discovery (merge GDELT queries across all active domains) ---
-    all_query_terms: set = set()
-    for d in domains:
-        cfg = DOMAIN_CONFIGS.get(d, {})
-        all_query_terms.update(cfg.get("query", "").split())
-    merged_query = " ".join(sorted(all_query_terms))
-    log.info(f"Merged GDELT query: '{merged_query}'")
+    with _stage("discovery"):
+        all_query_terms: set = set()
+        for d in domains:
+            cfg = DOMAIN_CONFIGS.get(d, {})
+            all_query_terms.update(cfg.get("query", "").split())
+        merged_query = " ".join(sorted(all_query_terms))
+        log.info(f"Merged GDELT query: '{merged_query}'")
 
-    articles = _discover_articles(
-        source=source,
-        query=merged_query,
-        countries=countries,
-        days=days,
-        max_articles=max_articles,
-        file_path=file_path,
-    )
+        articles = _discover_articles(
+            source=source,
+            query=merged_query,
+            countries=countries,
+            days=days,
+            max_articles=max_articles,
+            file_path=file_path,
+        )
 
     if not articles:
         log.warning("No articles found.")
         return {d: [] for d in domains}
 
     # --- Stage 2: Scraping (shared — happens once for all domains) ---
-    log.info("--- Stage 2: Full-text Scraping (shared) ---")
-    articles = scrape_articles(articles, max_workers=scrape_workers)
-    scraped = [a for a in articles if a.get("text")]
-    log.info(f"Successfully scraped {len(scraped)}/{len(articles)} articles")
+    with _stage("scraping"):
+        log.info("--- Stage 2: Full-text Scraping (shared) ---")
+        articles = scrape_articles(articles, max_workers=scrape_workers)
+        scraped = [a for a in articles if a.get("text")]
+        log.info(f"Successfully scraped {len(scraped)}/{len(articles)} articles")
 
     if not scraped:
         log.warning("No articles could be scraped.")
         return {d: [] for d in domains}
 
     # --- Stage 3: Translation (shared) ---
-    if translate:
-        log.info("--- Stage 3: Translation (shared) ---")
-        scraped = translate_articles(scraped)
-    else:
-        for a in scraped:
-            a["text_en"] = a.get("text")
-            a["text_lang"] = "unknown"
+    with _stage("translation"):
+        if translate:
+            log.info("--- Stage 3: Translation (shared) ---")
+            scraped = translate_articles(scraped)
+        else:
+            for a in scraped:
+                a["text_en"] = a.get("text")
+                a["text_lang"] = "unknown"
 
     # --- Stages 2.5 + 4 + 4.5 + 5: Per-domain in series (preserves prompt caching) ---
     results: dict = {}
-    run_id = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
 
     for domain in domains:
         cfg = DOMAIN_CONFIGS.get(domain, {})
+        _set_domain(domain)
         log.info(f"=== Domain: {domain} ===")
 
         # Stage 2.5: Domain-specific relevance filter
-        log.info(f"--- Stage 2.5: Relevance Filter (domain={domain}) ---")
-        _rf = RelevanceFilter(
-            threshold=relevance_threshold,
-            domain=domain,
-            batch_size=relevance_batch_size,
-        )
-        domain_articles, rf_rejected = _rf.filter(scraped)
-        log.info(f"  {len(domain_articles)} kept, {len(rf_rejected)} rejected")
+        domain_degraded: list = []
+        with _stage("relevance_filter"):
+            log.info(f"--- Stage 2.5: Relevance Filter (domain={domain}) ---")
+            _rf = RelevanceFilter(
+                threshold=relevance_threshold,
+                domain=domain,
+                batch_size=relevance_batch_size,
+            )
+            if _rf.degraded_mode:
+                log.warning(
+                    f"Relevance filter for domain '{domain}' running in DEGRADED "
+                    "MODE (keyword fallback). Flagged in run summary."
+                )
+                domain_degraded.append("relevance_filter:keyword_fallback")
+            domain_articles, rf_rejected = _rf.filter(scraped)
+            log.info(f"  {len(domain_articles)} kept, {len(rf_rejected)} rejected")
         if not domain_articles:
             log.warning(f"  No articles passed relevance filter for domain '{domain}'")
             results[domain] = []
             continue
 
         # Stage 4: LLM extraction (all articles for this domain before switching)
-        log.info(f"--- Stage 4: Extraction (domain={domain}) ---")
-        effective_output_dir = output_dir / domain
-        effective_output_dir.mkdir(parents=True, exist_ok=True)
-        checkpoint_path = str(effective_output_dir / "checkpoint.txt")
+        with _stage("extraction"):
+            log.info(f"--- Stage 4: Extraction (domain={domain}) ---")
+            effective_output_dir = output_dir / domain
+            effective_output_dir.mkdir(parents=True, exist_ok=True)
+            checkpoint_path = str(effective_output_dir / "checkpoint.txt")
 
-        if resume and upload_to:
-            sync_checkpoint_from_adls(upload_to, effective_output_dir)
+            if resume and upload_to:
+                sync_checkpoint_from_adls(upload_to, effective_output_dir)
 
-        events, failures = extract_events(
-            domain_articles,
-            model=model,
-            api_key=api_key,
-            provider=provider,
-            checkpoint_path=checkpoint_path,
-            upload_to=upload_to,
-            codebook_path=cfg.get("codebook"),
-            examples_path=cfg.get("examples"),
-            workers=workers,
-            rpm_limit=rpm_limit,
-            examples_sample_n=examples_sample_n,
-        )
-        log.info(f"  Extracted {len(events)} events ({len(failures)} failures)")
+            events, failures = extract_events(
+                domain_articles,
+                model=model,
+                api_key=api_key,
+                provider=provider,
+                checkpoint_path=checkpoint_path,
+                upload_to=upload_to,
+                codebook_path=cfg.get("codebook"),
+                examples_path=cfg.get("examples"),
+                workers=workers,
+                rpm_limit=rpm_limit,
+                examples_sample_n=examples_sample_n,
+            )
+            log.info(f"  Extracted {len(events)} events ({len(failures)} failures)")
 
         # Stage 4.5: Geocoding
         if geocode and events:
-            log.info(f"--- Stage 4.5: Geocoding (domain={domain}) ---")
-            events = geocode_events(
-                events,
-                cache_path=geocode_cache,
-                max_workers=geocode_workers,
-            )
+            with _stage("geocoding"):
+                log.info(f"--- Stage 4.5: Geocoding (domain={domain}) ---")
+                events = geocode_events(
+                    events,
+                    cache_path=geocode_cache,
+                    max_workers=geocode_workers,
+                )
 
         # Stage 5: Storage
-        save_results(
-            events,
-            output_dir=output_dir,
-            run_id=run_id,
-            failures=failures,
-            upload_to=upload_to,
-            domain=domain,
-        )
+        with _stage("storage"):
+            save_results(
+                events,
+                output_dir=output_dir,
+                run_id=run_id,
+                failures=failures,
+                upload_to=upload_to,
+                domain=domain,
+                degraded_modes=domain_degraded,
+            )
         results[domain] = events
 
     log.info(f"=== Multi-codebook pipeline complete: {list(results.keys())} ===")

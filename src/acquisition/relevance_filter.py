@@ -132,6 +132,14 @@ class RelevanceFilter:
 
         self._try_load_model(model_name, device)
 
+    @property
+    def degraded_mode(self) -> bool:
+        """True when the NLI model failed to load and the filter fell back to
+        keyword scoring. Surface this in the run summary so an operator knows
+        precision is lower than the configured threshold suggests.
+        """
+        return not self._model_available
+
     def _try_load_model(self, model_name: str, device: str) -> None:
         try:
             from transformers import pipeline as hf_pipeline
