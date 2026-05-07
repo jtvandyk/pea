@@ -13,7 +13,7 @@ deploy-day failure modes the unit tests can't:
 Exits 0 on success, 1 on any failure. Run from repo root:
 
     python -m scripts.smoke_extract
-    python -m scripts.smoke_extract --model gpt-4o-mini
+    python -m scripts.smoke_extract --model gpt-5.4
 """
 
 from __future__ import annotations
@@ -81,8 +81,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--model",
-        default=os.environ.get("PEA_SMOKE_MODEL", "gpt-4.1"),
-        help="Deployment name in Azure AI Foundry (default: gpt-4.1, "
+        default=os.environ.get("PEA_SMOKE_MODEL", "gpt-5.4"),
+        help="Deployment name in Azure AI Foundry (default: gpt-5.4, "
         "or PEA_SMOKE_MODEL env var)",
     )
     parser.add_argument(

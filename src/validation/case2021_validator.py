@@ -42,7 +42,7 @@ Two modes:
     --case-tsv CASE2021/task2/test_dataset/test_set_final_release_with_labels.tsv \\
     --mode extraction \\
     --provider azure \\
-    --model gpt-4o-mini \\
+    --model gpt-5.4 \\
     --output data/validation/case2021_extraction_report.json
 
 ## CASE SubType → PEA event_type crosswalk
@@ -225,7 +225,7 @@ def _compute_relevance_metrics(events: list[dict], threshold: float) -> dict:
 def run_extraction_mode(
     events: list[dict],
     provider: str = "azure",
-    model: str = "gpt-4o-mini",
+    model: str = "gpt-5.4",
     api_key: Optional[str] = None,
     max_workers: int = 4,
 ) -> dict:
@@ -356,7 +356,7 @@ def run_validation(
     model_name: str = "cross-encoder/nli-deberta-v3-small",
     use_model: bool = True,
     provider: str = "azure",
-    llm_model: str = "gpt-4o-mini",
+    llm_model: str = "gpt-5.4",
     api_key: Optional[str] = None,
 ) -> dict:
     """Full CASE 2021 Task 2 validation run."""
@@ -518,8 +518,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--llm-model",
-        default="gpt-4o-mini",
-        help="LLM deployment/model name (extraction mode) [default: gpt-4o-mini]",
+        default="gpt-5.4",
+        help="LLM deployment/model name (extraction mode) [default: gpt-5.4]",
     )
     parser.add_argument(
         "--api-key",

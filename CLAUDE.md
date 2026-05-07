@@ -56,7 +56,7 @@ BBC_MONITORING_USER_PASSWORD=     # --source bbc or both
 # Standard run — Azure AI Foundry, South Africa, 30 days
 python -m src.acquisition.pipeline \
   --provider azure \
-  --model gpt-4o-mini \
+  --model gpt-5.4 \
   --countries ZA \
   --days 30 \
   --max-articles 100
@@ -87,8 +87,8 @@ python -m src.acquisition.pipeline --provider azure \
 | Provider | Default model | API key env var |
 |---|---|---|
 | `claude` | `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` |
-| `openai` | `gpt-4o-mini` | `OPENAI_API_KEY` |
-| `azure` | `gpt-4o-mini` | `AZURE_FOUNDRY_API_KEY` + `AZURE_OPENAI_ENDPOINT` |
+| `openai` | `gpt-5.4` | `OPENAI_API_KEY` |
+| `azure` | `gpt-5.4` | `AZURE_FOUNDRY_API_KEY` + `AZURE_OPENAI_ENDPOINT` |
 
 For `--provider azure`, `--model` is the **deployment name** in your Azure AI Foundry project.
 
@@ -134,12 +134,12 @@ The extractor uses three layers working together:
 2. **Codebook injection** — `_build_codebook_context()` loads `configs/protest_codebook.yaml` at import time and appends all 8 event type definitions (positive examples, boundary negatives, decision rules) to SYSTEM_PROMPT. ~22k tokens. This is the dominant input token cost driver.
 3. **Few-shot examples** — `_build_few_shot_examples()` loads `configs/extraction_examples.yaml` and prepends 3 gold-standard article → JSON pairs to every user prompt. ~6k tokens.
 
-**Prompt caching:** The system prompt prefix (~29k tokens) is identical across every article in a run. Azure caches it automatically for gpt-4o-mini (>1024 token prefix). Cached tokens billed at 50% input rate. Savings logged at DEBUG level per call.
+**Prompt caching:** The system prompt prefix (~29k tokens) is identical across every article in a run. Azure caches it automatically when the prefix exceeds 1024 tokens. Cached tokens billed at 50% input rate. Savings logged at DEBUG level per call.
 
 **Per-call token budget (avg):**
 - Input: ~40,000 tokens (system 29k + few-shot 6.4k + article 4.4k)
 - Output: ~200 tokens (mix of `[]` and event objects)
-- Cost: ~$0.006 per article at gpt-4o-mini standard pricing
+- Cost: depends on the deployed model's per-token pricing — measure on a small canary run before scaling up.
 
 ---
 

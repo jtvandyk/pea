@@ -369,7 +369,7 @@ def process_events(
         resolved_key = api_key or os.environ.get(
             _PROVIDER_ENV_VARS.get(provider, ""), ""
         )
-        resolved_model = model or _PROVIDER_DEFAULT_MODELS.get(provider, "gpt-4o-mini")
+        resolved_model = model or _PROVIDER_DEFAULT_MODELS.get(provider, "gpt-5.4")
         if resolved_key:
             events = recheck_borderline(events, provider, resolved_model, resolved_key)
         else:

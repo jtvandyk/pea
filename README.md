@@ -6,7 +6,7 @@ Automated pipeline that turns African news coverage into structured, research-re
 |---|---|
 | **Codebook** | v2.4 (Halterman & Keith 2025, Type III stipulative definitions) |
 | **Target geography** | Nigeria (NG), South Africa (ZA), Uganda (UG), Algeria (DZ) |
-| **LLM backend** | Azure AI Foundry (`--model` sets the deployment name; default `gpt-4.1`) |
+| **LLM backend** | Azure AI Foundry (`--model` sets the deployment name; default `gpt-5.4`) |
 | **Production schedule** | Daily at 06:00 UTC via Azure Container Apps Job (`pea-daily`) |
 | **Active domains** | `protest` (production), `drone` (research) |
 
@@ -487,7 +487,7 @@ Domain & codebook
 
 LLM
   --provider TEXT             azure [only supported value]
-  --model TEXT                Azure deployment name [default: gpt-4.1]
+  --model TEXT                Azure deployment name [default: gpt-5.4]
   --api-key TEXT              Override AZURE_FOUNDRY_API_KEY env var
 
 Pipeline control

@@ -12,9 +12,9 @@ Default model: cross-encoder/nli-deberta-v3-small
     head has been fine-tuned on labelled PEA data (see active learning).
 
 Why this saves money: the system prompt + codebook injection is ~29k
-tokens. With gpt-4o-mini at $0.00616/article, every article rejected
-before the LLM saves that full amount. At a typical 40–60% GDELT noise
-rate this roughly halves API spend on large runs.
+tokens, and every article rejected before the LLM saves that full
+amount of input tokens (plus output, plus retries). At a typical
+40–60% GDELT noise rate this roughly halves API spend on large runs.
 
 Graceful degradation: if the model cannot be loaded (e.g. no internet
 access in a container with no model cache) the filter falls back to the

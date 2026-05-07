@@ -284,11 +284,11 @@ def _call_azure(
     """
     Call Azure AI Foundry via its OpenAI-compatible endpoint.
     The model name is the deployment name in your Foundry project
-    (e.g. 'gpt-4o-mini', 'claude-sonnet-4-6', 'gpt-5').
+    (e.g. 'gpt-5.4', 'claude-sonnet-4-6', 'gpt-5').
     Reads AZURE_OPENAI_ENDPOINT from the environment.
 
-    Prompt caching is automatic for gpt-4o-mini on Azure OpenAI when the
-    prompt prefix exceeds 1024 tokens. The system prompt + codebook injection
+    Prompt caching is automatic on Azure OpenAI when the prompt prefix
+    exceeds 1024 tokens. The system prompt + codebook injection
     (~29k tokens) is an ideal cache target -- all per-article variation is in
     the user message, leaving the system prefix identical across a run.
     Cached tokens are billed at 50% of the standard input rate.
@@ -469,7 +469,7 @@ _PROVIDER_ENV_VARS = {
 }
 
 _PROVIDER_DEFAULT_MODELS = {
-    "azure": "gpt-4.1",
+    "azure": "gpt-5.4",
 }
 
 
@@ -493,7 +493,7 @@ def extract_events(
 
     Args:
         articles: list of article dicts with 'text_en' field
-        model: deployment name in your Azure AI Foundry project (e.g. 'gpt-4.1')
+        model: deployment name in your Azure AI Foundry project (e.g. 'gpt-5.4')
         api_key: API key -- defaults to AZURE_FOUNDRY_API_KEY env var
         provider: always 'azure' (kept for interface compatibility)
         rate_limit_delay: seconds between requests (sequential mode only; ignored when workers>1)
@@ -505,7 +505,7 @@ def extract_events(
                  prompt caching is maximised, and share one sliding-window rate
                  limiter so retry storms cannot burst past the RPM ceiling.
         rpm_limit: Azure OpenAI RPM ceiling for the rate limiter (default 450 = 10%
-                   headroom under the 500 RPM gpt-4o-mini limit).
+                   headroom under a typical 500 RPM Azure deployment limit).
 
     Returns:
         (events, failures) -- flat list of extracted event dicts, and list of
