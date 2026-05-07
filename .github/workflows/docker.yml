@@ -7,9 +7,33 @@ on:
     branches: [main]
 
 jobs:
+  # ── Verify job: lint + unit tests must pass before any image is built or
+  #    pushed. lint.yml and tests.yml run independently for fast PR feedback;
+  #    duplicating them here is the gate that blocks bad images from reaching
+  #    ACR or :latest. Cross-workflow dependencies aren't expressible in
+  #    plain `needs:`, so the cheapest safe option is to repeat the checks.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install lint + test deps
+        run: |
+          pip install black==25.11.0 flake8 pytest
+          pip install numpy pyyaml pandas python-dotenv
+      - name: black
+        run: black --check src/ tests/
+      - name: flake8
+        run: flake8 src/ tests/
+      - name: pytest
+        run: pytest tests/ -q
+
   # ── Build-only job: runs on every PR to catch Docker failures before merge ──
   docker-build-test:
     if: github.event_name == 'pull_request'
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -24,6 +48,7 @@ jobs:
   # ── Build, tag, and push to ACR: runs only on push to main ─────────────────
   build-and-push:
     if: github.event_name == 'push'
+    needs: verify
     runs-on: ubuntu-latest
 
     steps:

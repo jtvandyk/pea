@@ -11,7 +11,7 @@ Stages:
   4. EXTRACTION  — Azure AI Foundry extracts structured protest event fields
   5. STORAGE     — save results to data/raw/ as JSONL + CSV
 
-Codebook version: 2.3
+Codebook version: 2.4
 
 Usage (from repo root):
     python -m src.acquisition.pipeline
@@ -26,6 +26,7 @@ Requires:
 import argparse
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from datetime import datetime
@@ -47,9 +48,22 @@ from src.acquisition.storage import (
 )
 from src.acquisition.processing import process_events
 from src.acquisition.predictions import run_predictions
+from src.utils.logging_context import (
+    install as _install_log_context,
+    set_run_id as _set_run_id,
+    set_domain as _set_domain,
+    stage as _stage,
+)
 
 
 class _JsonFormatter(logging.Formatter):
+    """Emit JSON log lines, including any contextvars set by logging_context.
+
+    Empty-string context fields are omitted so untagged messages stay terse.
+    """
+
+    _CONTEXT_FIELDS = ("run_id", "country", "stage", "domain")
+
     def format(self, record):
         entry = {
             "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
@@ -57,6 +71,10 @@ class _JsonFormatter(logging.Formatter):
             "logger": record.name,
             "msg": record.getMessage(),
         }
+        for field in self._CONTEXT_FIELDS:
+            value = getattr(record, field, "")
+            if value:
+                entry[field] = value
         if record.exc_info:
             entry["exc"] = self.formatException(record.exc_info)
         return json.dumps(entry)
@@ -65,6 +83,7 @@ class _JsonFormatter(logging.Formatter):
 _handler = logging.StreamHandler(sys.stdout)
 _handler.setFormatter(_JsonFormatter())
 logging.basicConfig(level=logging.INFO, handlers=[_handler])
+_install_log_context()
 log = logging.getLogger("pipeline")
 
 # Default output dir — aligns with project data structure
@@ -72,8 +91,40 @@ DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parents[2] / "data" / "raw"
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# Files the pipeline cannot run without. Missing any of these is a deploy bug,
+# not a runtime soft-fail — the codebook + examples drive ~29k tokens of
+# SYSTEM_PROMPT, and silently losing them collapses extraction quality without
+# any error signal. Crash loud at startup instead.
+_REQUIRED_CONFIGS = [
+    _REPO_ROOT / "configs" / "protest_codebook.yaml",
+    _REPO_ROOT / "configs" / "extraction_examples.yaml",
+    _REPO_ROOT / "configs" / "keywords.yaml",
+    _REPO_ROOT / "configs" / "countries.yaml",
+]
+
+
+def _assert_required_configs() -> None:
+    missing = [
+        str(p.relative_to(_REPO_ROOT)) for p in _REQUIRED_CONFIGS if not p.is_file()
+    ]
+    if missing:
+        raise SystemExit(
+            "Pipeline cannot start — required config files missing from image: "
+            + ", ".join(missing)
+            + ". Verify the Dockerfile copies the configs/ directory and that no "
+            ".dockerignore rule is excluding these YAMLs."
+        )
+
+
 # Maps domain name → default codebook, examples, and GDELT query.
 # Override individual fields via --codebook / --examples / --query CLI flags.
+#
+# `violent_extremism` is intentionally NOT registered here. The codebook and
+# examples files exist in configs/ but have not yet been validated end-to-end
+# on real news data. Wiring VE in production would mean either thin examples
+# misclassifying terrorism-adjacent reporting, or unvalidated event-type
+# crosswalks. Treat VE as research-only until a domain owner signs off and
+# adds the entry below.
 DOMAIN_CONFIGS: dict = {
     "protest": {
         "codebook": _REPO_ROOT / "configs" / "protest_codebook.yaml",
@@ -86,6 +137,62 @@ DOMAIN_CONFIGS: dict = {
         "query": "drone UAV airstrike unmanned aircraft",
     },
 }
+
+
+def _validate_domains(domains: list) -> None:
+    """Reject unknown domains before any expensive work.
+
+    Without this, `--domains violent_extremism` silently falls through to
+    DOMAIN_CONFIGS.get(domain, {}) and runs with no codebook injection —
+    the LLM produces protest output against an empty system prompt.
+    """
+    unknown = [d for d in domains if d not in DOMAIN_CONFIGS]
+    if unknown:
+        raise SystemExit(
+            f"Unknown --domains value(s): {unknown}. "
+            f"Registered domains: {sorted(DOMAIN_CONFIGS)}. "
+            "If you need to wire a new domain (e.g. violent_extremism), add an "
+            "entry to DOMAIN_CONFIGS with codebook + examples + query, and "
+            "validate end-to-end before flipping it on in production."
+        )
+
+
+def _validate_source_credentials(source: str, file_path: Optional[str]) -> None:
+    """Fail fast if a discovery source is selected but its credentials are missing.
+
+    Without this, --source bbc / worldnews / both / all run all of Stage 1a
+    (GDELT can take 2-5 minutes) before BBC or WorldNews discovery hits a
+    cryptic auth failure deep inside the source-specific module. Surface the
+    missing credential up front instead.
+    """
+    needs_bbc = source in ("bbc", "both", "all")
+    needs_worldnews = source in ("worldnews", "all")
+    needs_file = source == "file"
+
+    missing: list = []
+
+    if needs_bbc:
+        if not os.environ.get("BBC_MONITORING_USER_NAME", "").strip():
+            missing.append(
+                "BBC_MONITORING_USER_NAME (required for --source bbc/both/all)"
+            )
+        if not os.environ.get("BBC_MONITORING_USER_PASSWORD", "").strip():
+            missing.append(
+                "BBC_MONITORING_USER_PASSWORD (required for --source bbc/both/all)"
+            )
+
+    if needs_worldnews:
+        if not os.environ.get("WORLDNEWS_API_KEY", "").strip():
+            missing.append("WORLDNEWS_API_KEY (required for --source worldnews/all)")
+
+    if needs_file and not file_path:
+        missing.append("--file-path (required for --source file)")
+
+    if missing:
+        raise SystemExit(
+            "Cannot start discovery — missing credentials/inputs for "
+            f"--source {source}: " + "; ".join(missing)
+        )
 
 
 def _discover_articles(
@@ -102,6 +209,8 @@ def _discover_articles(
     Handles single-source and combined-source modes, including URL
     deduplication when multiple sources may overlap (both / all).
     """
+    _validate_source_credentials(source, file_path)
+
     articles: list = []
 
     if source in ("gdelt", "both", "all"):
@@ -186,7 +295,17 @@ def run_pipeline(
     examples_sample_n: int = 5,
     articles: Optional[list] = None,
 ):
-    log.info("=== Protest Event Analysis Pipeline (codebook v2.3) ===")
+    # Checkpoint and output files live under output_dir/domain/ for isolation.
+    effective_output_dir = output_dir / domain
+    effective_output_dir.mkdir(parents=True, exist_ok=True)
+    run_id = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+
+    # Tag every log line in this run with run_id + domain so Log Analytics
+    # queries can filter by run rather than by free-text substring match.
+    _set_run_id(run_id)
+    _set_domain(domain)
+
+    log.info("=== Protest Event Analysis Pipeline (codebook v2.4) ===")
     log.info(f"Query: '{query}' | Countries: {countries} | Days back: {days}")
     log.info(
         f"LLM provider: {provider} | model: {model or 'default'} | source: {source} | domain: {domain}"
@@ -194,109 +313,120 @@ def run_pipeline(
     if workers > 1:
         log.info(f"Concurrent extraction: {workers} workers, rpm_limit={rpm_limit}")
 
-    # Checkpoint and output files live under output_dir/domain/ for isolation.
-    effective_output_dir = output_dir / domain
-    effective_output_dir.mkdir(parents=True, exist_ok=True)
-    run_id = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-
     # Sync checkpoint from ADLS before reading it (enables resume after container restart)
     if resume and upload_to:
         sync_checkpoint_from_adls(upload_to, effective_output_dir)
 
     # Stage 1: Discovery — skipped when articles are pre-supplied (e.g. backfill mode)
-    if articles is not None:
-        log.info(f"Using {len(articles)} pre-discovered articles — skipping Stage 1")
-    else:
-        articles = _discover_articles(
-            source=source,
-            query=query,
-            countries=countries,
-            days=days,
-            max_articles=max_articles,
-            file_path=file_path,
-        )
+    with _stage("discovery"):
+        if articles is not None:
+            log.info(
+                f"Using {len(articles)} pre-discovered articles — skipping Stage 1"
+            )
+        else:
+            articles = _discover_articles(
+                source=source,
+                query=query,
+                countries=countries,
+                days=days,
+                max_articles=max_articles,
+                file_path=file_path,
+            )
 
-    log.info(f"Discovered {len(articles)} candidate articles total")
+        log.info(f"Discovered {len(articles)} candidate articles total")
 
     if not articles:
         log.warning("No articles found. Try broadening your query or country list.")
         return []
 
     # Stage 2: Full-text scraping
-    log.info("--- Stage 2: Full-text Scraping ---")
-    articles = scrape_articles(articles, max_workers=scrape_workers)
-    scraped = [a for a in articles if a.get("text")]
-    log.info(f"Successfully scraped {len(scraped)}/{len(articles)} articles")
+    with _stage("scraping"):
+        log.info("--- Stage 2: Full-text Scraping ---")
+        articles = scrape_articles(articles, max_workers=scrape_workers)
+        scraped = [a for a in articles if a.get("text")]
+        log.info(f"Successfully scraped {len(scraped)}/{len(articles)} articles")
 
     if not scraped:
         log.warning("No articles could be scraped. Check network access.")
         return []
 
+    # Stage 3: Translation (optional) — runs BEFORE the relevance filter so
+    # the NLI classifier (English-trained DeBERTa) sees translated text rather
+    # than scoring French/Arabic/Swahili articles in their source language.
+    # Aligns with the multi-domain pipeline's order. Translation cost on
+    # filter-rejected articles is dwarfed by the recall loss of misfiltering
+    # non-English protest reports.
+    with _stage("translation"):
+        if translate:
+            log.info("--- Stage 3: Translation ---")
+            scraped = translate_articles(scraped)
+        else:
+            for a in scraped:
+                a["text_en"] = a.get("text")
+                a["text_lang"] = "unknown"
+
     # Stage 2.5: Relevance filter — rejects non-domain articles before LLM
-    log.info(f"--- Stage 2.5: Relevance Filter (domain={domain}) ---")
-    _rf = RelevanceFilter(
-        threshold=relevance_threshold,
-        domain=domain,
-        batch_size=relevance_batch_size,
-    )
-    scraped, rf_rejected = _rf.filter(scraped)
-    log.info(
-        f"Relevance filter: {len(scraped)} kept, {len(rf_rejected)} rejected "
-        f"(saved ~${len(rf_rejected) * 0.00616:.2f} in LLM calls)"
-    )
+    with _stage("relevance_filter"):
+        log.info(f"--- Stage 2.5: Relevance Filter (domain={domain}) ---")
+        _rf = RelevanceFilter(
+            threshold=relevance_threshold,
+            domain=domain,
+            batch_size=relevance_batch_size,
+        )
+        scraped, rf_rejected = _rf.filter(scraped)
+        log.info(
+            f"Relevance filter: {len(scraped)} kept, {len(rf_rejected)} rejected "
+            f"(saved ~${len(rf_rejected) * 0.00616:.2f} in LLM calls)"
+        )
     if not scraped:
         log.warning(
             "All articles rejected by relevance filter. Lower --relevance-threshold?"
         )
         return []
 
-    # Stage 3: Translation (optional)
-    if translate:
-        log.info("--- Stage 3: Translation ---")
-        scraped = translate_articles(scraped)
-    else:
-        for a in scraped:
-            a["text_en"] = a.get("text")
-            a["text_lang"] = "unknown"
-
     # Stage 4: LLM Extraction via Azure AI Foundry
-    log.info("--- Stage 4: LLM Event Extraction (Azure AI Foundry) ---")
-    checkpoint_path = str(effective_output_dir / "checkpoint.txt")
-    events, failures = extract_events(
-        scraped,
-        model=model,
-        api_key=api_key,
-        provider=provider,
-        checkpoint_path=checkpoint_path,
-        upload_to=upload_to,
-        codebook_path=codebook_path,
-        examples_path=examples_path,
-        workers=workers,
-        rpm_limit=rpm_limit,
-        examples_sample_n=examples_sample_n,
-    )
-    log.info(f"Extracted {len(events)} events ({len(failures)} extraction failures)")
+    with _stage("extraction"):
+        log.info("--- Stage 4: LLM Event Extraction (Azure AI Foundry) ---")
+        checkpoint_path = str(effective_output_dir / "checkpoint.txt")
+        events, failures = extract_events(
+            scraped,
+            model=model,
+            api_key=api_key,
+            provider=provider,
+            checkpoint_path=checkpoint_path,
+            upload_to=upload_to,
+            codebook_path=codebook_path,
+            examples_path=examples_path,
+            workers=workers,
+            rpm_limit=rpm_limit,
+            examples_sample_n=examples_sample_n,
+        )
+        log.info(
+            f"Extracted {len(events)} events ({len(failures)} extraction failures)"
+        )
 
     # Stage 4.5: Geocoding
     if geocode and events:
-        log.info("--- Stage 4.5: Geocoding ---")
-        events = geocode_events(
-            events,
-            cache_path=geocode_cache,
-            max_workers=geocode_workers,
-        )
+        with _stage("geocoding"):
+            log.info("--- Stage 4.5: Geocoding ---")
+            events = geocode_events(
+                events,
+                cache_path=geocode_cache,
+                max_workers=geocode_workers,
+            )
 
     # Stage 5: Storage
-    log.info("--- Stage 5: Saving Results ---")
-    out_path = save_results(
-        events,
-        output_dir=output_dir,
-        run_id=run_id,
-        failures=failures,
-        upload_to=upload_to,
-        domain=domain,
-    )
-    log.info(f"Results saved to {out_path}")
+    with _stage("storage"):
+        log.info("--- Stage 5: Saving Results ---")
+        out_path = save_results(
+            events,
+            output_dir=output_dir,
+            run_id=run_id,
+            failures=failures,
+            upload_to=upload_to,
+            domain=domain,
+        )
+        log.info(f"Results saved to {out_path}")
 
     # Always push the final checkpoint state to ADLS, even when save_results
     # returns early (zero events). Covers runs where <10 articles were processed
@@ -457,6 +587,8 @@ def main():
     from dotenv import load_dotenv
 
     load_dotenv()
+
+    _assert_required_configs()
 
     def _handle_sigterm(signum, frame):
         log.warning("SIGTERM received — checkpoint already persisted; exiting cleanly")
@@ -678,6 +810,7 @@ def main():
 
     output_dir = Path(args.output_dir)
     domains = [d.strip() for d in args.domains.split(",") if d.strip()]
+    _validate_domains(domains)
 
     # Resolve geocode cache path: 'none' / empty string disables caching.
     _geocode_cache_arg = (args.geocode_cache or "").strip()

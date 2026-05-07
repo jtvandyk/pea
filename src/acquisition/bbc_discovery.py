@@ -130,19 +130,56 @@ def _build_session_headers(session_token: str) -> dict:
     return {"Cookie": f"JSESSIONID={session_token}"}
 
 
+class _BBCSession:
+    """Holds BBC creds + token; re-logs in on 401.
+
+    BBC Monitoring tokens expire 72 hours after issue. A 7-day backfill or any
+    long-running session that exceeds this will start hitting 401s mid-stream.
+    Wrapping the token + creds together lets search_bbc and fetch_bbc_product
+    transparently re-authenticate once on 401 and continue.
+    """
+
+    def __init__(self, username: str, password: str):
+        self._username = username
+        self._password = password
+        self.token: Optional[str] = None
+
+    def login(self) -> bool:
+        self.token = bbc_login(self._username, self._password)
+        return self.token is not None
+
+    def refresh(self) -> bool:
+        """Re-authenticate after a 401. Returns True on success."""
+        log.warning("BBC token rejected (401) — re-authenticating once")
+        return self.login()
+
+    def headers(self) -> dict:
+        return _build_session_headers(self.token or "")
+
+
+def _is_unauthorized(exc: BaseException) -> bool:
+    """True if a requests exception came back with HTTP 401."""
+    if isinstance(exc, requests.exceptions.HTTPError):
+        resp = getattr(exc, "response", None)
+        return resp is not None and resp.status_code == 401
+    return False
+
+
 def search_bbc(
     params: dict,
-    session_token: str,
+    session: "_BBCSession",
     max_results: int = 100,
     rate_limit_delay: float = 1.1,
 ) -> list:
     """
     Call BBC Monitoring search API with cursor-based pagination.
     Returns flat list of product metadata dicts.
+
+    Re-authenticates and retries the current page once on 401.
     """
-    headers = _build_session_headers(session_token)
-    results = []
+    results: list = []
     cursor = None
+    refreshed_once = False
 
     while len(results) < max_results:
         page_params = dict(params)
@@ -152,10 +189,19 @@ def search_bbc(
 
         try:
             resp = requests.get(
-                BBC_SEARCH_URL, params=page_params, headers=headers, timeout=30
+                BBC_SEARCH_URL,
+                params=page_params,
+                headers=session.headers(),
+                timeout=30,
             )
             resp.raise_for_status()
         except requests.exceptions.HTTPError as e:
+            if _is_unauthorized(e) and not refreshed_once:
+                refreshed_once = True
+                if session.refresh():
+                    continue  # retry the same page with the fresh token
+                log.warning("BBC search: re-auth failed after 401 — stopping")
+                break
             log.warning(f"BBC search HTTP error: {e}")
             break
         except Exception as e:
@@ -183,30 +229,37 @@ def search_bbc(
     return results
 
 
-def fetch_bbc_product(product_id: str, session_token: str) -> Optional[dict]:
+def fetch_bbc_product(product_id: str, session: "_BBCSession") -> Optional[dict]:
     """
     Fetch full article content for a single BBC Monitoring product ID.
     Returns product dict with bodyHtml, or None on failure.
+
+    Re-authenticates and retries once on 401.
     """
-    headers = _build_session_headers(session_token)
-    try:
-        resp = requests.get(
-            f"{BBC_PRODUCT_URL}/{product_id}",
-            params={"outputFormat": "HTML", "includePdfUrl": "false"},
-            headers=headers,
-            timeout=30,
-        )
-        resp.raise_for_status()
-        return resp.json()
-    except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 402:
-            log.debug(f"BBC product {product_id}: not in subscription")
-        else:
-            log.warning(f"BBC product {product_id} HTTP error: {e}")
-        return None
-    except Exception as e:
-        log.warning(f"BBC product {product_id} error: {e}")
-        return None
+    for attempt in range(2):
+        try:
+            resp = requests.get(
+                f"{BBC_PRODUCT_URL}/{product_id}",
+                params={"outputFormat": "HTML", "includePdfUrl": "false"},
+                headers=session.headers(),
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.HTTPError as e:
+            if _is_unauthorized(e) and attempt == 0:
+                if session.refresh():
+                    continue
+                return None
+            if e.response is not None and e.response.status_code == 402:
+                log.debug(f"BBC product {product_id}: not in subscription")
+            else:
+                log.warning(f"BBC product {product_id} HTTP error: {e}")
+            return None
+        except Exception as e:
+            log.warning(f"BBC product {product_id} error: {e}")
+            return None
+    return None
 
 
 def discover_articles(
@@ -244,8 +297,8 @@ def discover_articles(
         )
         return []
 
-    session_token = bbc_login(username, password)
-    if not session_token:
+    session = _BBCSession(username, password)
+    if not session.login():
         log.error("BBC Monitoring authentication failed — skipping BBC discovery")
         return []
 
@@ -282,14 +335,14 @@ def discover_articles(
         f"categories={PROTEST_CATEGORIES}, from={from_date}"
     )
 
-    raw_products = search_bbc(params, session_token, max_results=max_results)
+    raw_products = search_bbc(params, session, max_results=max_results)
     log.info(f"BBC Monitoring returned {len(raw_products)} products")
 
     if not raw_products:
         # Fallback: drop category filter but keep keyword search
         log.info("Retrying without category filter...")
         params_broad = {k: v for k, v in params.items() if k != "category"}
-        raw_products = search_bbc(params_broad, session_token, max_results=max_results)
+        raw_products = search_bbc(params_broad, session, max_results=max_results)
         log.info(f"BBC broad search returned {len(raw_products)} products")
 
     normalized = []
@@ -341,7 +394,7 @@ def discover_articles(
         # Optionally fetch full text (one request per article)
         if fetch_full_text:
             time.sleep(1.1)  # stay under 60 req/min
-            full = fetch_bbc_product(product_id, session_token)
+            full = fetch_bbc_product(product_id, session)
             if full:
                 html = full.get("bodyHtml", "")
                 article["text"] = _strip_html(html) if html else None

@@ -2,9 +2,16 @@
 # Aligned with Meta Codebook & Halterman & Keith (2025)
 # Author: Your Name
 # Created: March 2026
-# Version: 2.3 — Merged v1.1 (non-event filtering, African context) +
-#                 v2.1 (vigil/hunger_strike types, turmoil_level) +
-#                 v2.3 (boundary negatives, decision rules, lit review additions)
+# Version: 2.4 — Decision-rule additions on top of v2.3
+#
+# Revision notes (v2.4):
+#   - Change 1: confrontation/riot operational threshold
+#               (primary action + secondary indicator; tyre-burning blockade rule)
+#   - Change 2: occupation_seizure duration gate replaced with intent-to-remain rule
+#   - Change 3: petition_signature online-only confidence cap and hybrid-event rule
+#   - Change 4: hunger_strike prison + announcement + significance rules
+#   - Change 5: protest_adjacent_downgrade confidence modifier
+#   - Change 6: algeria_hirak country-specific coding rules
 #
 # Revision notes (v2.3):
 #   - Boundary negative examples and confusable-pair decision rules for all 8 event types
@@ -43,8 +50,8 @@ metadata:
   unit_of_analysis: "Individual protest event"
   minimum_participants: 2
   llm_backend: "Azure AI Foundry (gpt-4o-mini)"
-  version: "2.3"
-  last_updated: "2026-04-04"
+  version: "2.4"
+  last_updated: "2026-05-07"
 
 # ============================================================================
 # MINIMUM CRITERIA — ALL must be satisfied before any event is coded
@@ -275,6 +282,8 @@ event_types:
       - "When in doubt: favor peaceful classification (assume force was provoked by police)"
       - "IF article describes armed attack by militia/military → NOT a protest event"
       - "IF violence is between two civilian groups with no political demand targeting state or institution → NOT a protest riot, return []"
+      - "IF stone-throwing, tyre-burning, or deliberate property destruction is the PRIMARY reported action (not a brief or incidental incident) AND at least ONE of the following is also reported: arrests, injuries, security force deployment → RIOT. 'Primary' means the article's headline or lead paragraph characterises the event through the violence, not the march."
+      - "IF the same event begins as a march and transitions to property damage mid-event → RIOT (escalation takes priority; use the date of the march for event_date, note the transition in outcome_notes)."
 
     confidence_threshold: 0.80
     codebook_equivalents:
@@ -318,11 +327,11 @@ event_types:
       - "Military occupation or territorial seizure by armed forces (conflict, not protest)"
 
     decision_rules:
-      - "KEY: Duration and intentional occupation of space critical"
+      - "KEY: Intent to remain (stated or implied) is the gate, not duration. Duration is evidence of intent, not a threshold."
       - "IF just blocking passage without occupying space → CONFRONTATION"
-      - "IF occupies space for hours+ → OCCUPATION_SEIZURE"
+      - "IF protesters physically control a space (building, entrance, public square) with stated or implied intent to remain until demands are met → OCCUPATION_SEIZURE, regardless of actual duration. A sit-in dispersed by police after 20 minutes still qualifies if the participants declared they would stay."
+      - "IF the article reports only that protesters 'gathered outside' or 'blocked the entrance briefly' without any indication of intent to remain → CONFRONTATION, not OCCUPATION_SEIZURE."
       - "Armed groups taking territory → NOT a protest event"
-      - "IF occupation lasts < 2 hours AND protesters do not establish sustained presence → CONFRONTATION instead"
       - "IF article describes occupation AND hunger strike → HUNGER_STRIKE (more specific form takes priority)"
 
     confidence_threshold: 0.75
@@ -358,6 +367,7 @@ event_types:
       - "Distinguish from RIOT: Confrontation is intentional but non-violent"
       - "Distinguish from OCCUPATION_SEIZURE: Confrontation blocks or disrupts but does not establish sustained presence (< 2 hours typically)"
       - "IF burning tyres or debris are used to block a road → CONFRONTATION (roadblock is the action; fire is a tactic, not violence against persons)"
+      - "IF protesters block a road or building using burning tyres or debris BUT no persons are attacked and no looting is reported → CONFRONTATION, not RIOT. Burning objects as a blockade tactic is confrontation; burning objects as an expression of rage against persons or property is riot."
 
     confidence_threshold: 0.70
 
@@ -386,6 +396,9 @@ event_types:
     decision_rules:
       - "Online-only campaigns (hashtags, digital strikes, social media blackouts) qualify ONLY when they carry an explicit political demand AND show evidence of organized coordination — not individual signing or trending"
       - "IF an online campaign accompanies a physical protest → code the physical event as its primary type; note the online component in outcome_notes"
+      - "IF petition was collected online only (no physical gathering or delivery ceremony) → PETITION_SIGNATURE, confidence maximum MEDIUM. Online petitions are borderline on minimum criterion 2 (public setting). Include only if there is clear evidence of political targeting (named recipient, formal submission to a government body)."
+      - "IF a physical march or rally accompanied the petition delivery → extract as PETITION_SIGNATURE (the delivery is the culminating tactic). The march is part of the same event, not a separate DEMONSTRATION_MARCH. Exception: if the march is itself large and politically significant (>500 people, major city) and the petition delivery is incidental → DEMONSTRATION_MARCH, note petition in claims."
+      - "IF detainees submit a written letter of demands as part of a hunger strike → do NOT extract as a separate PETITION_SIGNATURE. Written demands are a normal incident of a hunger strike, not a distinct event."
 
     confidence_threshold: 0.65
 
@@ -449,6 +462,9 @@ event_types:
       - "Six prisoners simultaneously refused food to demand reform of solitary confinement"
       - "Jailed Ugandan opposition politician declared hunger strike demanding fair trial conditions"
       - "Ethiopian journalist on hunger strike in pre-trial detention demanding access to legal counsel"
+      - "Twelve opposition detainees at Luzira Prison announced a hunger strike via their lawyers, demanding release on bail (Uganda)"
+      - "Imprisoned civil society leaders refused food for ten days to protest their detention under anti-terrorism laws (Ethiopia)"
+      - "Former presidential candidate on hunger strike at military hospital demanding access to legal counsel (Algeria)"
 
     negative_examples:
       - "Person skips meals due to poverty (not a declared protest act)"
@@ -463,6 +479,9 @@ event_types:
       - "Can be a single individual (minimum participants rule does not apply)"
       - "IF hunger strike combined with occupation → code as HUNGER_STRIKE (more specific)"
       - "IF person merely threatens or says they will begin → do NOT code (action must have started)"
+      - "Prison hunger strikes ARE included when ALL THREE of these hold: (a) demands are political (not personal, e.g. not 'better food'), (b) the hunger strike is publicly announced (via lawyer, family statement, or press release — not just rumour), and (c) ≥2 people, OR 1 person of clear public significance (named activist, elected official, known opposition figure)."
+      - "Private food refusal by a detainee with no public announcement and no political demand → NOT included. The action must be knowingly public."
+      - "IF a hunger strike is collective AND public AND political but the article is primarily about the government's response (prison conditions report, parliamentary question) → STILL extract the hunger_strike event. Apply confidence downgrade for protest-adjacent reporting."
 
     confidence_threshold: 0.75
     codebook_equivalents:
@@ -719,6 +738,18 @@ african_context:
     and flag in outcome_notes. India, Pakistan, Iran, Turkey, China, and European
     countries are outside the primary scope of this dataset.
 
+  algeria_hirak:
+    description: |
+      The Hirak movement (Feb 2019 – Mar 2020, resumed 2021) consisted of
+      large, recurring weekly Friday marches across Algeria. Key coding notes:
+    rules:
+      - "Weekly Friday marches are DEMONSTRATION_MARCH events. Each Friday march is a distinct event even when articles describe it as 'the weekly march'."
+      - "Hirak had no formal organisation. Set organizer: null. Do NOT infer an organiser from protest slogans or social media pages."
+      - "Confidence ceiling: MEDIUM for all Hirak events. Algeria is CIVICUS-rated repressed; organisers stayed anonymous to avoid prosecution."
+      - "Pre-emptive arrests (before a planned march) → extract as a separate event: event_type: demonstration_march, state_response: arrests, outcome: dispersed, outcome_notes: 'pre-emptive detention prevented march'."
+      - "If the article gives only 'Friday' or 'last Friday' as the date with no calendar date → set event_date: null; record the article_date so the pipeline can approximate the event week."
+      - "Hirak slogans in Arabic (e.g. 'yetnahaw gaa' / they must all go) are political demands. Include them in claims even if the article does not translate them."
+
 # ============================================================================
 # EDGE CASES & DISAMBIGUATION
 # ============================================================================
@@ -902,6 +933,27 @@ confidence_guidance:
       - Country rated 'closed' (Eritrea, Sudan) → cap at 'low'
       This reflects known reporting gaps in independent media under civic space restriction,
       not a judgment about the event itself.
+
+  protest_adjacent_downgrade:
+    trigger: |
+      The article is primarily about a government announcement, court ruling,
+      parliamentary debate, police statement, or NGO report ABOUT a protest
+      event, rather than a contemporaneous news report OF the protest.
+    effect: "Downgrade confidence one level (high → medium; medium → low)"
+    examples:
+      trigger_yes:
+        - "Government bans protest march planned for Saturday (article published Friday)"
+        - "Police report 47 arrests from last week's demonstration"
+        - "Human rights commission publishes findings on 2023 crackdown"
+        - "Opposition leader condemns teargas use at yesterday's rally"
+      trigger_no:
+        - "Protesters marched through Kampala on Tuesday demanding [...]"
+        - "Hundreds arrested as police dispersed crowds outside parliament"
+        - "Strike continues for third day; union rejects government offer"
+    note: |
+      Apply to the event being described, not to the article as a whole. If an
+      article contains both a contemporaneous report of Event A and a government
+      statement about Event B, downgrade only Event B.
 
 # ============================================================================
 # QUALITY CONTROL CHECKLIST

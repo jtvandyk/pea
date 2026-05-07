@@ -7,12 +7,17 @@
 #
 # Required env vars (or edit the variables below):
 #   AZURE_FOUNDRY_API_KEY   — Azure AI Foundry key, stored in Key Vault
+#   AZURE_OPENAI_ENDPOINT   — e.g. https://<resource>.openai.azure.com/openai/v1
 #   ALERT_EMAIL             — email for job-failure alerts
 #
 # Usage:
 #   bash infra/deploy.sh
 #
 set -euo pipefail
+
+# Don't echo expanded commands — protects Key Vault secret values from CI logs
+# in case someone re-runs this with `bash -x`.
+set +x
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 RESOURCE_GROUP="${RESOURCE_GROUP:-pea-rg}"
@@ -90,6 +95,15 @@ az keyvault secret set \
   --value "${AZURE_FOUNDRY_API_KEY:?Set AZURE_FOUNDRY_API_KEY env var}" \
   --output none
 
+# AZURE_OPENAI_ENDPOINT is referenced as secretref:pea-openai-endpoint in both
+# job specs below. Without this secret, both jobs start with an empty endpoint
+# and crash on the first LLM call.
+az keyvault secret set \
+  --vault-name "$KV_NAME" \
+  --name pea-openai-endpoint \
+  --value "${AZURE_OPENAI_ENDPOINT:?Set AZURE_OPENAI_ENDPOINT env var (e.g. https://<resource>.openai.azure.com/openai/v1)}" \
+  --output none
+
 if [[ -n "${BBC_MONITORING_USER_NAME:-}" ]]; then
   az keyvault secret set --vault-name "$KV_NAME" \
     --name pea-bbc-username --value "$BBC_MONITORING_USER_NAME" --output none
@@ -159,6 +173,7 @@ az containerapp job create \
     "AZURE_FOUNDRY_API_KEY=secretref:pea-foundry-api-key" \
   --secrets \
     "pea-foundry-api-key=keyvaultref:${KV_URI}/secrets/pea-foundry-api-key,identityref:$IDENTITY_ID" \
+    "pea-openai-endpoint=keyvaultref:${KV_URI}/secrets/pea-openai-endpoint,identityref:$IDENTITY_ID" \
   --args \
     "--stage" "all" \
     "--countries" "NG,ZA,UG,DZ" \
@@ -168,6 +183,10 @@ az containerapp job create \
     "--workers" "4" \
     "--rpm-limit" "450" \
   --output none
+# NOTE: --domains is intentionally omitted so the pipeline runs with its
+# default ('protest' only). Adding 'drone' or any future domain to this list
+# requires that domain to be validated against ground truth first — see
+# DOMAIN_CONFIGS in src/acquisition/pipeline.py for the registration gate.
 
 # ── 7. pea-backfill Container Apps Job (manual trigger) ───────────────────────
 echo "--- Creating Container Apps Job: pea-backfill ---"
@@ -191,12 +210,16 @@ az containerapp job create \
     "AZURE_FOUNDRY_API_KEY=secretref:pea-foundry-api-key" \
   --secrets \
     "pea-foundry-api-key=keyvaultref:${KV_URI}/secrets/pea-foundry-api-key,identityref:$IDENTITY_ID" \
+    "pea-openai-endpoint=keyvaultref:${KV_URI}/secrets/pea-openai-endpoint,identityref:$IDENTITY_ID" \
   --output none
-# Pass --args at trigger time:
+# Pass --args at trigger time. ALWAYS include --resume + --upload-to so a
+# replica restart picks up where the previous attempt left off, otherwise
+# tokens are double-spent on every retry.
 #   az containerapp job start --name pea-backfill --resource-group pea-rg \
 #     --args "--stage" "all" "--countries" "NG,ZA,UG,DZ" \
 #            "--backfill-from" "2024-01-01" "--backfill-to" "2024-12-31" \
 #            "--backfill-window-days" "30" "--workers" "8" \
+#            "--resume" \
 #            "--upload-to" "abfss://pea-data/backfill"
 
 # ── 8. Azure Monitor alert on job failure ─────────────────────────────────────
@@ -250,7 +273,26 @@ echo "  az containerapp job start --name pea-backfill --resource-group $RESOURCE
 echo "    --args \"--stage\" \"all\" \"--countries\" \"NG,ZA,UG,DZ\" \\"
 echo "           \"--backfill-from\" \"2024-01-01\" \"--backfill-to\" \"2024-12-31\" \\"
 echo "           \"--backfill-window-days\" \"30\" \"--workers\" \"8\" \\"
+echo "           \"--resume\" \\"
 echo "           \"--upload-to\" \"abfss://$ADLS_FILESYSTEM/backfill\""
 echo ""
 echo "To watch execution logs:"
 echo "  az containerapp job execution list --name pea-daily --resource-group $RESOURCE_GROUP --output table"
+echo ""
+
+# ── 9. Post-deploy smoke test (B5) ────────────────────────────────────────────
+# Verify the live Azure Foundry deployment + endpoint pair actually responds
+# before relying on the cron. Skip with SKIP_SMOKE=1 if running deploy.sh
+# offline or in a CI dry-run.
+if [[ "${SKIP_SMOKE:-0}" != "1" ]]; then
+  echo "--- Running post-deploy smoke test against AZURE_OPENAI_ENDPOINT ---"
+  if (cd "$(dirname "$0")/.." && python scripts/smoke_extract.py); then
+    echo "  Smoke test PASSED"
+  else
+    echo "  Smoke test FAILED — endpoint, deployment name, or credentials are wrong."
+    echo "  Fix and re-run, or set SKIP_SMOKE=1 to bypass."
+    exit 1
+  fi
+else
+  echo "Skipping smoke test (SKIP_SMOKE=1)."
+fi
