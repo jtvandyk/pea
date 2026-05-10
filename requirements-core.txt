@@ -1,5 +1,13 @@
 # Core pipeline dependencies only (used by Dockerfile)
 # GPU/ML packages (vllm, torch, transformers, etc.) are in requirements.txt
+#
+# Pinning policy: anthropic and transformers are exact-pinned because
+# (a) anthropic 0.50+ has known breaking changes to the SDK message API, and
+# (b) transformers tokenizer changes between minor versions move the DeBERTa
+#     embedding space enough that the relevance-filter 0.30 threshold is no
+#     longer calibrated. Bump these intentionally with a re-validation pass
+#     against CASE 2021 / CEHA test sets, not on a casual container rebuild.
+# Other dependencies use floors (>=) — bump them eagerly during routine work.
 
 # Text Acquisition Pipeline
 beautifulsoup4>=4.12.0
@@ -9,7 +17,7 @@ langdetect>=1.0.9
 deep-translator>=1.11.0
 
 # LLM APIs
-anthropic>=0.49.0
+anthropic==0.49.0
 openai>=1.30.0
 
 # Geocoding
@@ -30,10 +38,10 @@ pyyaml==6.0
 tqdm==4.66.0
 requests==2.31.0
 
-# Relevance filter (ConfliBERT / zero-shot NLI)
+# Relevance filter (ConfliBERT / zero-shot NLI).
 # torch is installed separately in the Dockerfile via the PyTorch CPU-only
 # index URL to avoid pulling the 2 GB CUDA build.
 # For local dev outside Docker, install manually:
 #   pip install torch --index-url https://download.pytorch.org/whl/cpu
-#   pip install transformers>=4.40.0
-transformers>=4.40.0
+#   pip install transformers==4.40.0
+transformers==4.40.0

@@ -192,6 +192,151 @@ examples:
         source_language: "en"
         confidence: "medium"
 
+  - id: "ex_06"
+    pinned: true
+    description: "Petition delivery march — Uganda student tuition petition"
+    rationale: |
+      Demonstrates PETITION_SIGNATURE, currently uncovered. The most common
+      misclassification pattern: a march that delivers a signed petition gets
+      coded as DEMONSTRATION_MARCH only, missing that the demand vehicle is
+      the petition itself. The march is the means; the petition is the action.
+      Code as PETITION_SIGNATURE when (a) signatures are explicitly named,
+      (b) delivery to a named decision-maker is the focal action, and (c) the
+      crowd dispersed once the petition was handed over.
+    article_snippet: |
+      About 800 students from Makerere University and Kyambogo University walked
+      from Wandegeya to Parliament in Kampala on Wednesday morning to deliver a
+      petition signed by more than 18,000 students demanding a rollback of the
+      40 percent tuition fee increase announced last month. The petition,
+      organised by the National Union of Ugandan Students, was received at the
+      gate by the Deputy Speaker's office. After handing over the document the
+      students dispersed peacefully. Police monitored the march but did not
+      intervene. Union leaders said they would escalate if no response was
+      received within fourteen days.
+    extracted_events:
+      - event_date: null
+        country: "Uganda"
+        city: "Kampala"
+        region: "Central Region"
+        venue: "Parliament of Uganda"
+        location_notes: "Walk route from Wandegeya to Parliament; petition received at gate"
+        event_type: "petition_signature"
+        organizer: "National Union of Ugandan Students"
+        participant_groups: ["students", "Makerere University students", "Kyambogo University students"]
+        claims: ["rollback of 40% tuition fee increase"]
+        crowd_size: "800"
+        duration: null
+        state_response: "monitoring"
+        state_actors: ["police"]
+        arrests: "0"
+        fatalities: null
+        injuries: null
+        outcome: "delivered"
+        outcome_notes: "Petition (18,000+ signatures) received by Deputy Speaker's office; students gave 14-day ultimatum"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "high"
+
+  - id: "ex_07"
+    pinned: true
+    description: "Hunger strike — Algerian Hirak detainees with political demand"
+    rationale: |
+      Demonstrates HUNGER_STRIKE, currently uncovered. The disambiguating rule:
+      detainee food refusal counts ONLY when the demand is political (fair
+      trial, release, end of charges). Generic prison-conditions complaints
+      (food quality, cell overcrowding, medical access) do NOT meet the
+      protest-event threshold. Also demonstrates an Arabic/French-language
+      news context relevant to Algeria — the model must extract correctly
+      from translated text without losing the political framing.
+    article_snippet: |
+      Twenty-three detainees held at El Harrach prison in Algiers in connection
+      with Hirak movement protests began an open-ended hunger strike on Sunday,
+      demanding their immediate release and the dropping of what they called
+      politically motivated charges. In a statement smuggled out by their
+      lawyers, the detainees said they were protesting their continued pre-trial
+      detention, some for more than nine months without trial. Family members
+      gathered outside the prison in solidarity. The Ministry of Justice
+      declined to comment. Amnesty International called the detentions
+      arbitrary and demanded the strikers receive medical monitoring.
+    extracted_events:
+      - event_date: null
+        country: "Algeria"
+        city: "Algiers"
+        region: null
+        venue: "El Harrach prison"
+        location_notes: "Detainees inside prison; family solidarity gathering outside"
+        event_type: "hunger_strike"
+        organizer: null
+        participant_groups: ["Hirak movement detainees", "pre-trial detainees"]
+        claims: ["immediate release of detainees", "dropping of politically motivated charges"]
+        crowd_size: "23"
+        duration: "ongoing (open-ended)"
+        state_response: "none"
+        state_actors: ["Ministry of Justice"]
+        arrests: null
+        fatalities: null
+        injuries: null
+        outcome: "ongoing"
+        outcome_notes: "Family solidarity gathering outside prison; Amnesty International intervention"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "fr"
+        confidence: "high"
+
+  - id: "ex_08"
+    pinned: true
+    description: "Vigil with accountability demand — Cape Town, police violence victim"
+    rationale: |
+      Demonstrates VIGIL, currently uncovered. The disambiguating rule against
+      DEMONSTRATION_MARCH: a candlelit gathering with an explicit
+      justice/accountability demand and a non-march form (standing, holding
+      images, silent) is a VIGIL. A march that ends with a moment of silence
+      remains a DEMONSTRATION_MARCH. Vigils typically have no movement
+      component, lower crowd size, and explicit reference to a victim or
+      named harm. Without this example, the LLM tends to upgrade vigils to
+      demonstration_march on the gathering signal alone.
+    article_snippet: |
+      About 250 people gathered outside the Cape Town Magistrates' Court on
+      Friday evening for a candlelit vigil for Sipho Madikizela, a 24-year-old
+      who died in police custody last week. Carrying photographs of the
+      deceased and holding lit candles, mourners stood in silence for an hour
+      before community leaders read a statement demanding the prosecution of
+      the officers involved and an independent inquiry by the Independent
+      Police Investigative Directorate. There was no march. No incidents were
+      reported, and the gathering dispersed shortly after 8pm. The Madikizela
+      family said they would return weekly until charges were laid.
+    extracted_events:
+      - event_date: null
+        country: "South Africa"
+        city: "Cape Town"
+        region: "Western Cape"
+        venue: "Cape Town Magistrates' Court"
+        location_notes: "Candlelit gathering outside courthouse; no march component"
+        event_type: "vigil"
+        organizer: null
+        participant_groups: ["mourners", "community members", "Madikizela family"]
+        claims: ["prosecution of officers involved in custody death", "independent IPID inquiry"]
+        crowd_size: "250"
+        duration: "1 hour"
+        state_response: "none"
+        state_actors: []
+        arrests: "0"
+        fatalities: null
+        injuries: null
+        outcome: "dispersed"
+        outcome_notes: "Family pledged weekly vigils until charges laid"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "high"
+
   - id: "ex_05"
     pinned: true
     description: "Riot — post-election protest violence, Nigeria, protester-initiated"

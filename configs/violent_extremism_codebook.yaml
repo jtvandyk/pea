@@ -29,7 +29,7 @@ metadata:
     - "CSIS Domestic Terrorism Database (McCabe 2024)"
   unit_of_analysis: "Individual violent extremism incident"
   minimum_participants: 1
-  llm_backend: "Azure AI Foundry (gpt-4o-mini)"
+  llm_backend: "Azure AI Foundry (gpt-5.4)"
   version: "1.0"
   last_updated: "2026-04-22"
 

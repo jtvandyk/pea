@@ -200,7 +200,12 @@ sync_checkpoint_from_blob = sync_checkpoint_from_adls
 
 
 def upload_checkpoint(upload_to: str, output_dir: Path) -> None:
-    """Upload checkpoint.txt to ADLS Gen2 (called periodically during a run)."""
+    """Upload checkpoint.txt to ADLS Gen2 (called periodically during a run).
+
+    Mid-run failures here are non-fatal because the next sync will catch up
+    and the final upload in save_results() is the authoritative one. If the
+    final upload also fails, save_results() raises so the run exits non-zero.
+    """
     if not upload_to.startswith("abfss://"):
         return
     cp = output_dir / "checkpoint.txt"
@@ -209,7 +214,10 @@ def upload_checkpoint(upload_to: str, output_dir: Path) -> None:
     try:
         _upload_outputs(upload_to, [cp])
     except Exception as e:
-        log.warning(f"Checkpoint upload failed (non-fatal): {e}")
+        log.warning(
+            f"Periodic checkpoint upload to {upload_to} failed (will retry "
+            f"at next sync interval, final upload is authoritative): {e}"
+        )
 
 
 def _upload_outputs(destination: str, paths: list[Path]) -> None:
@@ -260,6 +268,7 @@ def save_results(
     failures: Optional[list] = None,
     upload_to: Optional[str] = None,
     domain: str = "protest",
+    degraded_modes: Optional[list] = None,
 ) -> Path:
     """
     Save events to JSONL, CSV, and a run summary file.
@@ -269,6 +278,11 @@ def save_results(
 
     If failures are provided, writes them to failures_{run_id}.jsonl.
     If upload_to is set, uploads all output files to S3 or Azure Blob after writing.
+
+    degraded_modes: list of stage:reason strings (e.g.
+    'relevance_filter:keyword_fallback'). Recorded in the run summary so an
+    operator can tell when a run completed with a stage running below its
+    intended quality bar (model failed to load, fallback path engaged).
 
     Derives turmoil_level for each event before writing.
     Returns the effective output directory (output_dir/domain/).
@@ -324,6 +338,7 @@ def save_results(
         "timestamp": datetime.utcnow().isoformat(),
         "total_events": len(events),
         "total_failures": len(failures) if failures else 0,
+        "degraded_modes": list(degraded_modes) if degraded_modes else [],
         "events_by_country": count_by(events, "country"),
         "events_by_type": count_by(events, "event_type"),
         "events_by_state_response": count_by(events, "state_response"),
@@ -363,7 +378,13 @@ def save_results(
         f"Output: {output_dir}"
     )
 
-    # Upload to cloud storage if requested
+    # Upload to cloud storage if requested.
+    # The final upload is the only path by which events become visible to the
+    # dashboard and downstream consumers. Silently warning on failure means
+    # the run "succeeds" but no events land in ADLS — the on-call only finds
+    # out when someone notices the empty dashboard. Re-raise instead so the
+    # Container Apps JobExecutionStatus alert (configured in infra/deploy.sh)
+    # fires immediately.
     if upload_to:
         upload_paths = [jsonl_path, csv_path, cumulative_path, summary_path]
         if failures_path:
@@ -376,6 +397,11 @@ def save_results(
             _upload_outputs(upload_to, upload_paths)
             log.info("Cloud upload complete")
         except Exception as e:
-            log.warning(f"Cloud upload failed (results saved locally): {e}")
+            log.error(
+                f"Cloud upload to {upload_to} failed: {e}. "
+                f"Results are saved locally at {output_dir} but will not be "
+                "visible to the dashboard. Failing the run."
+            )
+            raise
 
     return output_dir

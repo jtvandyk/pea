@@ -471,7 +471,7 @@ with tab_launch:
 
         model = st.text_input(
             "Model / deployment name",
-            value="gpt-4.1",
+            value="gpt-5.4",
             help="Deployment name in your Azure AI Foundry project",
         )
 

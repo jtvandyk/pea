@@ -20,6 +20,7 @@ import requests
 import yaml
 
 from src.constants import ISO2_TO_FIPS, ISO2_TO_NAME, KEYWORDS_PATH
+from src.utils.logging_context import country_scope
 
 log = logging.getLogger(__name__)
 
@@ -308,22 +309,23 @@ def discover_articles_date_range(
         )
 
         for country in countries:
-            params = build_gdelt_query(
-                query,
-                [country],
-                start_dt=window_start,
-                end_dt=window_end,
-            )
-            params["maxrecords"] = max_results_per_window
-            articles = fetch_gdelt_articles(params)
-            log.info(
-                f"  {country}: {len(articles)} raw articles "
-                f"({window_start.strftime('%Y-%m-%d')}–{window_end.strftime('%Y-%m-%d')})"
-            )
-            for art in articles:
-                url = art.get("url", "")
-                if url and url not in seen_urls:
-                    seen_urls[url] = art
+            with country_scope(country):
+                params = build_gdelt_query(
+                    query,
+                    [country],
+                    start_dt=window_start,
+                    end_dt=window_end,
+                )
+                params["maxrecords"] = max_results_per_window
+                articles = fetch_gdelt_articles(params)
+                log.info(
+                    f"  {country}: {len(articles)} raw articles "
+                    f"({window_start.strftime('%Y-%m-%d')}–{window_end.strftime('%Y-%m-%d')})"
+                )
+                for art in articles:
+                    url = art.get("url", "")
+                    if url and url not in seen_urls:
+                        seen_urls[url] = art
 
         # Step back — next window ends where this one started
         window_end = window_start
@@ -373,12 +375,13 @@ def discover_articles(
     # Merge and dedup by URL across all per-country result sets.
     seen_urls: dict[str, dict] = {}
     for country in countries:
-        articles = _fetch_for_country(query, country, days)
-        log.info(f"GDELT returned {len(articles)} raw articles for {country}")
-        for art in articles:
-            url = art.get("url", "")
-            if url and url not in seen_urls:
-                seen_urls[url] = art
+        with country_scope(country):
+            articles = _fetch_for_country(query, country, days)
+            log.info(f"GDELT returned {len(articles)} raw articles for {country}")
+            for art in articles:
+                url = art.get("url", "")
+                if url and url not in seen_urls:
+                    seen_urls[url] = art
 
     raw_articles = list(seen_urls.values())
     log.info(f"Total unique articles across all countries: {len(raw_articles)}")

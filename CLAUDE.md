@@ -56,7 +56,7 @@ BBC_MONITORING_USER_PASSWORD=     # --source bbc or both
 # Standard run — Azure AI Foundry, South Africa, 30 days
 python -m src.acquisition.pipeline \
   --provider azure \
-  --model gpt-4o-mini \
+  --model gpt-5.4 \
   --countries ZA \
   --days 30 \
   --max-articles 100
@@ -87,8 +87,8 @@ python -m src.acquisition.pipeline --provider azure \
 | Provider | Default model | API key env var |
 |---|---|---|
 | `claude` | `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` |
-| `openai` | `gpt-4o-mini` | `OPENAI_API_KEY` |
-| `azure` | `gpt-4o-mini` | `AZURE_FOUNDRY_API_KEY` + `AZURE_OPENAI_ENDPOINT` |
+| `openai` | `gpt-5.4` | `OPENAI_API_KEY` |
+| `azure` | `gpt-5.4` | `AZURE_FOUNDRY_API_KEY` + `AZURE_OPENAI_ENDPOINT` |
 
 For `--provider azure`, `--model` is the **deployment name** in your Azure AI Foundry project.
 
@@ -134,12 +134,12 @@ The extractor uses three layers working together:
 2. **Codebook injection** — `_build_codebook_context()` loads `configs/protest_codebook.yaml` at import time and appends all 8 event type definitions (positive examples, boundary negatives, decision rules) to SYSTEM_PROMPT. ~22k tokens. This is the dominant input token cost driver.
 3. **Few-shot examples** — `_build_few_shot_examples()` loads `configs/extraction_examples.yaml` and prepends 3 gold-standard article → JSON pairs to every user prompt. ~6k tokens.
 
-**Prompt caching:** The system prompt prefix (~29k tokens) is identical across every article in a run. Azure caches it automatically for gpt-4o-mini (>1024 token prefix). Cached tokens billed at 50% input rate. Savings logged at DEBUG level per call.
+**Prompt caching:** The system prompt prefix (~29k tokens) is identical across every article in a run. Azure caches it automatically when the prefix exceeds 1024 tokens. Cached tokens billed at 50% input rate. Savings logged at DEBUG level per call.
 
 **Per-call token budget (avg):**
 - Input: ~40,000 tokens (system 29k + few-shot 6.4k + article 4.4k)
 - Output: ~200 tokens (mix of `[]` and event objects)
-- Cost: ~$0.006 per article at gpt-4o-mini standard pricing
+- Cost: depends on the deployed model's per-token pricing — measure on a small canary run before scaling up.
 
 ---
 
@@ -274,9 +274,10 @@ The JSON report includes a `match_records` array (one entry per gold event) for 
 
 | Issue | File | Notes |
 |---|---|---|
-| `_article_text` not written to event dicts | `extractor.py`, `storage.py` | Breaks annotation training pair generation |
-| `torch` in requirements-core.txt pulls CUDA build | `Dockerfile` | Need to pin CPU wheel URL explicitly |
 | ACLED validator not yet built | `src/validation/` | Unblocked — ACLED token needed |
+| Single-domain pipeline runs translation **after** relevance filter | `src/acquisition/pipeline.py` (`run_acquire_pipeline`) | Multi-domain path already does translate-first; align them so the NLI relevance filter sees translated text |
+| BBC token has no refresh on 401 | `src/acquisition/bbc_discovery.py` | Long backfills may expire mid-run |
+| Checkpoint append is thread-safe but not crash-atomic | `src/acquisition/extractor.py:_write_checkpoint` | SIGKILL during write can leave a partial line that fails the resume-skip match |
 
 ---
 
@@ -295,6 +296,7 @@ The JSON report includes a `match_records` array (one entry per gold event) for 
 | 2026-04-05 | GLOCON validator (`src/validation/glocon_validator.py`) |
 | 2026-04-05 | Active learning annotation pipeline (Label Studio + export/import scripts) |
 | 2026-04-25 | CI fixes: black formatting, flake8 violations, Dockerfile.web missing src/constants.py |
+| 2026-05-07 | Pre-prod review: documented 8 dashboard env vars in `.env.example`, added startup config-presence assertion, added `scripts/smoke_extract.py` for post-deploy verification |
 
 ---
 
@@ -310,14 +312,8 @@ python -m pytest tests/ -q           # must exit 0
 
 Linter config lives in `.flake8` (max-line-length 120, E203 ignored for black compat).
 
-### Dockerfile coupling rule
+### Docker COPY notes
 
-`Dockerfile.web` copies individual files from `src/` rather than the whole tree. When you add a **new module** anywhere under `src/` that `src/web/app.py` (or anything it imports) depends on, you must also add the corresponding `COPY` line to `Dockerfile.web`. Current explicit copies:
+Both `Dockerfile` and `Dockerfile.web` use `COPY src/ ./src/` and `COPY configs/ ./configs/`, so new modules and new config YAMLs are picked up automatically. If you reintroduce per-file copies in `Dockerfile.web` for image-size reasons, restore the coupling-rule section here.
 
-```dockerfile
-COPY src/web/ ./src/web/
-COPY src/__init__.py ./src/__init__.py
-COPY src/constants.py ./src/constants.py
-```
-
-The pipeline `Dockerfile` uses `COPY src/ ./src/` so it picks up new modules automatically.
+`pipeline.main()` asserts that `configs/protest_codebook.yaml`, `configs/extraction_examples.yaml`, `configs/keywords.yaml`, and `configs/countries.yaml` are present at startup — see `_assert_required_configs()`. If you remove any of those files or rename them, update that allow-list.
