@@ -52,31 +52,6 @@ when its triggers match what the user is asking.
 | [`pea-domain-add`](skills/pea-domain-add/SKILL.md) | "add a new domain", "wire a domain", "register drone in DOMAIN_CONFIGS" | 2026-05-10 |
 | [`claude-doc-rot`](skills/claude-doc-rot/SKILL.md) | "audit .claude docs", "are these docs stale", "doc rot check" | 2026-05-10 |
 
-### Imported — general-purpose patterns (not PEA-specific)
-
-| Skill | Triggers on… | Origin |
-|---|---|---|
-| [`pytorch-patterns`](skills/pytorch-patterns/SKILL.md) | PyTorch model authoring, training loops, AMP / `torch.compile`, checkpointing, anti-patterns | ECC |
-
-## Agents
-
-Project-scoped subagents live under [`agents/`](agents/). Each is a single
-`<name>.md` with YAML frontmatter (`name`, `description`, `tools`, `model`)
-and a system-prompt body. Spawn via the Agent tool with `subagent_type:
-<name>`.
-
-| Agent | Use when… | Model |
-|---|---|---|
-| [`python-pro`](agents/python-pro.md) | Building type-safe, production-ready Python (web APIs, async, type coverage) | sonnet |
-| [`nlp-engineer`](agents/nlp-engineer.md) | Production NLP — text pipelines, NER, classification, multilingual, fine-tuning | sonnet |
-| [`data-scientist`](agents/data-scientist.md) | EDA, hypothesis testing, model development, translating findings into recommendations | sonnet |
-| [`ml-engineer`](agents/ml-engineer.md) | Production ML lifecycle — training pipelines, serving, monitoring, retraining | sonnet |
-
-These four are **general-purpose imports** (no PEA-specific knowledge baked
-in). Useful for the relevance-filter / fine-tuning / validation workstreams,
-but not a substitute for the PEA skills above when the task is project-scoped.
-
-
 ## Rules to keep this from rotting
 
 1. **One source of truth per topic.** `CLAUDE.md` is the project context.

@@ -34,13 +34,13 @@ Encodes the safe procedure for editing `configs/<domain>_codebook.yaml` so chang
    venv/bin/python -c "import yaml; yaml.safe_load(open('configs/protest_codebook.yaml'))"
    ```
 
-6. **Sanity-check token budget.** Codebook injection is the dominant input-token cost. After a large addition, run:
+6. **Sanity-check token budget.** Codebook injection is the dominant input-token cost. After a large addition, get a rough character count and divide by 4:
 
    ```bash
    venv/bin/python -c "
-   from src.utils.codebook_manager import CodebookManager
-   ctx = CodebookManager('configs/protest_codebook.yaml').get_prompt_context()
-   print(f'codebook tokens (rough): {len(ctx)//4}')
+   import yaml
+   text = yaml.dump(yaml.safe_load(open('configs/protest_codebook.yaml')))
+   print(f'codebook tokens (rough): {len(text)//4}')
    "
    ```
 

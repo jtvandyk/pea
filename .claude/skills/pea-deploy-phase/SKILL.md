@@ -83,4 +83,4 @@ If the user says "rollback":
 
 - `.claude/deploy.md` — full playbook (this skill is just the interactive runner).
 - `.claude/followups.md` items #11, #12, #15 — CI/deploy hardening that affects future deploys.
-- `pea-rollback` skill (Tier 2, not yet built) — would extract the rollback flow into its own skill.
+- `pea-rollback` skill — the inverse of this skill; use it when a phase needs to be undone.
