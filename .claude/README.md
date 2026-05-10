@@ -17,7 +17,9 @@ trusted — delete it or add it to the table.
 
 Project-scoped skills live under [`skills/`](skills/). Each is a self-contained
 `SKILL.md` with YAML frontmatter that Claude Code surfaces by description
-when its triggers match what the user is asking. Initial set (Tier 1):
+when its triggers match what the user is asking.
+
+### Tier 1 — recurring loops
 
 | Skill | Triggers on… | Last reviewed |
 |---|---|---|
@@ -27,8 +29,24 @@ when its triggers match what the user is asking. Initial set (Tier 1):
 | [`pea-deploy-phase`](skills/pea-deploy-phase/SKILL.md) | "deploy to Azure", "phase N", "resume the deploy" | 2026-05-10 |
 | [`pea-followup-pick`](skills/pea-followup-pick/SKILL.md) | "what should I work on", "next followup", "pick a P2 item" | 2026-05-10 |
 
-Tier 2/3 candidates (diagnostics, validators, hygiene) are sketched in
-session notes but not yet built — add them when their workflow recurs.
+### Tier 2 — diagnostics for known failure shapes
+
+| Skill | Triggers on… | Last reviewed |
+|---|---|---|
+| [`pea-degraded-mode`](skills/pea-degraded-mode/SKILL.md) | "degraded mode", "keyword fallback", "degraded_modes non-empty" | 2026-05-10 |
+| [`pea-rollback`](skills/pea-rollback/SKILL.md) | "rollback the deploy", "revert to previous SHA", "pause the cron" | 2026-05-10 |
+| [`pea-token-audit`](skills/pea-token-audit/SKILL.md) | "audit prompt size", "check token budget", "did the codebook bloat" | 2026-05-10 |
+
+### Tier 3 — validators / annotation / smoke
+
+| Skill | Triggers on… | Last reviewed |
+|---|---|---|
+| [`pea-validate`](skills/pea-validate/SKILL.md) | "validate against gold", "check recall", "run CEHA / CASE / GLOCON" | 2026-05-10 |
+| [`pea-annotation-batch`](skills/pea-annotation-batch/SKILL.md) | "export annotation tasks", "import label studio", "training pairs" | 2026-05-10 |
+| [`pea-smoke`](skills/pea-smoke/SKILL.md) | "post-deploy smoke", "is foundry reachable", "test the foundry endpoint" | 2026-05-10 |
+
+Tier 4 candidates (`pea-domain-add`, `claude-doc-rot`) remain sketches —
+add them when their workflow recurs.
 
 ## Rules to keep this from rotting
 
