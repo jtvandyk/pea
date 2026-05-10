@@ -206,7 +206,7 @@ Output lands in `data/raw/<domain>/`. See [What this produces](#what-this-produc
 
 ## Production deployment
 
-The full step-by-step operator playbook — including pre-flight checks, Azure provisioning, GitHub Secrets, smoke testing, day-2 hardening, rollback procedures, and a troubleshooting catalogue — lives in [`.claude/azure-deploy-playbook.md`](.claude/azure-deploy-playbook.md). The summary:
+The full step-by-step operator playbook — including pre-flight checks, Azure provisioning, GitHub Secrets, smoke testing, day-2 hardening, rollback procedures, and a troubleshooting catalogue — lives in [`.claude/deploy.md`](.claude/deploy.md). The summary:
 
 ```bash
 # 1. Provision Azure resources (one time, ~20 min)
@@ -549,10 +549,10 @@ src/
   metrics.py              Quality reporting helpers
 tests/                    pytest unit tests + validator tests
 .claude/
-  azure-deploy-playbook.md   Step-by-step deploy operator guide
-  improvement-guide.md       Codebook + few-shot expansion guidance
-  production-followups.md    Outstanding P2/P3 priority items
-  implementation-guide.md    (redirect to current docs)
+  README.md                  Index of .claude docs (read this first)
+  deploy.md                  Step-by-step deploy operator guide
+  followups.md               Outstanding P2/P3 priority items
+  settings.json              Pre-commit hook (black + flake8)
 ```
 
 ---
@@ -561,9 +561,8 @@ tests/                    pytest unit tests + validator tests
 
 | You want to... | Look at |
 |---|---|
-| Deploy from scratch | [`.claude/azure-deploy-playbook.md`](.claude/azure-deploy-playbook.md) |
-| Improve extraction quality | [`.claude/improvement-guide.md`](.claude/improvement-guide.md) |
-| See what work is queued | [`.claude/production-followups.md`](.claude/production-followups.md) |
+| Deploy from scratch | [`.claude/deploy.md`](.claude/deploy.md) |
+| See what work is queued | [`.claude/followups.md`](.claude/followups.md) |
 | Understand the codebook | [`configs/protest_codebook.yaml`](configs/protest_codebook.yaml) |
 | Add a few-shot example | [`configs/extraction_examples_NEW_template.yaml`](configs/extraction_examples_NEW_template.yaml) |
 | Wire a new domain | `DOMAIN_CONFIGS` in [`src/acquisition/pipeline.py`](src/acquisition/pipeline.py) |

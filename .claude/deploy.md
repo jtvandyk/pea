@@ -1,5 +1,7 @@
 # PEA → Azure Deploy Playbook
 
+> Last reviewed: 2026-05-10
+
 End-to-end playbook for getting PEA into a working Azure deployment as
 quickly as possible. Designed to be followed top-to-bottom on deploy day;
 each step lists the exact command, what it does, and what success looks
@@ -387,7 +389,7 @@ az containerapp update \
 ```
 
 (`<sha>` from the `docker.yml` run that built the verified image.) See
-`.claude/production-followups.md` item #11 for the full rationale.
+`.claude/followups.md` item #11 for the full rationale.
 
 ### Confirm the Azure Monitor alert actually fires
 
@@ -644,14 +646,14 @@ If any box is unchecked, do not call the deploy done.
 
 ## What's _not_ in this playbook
 
-- **Codebook tuning loop.** See `.claude/improvement-guide.md` and the
-  Day-1-to-Day-14 cadence in the production-readiness review.
+- **Codebook tuning loop.** See the Day-1-to-Day-14 cadence in the
+  production-readiness review and the codebook history in `CLAUDE.md`.
 - **Annotation pipeline (Label Studio).** See README → "Annotation
   Workflow — Closing the Active Learning Loop".
 - **Validation against GLOCON / CEHA / CASE 2021.** See
   `src/validation/` and the README "Validation" section.
 - **Outstanding follow-up work** (P2/P3 items, CVE scanning, multi-domain
-  pipeline tests, etc.). See `.claude/production-followups.md`.
+  pipeline tests, etc.). See `.claude/followups.md`.
 
 ---
 
@@ -667,5 +669,4 @@ If any box is unchecked, do not call the deploy done.
 | Cron schedule | `infra/deploy.sh` line near `--cron-expression` |
 | Codebook content | `configs/protest_codebook.yaml` (v2.4) |
 | Few-shot examples | `configs/extraction_examples.yaml` (8 pinned) |
-| Outstanding follow-ups | `.claude/production-followups.md` |
-| Codebook improvement playbook | `.claude/improvement-guide.md` |
+| Outstanding follow-ups | `.claude/followups.md` |

@@ -1,5 +1,7 @@
 # Production Follow-ups — Remaining Priority Items
 
+> Last reviewed: 2026-05-10
+
 Working reference for items not landed in the two production-readiness commits
 (`f1b2acc` B1-B5, `bdfa472` priority items #1-10). Items below are the rest of
 the priority table from the May 7 review, refreshed against what's now in main.
