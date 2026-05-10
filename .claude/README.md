@@ -13,6 +13,23 @@ trusted — delete it or add it to the table.
 | [`followups.md`](followups.md) | Working list of P2/P3 follow-up items with file paths, approach, and effort estimates. | Picking the next chunk of hardening work. | 2026-05-10 |
 | [`settings.json`](settings.json) | Pre-commit hook config (runs `black --check` + `flake8` before any `git commit`). | Editing local Claude Code behavior. | — |
 
+## Skills
+
+Project-scoped skills live under [`skills/`](skills/). Each is a self-contained
+`SKILL.md` with YAML frontmatter that Claude Code surfaces by description
+when its triggers match what the user is asking. Initial set (Tier 1):
+
+| Skill | Triggers on… | Last reviewed |
+|---|---|---|
+| [`pea-canary-run`](skills/pea-canary-run/SKILL.md) | "canary run", "diff the last run", post-codebook verification | 2026-05-10 |
+| [`pea-codebook-edit`](skills/pea-codebook-edit/SKILL.md) | "edit the codebook", "add a disqualifier", "tune extraction" | 2026-05-10 |
+| [`pea-few-shot-add`](skills/pea-few-shot-add/SKILL.md) | "add a few-shot example", "new gold case", "tier-2 example" | 2026-05-10 |
+| [`pea-deploy-phase`](skills/pea-deploy-phase/SKILL.md) | "deploy to Azure", "phase N", "resume the deploy" | 2026-05-10 |
+| [`pea-followup-pick`](skills/pea-followup-pick/SKILL.md) | "what should I work on", "next followup", "pick a P2 item" | 2026-05-10 |
+
+Tier 2/3 candidates (diagnostics, validators, hygiene) are sketched in
+session notes but not yet built — add them when their workflow recurs.
+
 ## Rules to keep this from rotting
 
 1. **One source of truth per topic.** `CLAUDE.md` is the project context.
