@@ -1,4 +1,5 @@
 """Tests for src/validation/glocon_validator.py."""
+
 import csv
 import json
 from datetime import datetime
@@ -29,17 +30,21 @@ from tests.validation.conftest import make_glocon_raw, make_pea_event
 # _parse_date
 # ---------------------------------------------------------------------------
 
+
 class TestParseDate:
-    @pytest.mark.parametrize("s,expected", [
-        ("2024-03-15",           datetime(2024, 3, 15)),
-        ("20240315",             datetime(2024, 3, 15)),
-        ("15/03/2024",           datetime(2024, 3, 15)),
-        ("03/15/2024",           datetime(2024, 3, 15)),
-        ("2024-03",              datetime(2024, 3, 1)),
-        ("",                     None),
-        ("not-a-date",           None),
-        ("2024-03-15T10:00:00",  datetime(2024, 3, 15)),
-    ])
+    @pytest.mark.parametrize(
+        "s,expected",
+        [
+            ("2024-03-15", datetime(2024, 3, 15)),
+            ("20240315", datetime(2024, 3, 15)),
+            ("15/03/2024", datetime(2024, 3, 15)),
+            ("03/15/2024", datetime(2024, 3, 15)),
+            ("2024-03", datetime(2024, 3, 1)),
+            ("", None),
+            ("not-a-date", None),
+            ("2024-03-15T10:00:00", datetime(2024, 3, 15)),
+        ],
+    )
     def test_parse_date(self, s, expected):
         assert _parse_date(s) == expected
 
@@ -50,6 +55,7 @@ class TestParseDate:
 # ---------------------------------------------------------------------------
 # _norm_country
 # ---------------------------------------------------------------------------
+
 
 class TestNormCountry:
     def test_iso_code(self):
@@ -71,6 +77,7 @@ class TestNormCountry:
 # ---------------------------------------------------------------------------
 # _location_match
 # ---------------------------------------------------------------------------
+
 
 class TestLocationMatch:
     def test_identical(self):
@@ -96,6 +103,7 @@ class TestLocationMatch:
 # _normalise_glocon
 # ---------------------------------------------------------------------------
 
+
 class TestNormaliseGlocon:
     def test_standard_field_names(self):
         raw = make_glocon_raw()
@@ -107,7 +115,12 @@ class TestNormaliseGlocon:
         assert result["raw"] is raw
 
     def test_alternate_field_names(self):
-        raw = {"date": "2024-01-01", "city": "Lagos", "Country": "Nigeria", "type": "strike"}
+        raw = {
+            "date": "2024-01-01",
+            "city": "Lagos",
+            "Country": "Nigeria",
+            "type": "strike",
+        }
         result = _normalise_glocon(raw)
         assert result["event_date"] == "2024-01-01"
         assert result["location"] == "Lagos"
@@ -115,16 +128,25 @@ class TestNormaliseGlocon:
         assert result["broad_type"] == "strike"
 
     def test_uppercase_field_names(self):
-        raw = {"EVENT_DATE": "2024-06-01", "LOCATION": "Durban",
-               "COUNTRY": "South Africa", "EVENT_TYPE": "riot"}
+        raw = {
+            "EVENT_DATE": "2024-06-01",
+            "LOCATION": "Durban",
+            "COUNTRY": "South Africa",
+            "EVENT_TYPE": "riot",
+        }
         result = _normalise_glocon(raw)
         assert result["event_date"] == "2024-06-01"
         assert result["location"] == "Durban"
         assert result["broad_type"] == "riot"
 
     def test_raw_preserved(self):
-        raw = {"event_date": "2024-03-15", "location": "X", "country": "ZA",
-               "event_type": "protest", "extra_field": "value"}
+        raw = {
+            "event_date": "2024-03-15",
+            "location": "X",
+            "country": "ZA",
+            "event_type": "protest",
+            "extra_field": "value",
+        }
         result = _normalise_glocon(raw)
         assert result["raw"]["extra_field"] == "value"
 
@@ -138,6 +160,7 @@ class TestNormaliseGlocon:
 # load_glocon
 # ---------------------------------------------------------------------------
 
+
 class TestLoadGlocon:
     def test_loads_json_array(self, tmp_path):
         events = [make_glocon_raw(location="Lagos")]
@@ -147,7 +170,9 @@ class TestLoadGlocon:
         assert loaded[0]["location"] == "Lagos"
 
     def test_loads_jsonl(self, tmp_path):
-        lines = "\n".join(json.dumps(make_glocon_raw(location=f"City{i}")) for i in range(3))
+        lines = "\n".join(
+            json.dumps(make_glocon_raw(location=f"City{i}")) for i in range(3)
+        )
         (tmp_path / "events.jsonl").write_text(lines, encoding="utf-8")
         loaded = load_glocon(tmp_path)
         assert len(loaded) == 3
@@ -157,7 +182,13 @@ class TestLoadGlocon:
         with open(csv_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(
                 f,
-                fieldnames=["event_date", "location", "country", "event_type", "description"],
+                fieldnames=[
+                    "event_date",
+                    "location",
+                    "country",
+                    "event_type",
+                    "description",
+                ],
             )
             writer.writeheader()
             writer.writerow(make_glocon_raw(location="Pretoria"))
@@ -178,9 +209,11 @@ class TestLoadGlocon:
 # match_events
 # ---------------------------------------------------------------------------
 
+
 class TestMatchEvents:
     def _glocon(self, **kwargs):
         from src.validation.glocon_validator import _normalise_glocon
+
         return _normalise_glocon(make_glocon_raw(**kwargs))
 
     def test_perfect_match(self):
@@ -241,8 +274,10 @@ class TestMatchEvents:
         p = [make_pea_event(event_type="strike_boycott")]
         # type is strike for both
         from src.validation.glocon_validator import _normalise_glocon
-        g[0] = _normalise_glocon(make_glocon_raw(event_type="strike",
-                                                  description="Nurses went on strike."))
+
+        g[0] = _normalise_glocon(
+            make_glocon_raw(event_type="strike", description="Nurses went on strike.")
+        )
         records = match_events(g, p)
         assert "glocon_description" in records[0]
 
@@ -251,11 +286,16 @@ class TestMatchEvents:
 # compute_metrics
 # ---------------------------------------------------------------------------
 
+
 class TestComputeMetrics:
     def test_all_matched(self):
         records = [
-            {"matched": True, "pea_url": "http://a.com",
-             "glocon_type": "protest", "glocon_country": "south africa"},
+            {
+                "matched": True,
+                "pea_url": "http://a.com",
+                "glocon_type": "protest",
+                "glocon_country": "south africa",
+            },
         ]
         pea = [make_pea_event(url="http://a.com")]
         m = compute_metrics(records, pea)
@@ -265,8 +305,12 @@ class TestComputeMetrics:
 
     def test_none_matched(self):
         records = [
-            {"matched": False, "pea_url": None,
-             "glocon_type": "protest", "glocon_country": "south africa"},
+            {
+                "matched": False,
+                "pea_url": None,
+                "glocon_type": "protest",
+                "glocon_country": "south africa",
+            },
         ]
         pea = [make_pea_event()]
         m = compute_metrics(records, pea)
@@ -275,10 +319,18 @@ class TestComputeMetrics:
 
     def test_partial_recall_and_precision(self):
         records = [
-            {"matched": True,  "pea_url": "http://a.com",
-             "glocon_type": "protest", "glocon_country": "south africa"},
-            {"matched": False, "pea_url": None,
-             "glocon_type": "riot",    "glocon_country": "south africa"},
+            {
+                "matched": True,
+                "pea_url": "http://a.com",
+                "glocon_type": "protest",
+                "glocon_country": "south africa",
+            },
+            {
+                "matched": False,
+                "pea_url": None,
+                "glocon_type": "riot",
+                "glocon_country": "south africa",
+            },
         ]
         pea = [make_pea_event(url="http://a.com"), make_pea_event(url="http://b.com")]
         m = compute_metrics(records, pea)
@@ -287,12 +339,24 @@ class TestComputeMetrics:
 
     def test_by_type_breakdown(self):
         records = [
-            {"matched": True,  "pea_url": "http://a.com",
-             "glocon_type": "protest", "glocon_country": "south africa"},
-            {"matched": False, "pea_url": None,
-             "glocon_type": "protest", "glocon_country": "south africa"},
-            {"matched": True,  "pea_url": "http://b.com",
-             "glocon_type": "strike",  "glocon_country": "south africa"},
+            {
+                "matched": True,
+                "pea_url": "http://a.com",
+                "glocon_type": "protest",
+                "glocon_country": "south africa",
+            },
+            {
+                "matched": False,
+                "pea_url": None,
+                "glocon_type": "protest",
+                "glocon_country": "south africa",
+            },
+            {
+                "matched": True,
+                "pea_url": "http://b.com",
+                "glocon_type": "strike",
+                "glocon_country": "south africa",
+            },
         ]
         pea = [make_pea_event(url="http://a.com"), make_pea_event(url="http://b.com")]
         m = compute_metrics(records, pea)
@@ -301,10 +365,18 @@ class TestComputeMetrics:
 
     def test_by_country_breakdown(self):
         records = [
-            {"matched": True,  "pea_url": "http://a.com",
-             "glocon_type": "protest", "glocon_country": "south africa"},
-            {"matched": True,  "pea_url": "http://b.com",
-             "glocon_type": "protest", "glocon_country": "nigeria"},
+            {
+                "matched": True,
+                "pea_url": "http://a.com",
+                "glocon_type": "protest",
+                "glocon_country": "south africa",
+            },
+            {
+                "matched": True,
+                "pea_url": "http://b.com",
+                "glocon_type": "protest",
+                "glocon_country": "nigeria",
+            },
         ]
         pea = [make_pea_event(url="http://a.com"), make_pea_event(url="http://b.com")]
         m = compute_metrics(records, pea)
@@ -325,10 +397,11 @@ class TestComputeMetrics:
 # Filter helpers
 # ---------------------------------------------------------------------------
 
+
 class TestFilters:
     def test_in_date_range_inside(self):
         start = datetime(2024, 1, 1)
-        end   = datetime(2024, 12, 31)
+        end = datetime(2024, 12, 31)
         assert _in_date_range("2024-06-15", start, end) is True
 
     def test_in_date_range_before_start(self):
@@ -343,10 +416,14 @@ class TestFilters:
         assert _in_date_range("2024-06-15", None, None) is True
 
     def test_in_date_range_unparseable_kept(self):
-        assert _in_date_range("not-a-date", datetime(2024, 1, 1), datetime(2024, 12, 31)) is True
+        assert (
+            _in_date_range("not-a-date", datetime(2024, 1, 1), datetime(2024, 12, 31))
+            is True
+        )
 
     def test_apply_countries_filter_glocon(self):
         from src.validation.glocon_validator import _normalise_glocon
+
         events = [
             _normalise_glocon(make_glocon_raw(country="South Africa")),
             _normalise_glocon(make_glocon_raw(country="Nigeria")),
@@ -395,6 +472,7 @@ class TestFilters:
 # diagnose_misses
 # ---------------------------------------------------------------------------
 
+
 class TestDiagnoseMisses:
     def _miss_record(self, **kwargs):
         defaults = {
@@ -409,28 +487,28 @@ class TestDiagnoseMisses:
 
     def test_country_mismatch_reported(self):
         miss = [self._miss_record(glocon_country="south africa")]
-        pea  = [make_pea_event(country="Nigeria")]
+        pea = [make_pea_event(country="Nigeria")]
         result = diagnose_misses(miss, pea)
         reasons = result[0]["fail_reasons"]
         assert any("country_mismatch" in r for r in reasons)
 
     def test_date_too_far_reported(self):
         miss = [self._miss_record()]
-        pea  = [make_pea_event(date="2024-03-25")]  # 10 days away
+        pea = [make_pea_event(date="2024-03-25")]  # 10 days away
         result = diagnose_misses(miss, pea, date_window=3)
         reasons = result[0]["fail_reasons"]
         assert any("date_too_far" in r for r in reasons)
 
     def test_location_mismatch_reported(self):
         miss = [self._miss_record(glocon_location="Cape Town")]
-        pea  = [make_pea_event(city="Nairobi")]
+        pea = [make_pea_event(city="Nairobi")]
         result = diagnose_misses(miss, pea, location_threshold=0.60)
         reasons = result[0]["fail_reasons"]
         assert any("location_mismatch" in r for r in reasons)
 
     def test_type_mismatch_reported(self):
         miss = [self._miss_record(glocon_type="riot")]
-        pea  = [make_pea_event(event_type="demonstration_march")]
+        pea = [make_pea_event(event_type="demonstration_march")]
         result = diagnose_misses(miss, pea)
         reasons = result[0]["fail_reasons"]
         assert any("type_mismatch" in r for r in reasons)
@@ -446,12 +524,11 @@ class TestDiagnoseMisses:
 # run_validation (integration)
 # ---------------------------------------------------------------------------
 
+
 class TestRunValidation:
     def _write_pea_jsonl(self, path: Path, events: list) -> Path:
         pea_path = path / "pea_events.jsonl"
-        pea_path.write_text(
-            "\n".join(json.dumps(e) for e in events), encoding="utf-8"
-        )
+        pea_path.write_text("\n".join(json.dumps(e) for e in events), encoding="utf-8")
         return pea_path
 
     def _write_glocon_json(self, path: Path, events: list) -> Path:
@@ -462,14 +539,14 @@ class TestRunValidation:
 
     def test_returns_metrics_dict(self, tmp_path):
         glocon_dir = self._write_glocon_json(tmp_path, [make_glocon_raw()])
-        pea_path   = self._write_pea_jsonl(tmp_path, [make_pea_event()])
+        pea_path = self._write_pea_jsonl(tmp_path, [make_pea_event()])
         metrics = run_validation(glocon_dir, pea_path)
         for key in ("recall", "precision", "matched", "total_glocon", "total_pea"):
             assert key in metrics
 
     def test_writes_json_report(self, tmp_path):
-        glocon_dir  = self._write_glocon_json(tmp_path, [make_glocon_raw()])
-        pea_path    = self._write_pea_jsonl(tmp_path, [make_pea_event()])
+        glocon_dir = self._write_glocon_json(tmp_path, [make_glocon_raw()])
+        pea_path = self._write_pea_jsonl(tmp_path, [make_pea_event()])
         output_path = tmp_path / "report.json"
         run_validation(glocon_dir, pea_path, output_path=output_path)
         assert output_path.exists()
@@ -478,10 +555,13 @@ class TestRunValidation:
         assert "match_records" in report
 
     def test_date_filter_applied(self, tmp_path):
-        glocon_dir = self._write_glocon_json(tmp_path, [make_glocon_raw(date="2023-01-01")])
-        pea_path   = self._write_pea_jsonl(tmp_path, [make_pea_event(date="2024-06-01")])
+        glocon_dir = self._write_glocon_json(
+            tmp_path, [make_glocon_raw(date="2023-01-01")]
+        )
+        pea_path = self._write_pea_jsonl(tmp_path, [make_pea_event(date="2024-06-01")])
         metrics = run_validation(
-            glocon_dir, pea_path,
+            glocon_dir,
+            pea_path,
             start_date=datetime(2024, 1, 1),
             end_date=datetime(2024, 12, 31),
         )

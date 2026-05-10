@@ -21,16 +21,18 @@ CONFIGS_DIR: Path = _REPO_ROOT / "configs"
 # Event types
 # ---------------------------------------------------------------------------
 
-VALID_EVENT_TYPES: frozenset = frozenset({
-    "demonstration_march",
-    "strike_boycott",
-    "occupation_seizure",
-    "confrontation",
-    "petition_signature",
-    "vigil",
-    "hunger_strike",
-    "riot",
-})
+VALID_EVENT_TYPES: frozenset = frozenset(
+    {
+        "demonstration_march",
+        "strike_boycott",
+        "occupation_seizure",
+        "confrontation",
+        "petition_signature",
+        "vigil",
+        "hunger_strike",
+        "riot",
+    }
+)
 
 # ---------------------------------------------------------------------------
 # Confidence score mappings
@@ -75,7 +77,9 @@ def _load_country_data() -> dict:
         with open(CONFIGS_DIR / "countries.yaml", encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
     except FileNotFoundError:
-        log.error("configs/countries.yaml not found — country lookups disabled; check your deployment")
+        log.error(
+            "configs/countries.yaml not found — country lookups disabled; check your deployment"
+        )
         return _empty
     except Exception as e:
         log.error("Could not load countries.yaml: %s", e, exc_info=True)

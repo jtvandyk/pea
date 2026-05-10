@@ -43,6 +43,7 @@ from src.acquisition.relevance_filter import RelevanceFilter
 from src.acquisition.storage import (
     save_results,
     sync_checkpoint_from_adls,
+    upload_checkpoint,
 )
 from src.acquisition.processing import process_events
 from src.acquisition.predictions import run_predictions
@@ -244,7 +245,9 @@ def run_pipeline(
         f"(saved ~${len(rf_rejected) * 0.00616:.2f} in LLM calls)"
     )
     if not scraped:
-        log.warning("All articles rejected by relevance filter. Lower --relevance-threshold?")
+        log.warning(
+            "All articles rejected by relevance filter. Lower --relevance-threshold?"
+        )
         return []
 
     # Stage 3: Translation (optional)
@@ -272,9 +275,7 @@ def run_pipeline(
         rpm_limit=rpm_limit,
         examples_sample_n=examples_sample_n,
     )
-    log.info(
-        f"Extracted {len(events)} events ({len(failures)} extraction failures)"
-    )
+    log.info(f"Extracted {len(events)} events ({len(failures)} extraction failures)")
 
     # Stage 4.5: Geocoding
     if geocode and events:
@@ -296,6 +297,12 @@ def run_pipeline(
         domain=domain,
     )
     log.info(f"Results saved to {out_path}")
+
+    # Always push the final checkpoint state to ADLS, even when save_results
+    # returns early (zero events). Covers runs where <10 articles were processed
+    # and the periodic upload inside extract_events never fired.
+    if upload_to:
+        upload_checkpoint(upload_to, effective_output_dir)
 
     log.info("=== Pipeline complete ===")
     return events
@@ -391,9 +398,7 @@ def run_pipeline_multi_codebook(
             batch_size=relevance_batch_size,
         )
         domain_articles, rf_rejected = _rf.filter(scraped)
-        log.info(
-            f"  {len(domain_articles)} kept, {len(rf_rejected)} rejected"
-        )
+        log.info(f"  {len(domain_articles)} kept, {len(rf_rejected)} rejected")
         if not domain_articles:
             log.warning(f"  No articles passed relevance filter for domain '{domain}'")
             results[domain] = []
@@ -677,14 +682,17 @@ def main():
     # Resolve geocode cache path: 'none' / empty string disables caching.
     _geocode_cache_arg = (args.geocode_cache or "").strip()
     geocode_cache = (
-        None if _geocode_cache_arg.lower() in ("", "none", "off", "false")
+        None
+        if _geocode_cache_arg.lower() in ("", "none", "off", "false")
         else Path(_geocode_cache_arg)
     )
 
     if args.stage in ("acquire", "all"):
         if len(domains) > 1:
             if args.codebook or args.examples:
-                parser.error("--codebook and --examples cannot be used with multiple --domains")
+                parser.error(
+                    "--codebook and --examples cannot be used with multiple --domains"
+                )
             run_pipeline_multi_codebook(
                 domains=domains,
                 countries=args.countries.split(","),
@@ -713,23 +721,26 @@ def main():
             domain = domains[0] if domains else "protest"
             domain_cfg = DOMAIN_CONFIGS.get(domain, {})
             codebook_path = (
-                Path(args.codebook) if args.codebook
-                else domain_cfg.get("codebook")
+                Path(args.codebook) if args.codebook else domain_cfg.get("codebook")
             )
             examples_path = (
-                Path(args.examples) if args.examples
-                else domain_cfg.get("examples")
+                Path(args.examples) if args.examples else domain_cfg.get("examples")
             )
             # Use domain-specific default query if user didn't supply --query
             query = args.query
-            if query == "protest demonstration strike rally march" and domain != "protest":
+            if (
+                query == "protest demonstration strike rally march"
+                and domain != "protest"
+            ):
                 query = domain_cfg.get("query", args.query)
 
             # Clear checkpoint on fresh acquire run (domain-namespaced)
             checkpoint = output_dir / domain / "checkpoint.txt"
             if not args.resume and checkpoint.exists():
                 checkpoint.unlink()
-                log.info(f"Fresh run — cleared existing checkpoint for domain '{domain}'")
+                log.info(
+                    f"Fresh run — cleared existing checkpoint for domain '{domain}'"
+                )
 
             # Pre-discover articles for backfill mode; normal mode leaves articles=None
             backfill_articles = None

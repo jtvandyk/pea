@@ -1,4 +1,5 @@
 """Shared helpers for glocon_validator tests."""
+
 import csv
 import json
 
@@ -45,14 +46,18 @@ def make_pea_event(
 def tmp_glocon_dir(tmp_path) -> Path:
     """Temp directory with one JSON array file and one CSV GLOCON file."""
     json_events = [make_glocon_raw(location="Cape Town", event_type="strike")]
-    (tmp_path / "events.json").write_text(
-        json.dumps(json_events), encoding="utf-8"
-    )
+    (tmp_path / "events.json").write_text(json.dumps(json_events), encoding="utf-8")
     csv_path = tmp_path / "events2.csv"
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["event_date", "location", "country", "event_type", "description"],
+            fieldnames=[
+                "event_date",
+                "location",
+                "country",
+                "event_type",
+                "description",
+            ],
         )
         writer.writeheader()
         writer.writerow(make_glocon_raw(location="Durban", event_type="riot"))

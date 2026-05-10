@@ -17,9 +17,68 @@ protest_themes:
   - TAX_FNCACT_PROTESTER
 
 # Keywords matched against article title to confirm protest relevance.
-# Multilingual signals included for GDELT's mixed-language feeds.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# HOW THESE KEYWORDS ARE USED
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. GDELT title matching (gdelt_discovery.py): each keyword is checked as a
+#    substring of the article title returned by GDELT DOC 2.0. A match on ANY
+#    keyword keeps the article for further processing.
+# 2. Relevance filter fallback (relevance_filter.py): when the DeBERTa NLI
+#    model is unavailable, keyword matching against the full article text acts
+#    as a backup. Keywords here are therefore checked against both title and body.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# HOW TO ADD KEYWORDS IN A NEW LANGUAGE
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Step 1 — Find candidate terms
+#   Search Google News or a regional paper in the target language for known
+#   protest events you can verify (e.g. a specific named march). Look at the
+#   headline vocabulary. Good starting sources per region:
+#     Arabic (DZ/EG/SD): Al Jazeera Arabic, El Bilad, El Watan Arabe, Ennahar
+#     French (DZ/SN/CI): RFI Afrique, Jeune Afrique, Liberté, Le Monde Afrique
+#     Swahili (UG/TZ/KE): Daily Nation Swahili, Mwananchi, Nipashe, BBC Swahili
+#     Yoruba (NG-SW): BBC Yoruba (bbc.com/yoruba), Alaroye, Iroyin
+#     Igbo (NG-SE): BBC Igbo (bbc.com/igbo), Daily Sun Igbo, Ụzọ Ndụ
+#     Amharic (ET): Addis Fortune, BBC Amharic, DW Amharic
+#     Portuguese (MZ/AO): O País, Jornal de Angola, Público Moçambique
+#
+# Step 2 — Assess productivity (not too broad, not too narrow)
+#   A keyword is PRODUCTIVE if searching it on GDELT or a news aggregator
+#   returns mostly protest articles, not noise. Test each candidate:
+#     - Too broad:  "marche" (FR) — matches "marché" (market), "démarche" (approach)
+#                   → use "manifestants" instead (specific to people demonstrating)
+#     - Too narrow: "maandamano ya wafanyikazi" (SW) — full phrase; rarely in titles
+#                   → use "maandamano" alone (demonstration)
+#     - About right: "إضراب" (AR) — appears in news titles specifically for strikes
+#
+# Step 3 — Check encoding
+#   Paste terms directly as UTF-8. Arabic reads right-to-left in the source but
+#   YAML stores it correctly as a Unicode string. Test round-trip with:
+#     python3 -c "import yaml; d=yaml.safe_load(open('configs/keywords.yaml')); print(d['protest_signals'])"
+#
+# Step 4 — Add with a comment indicating language, meaning, and target country
+#   Format: "  - term  # LANG: meaning (ISO2 target country)"
+#   Example: "  - إضراب  # AR: strike (DZ, EG, SD)"
+#
+# Step 5 — Record the source for each term in the comment
+#   This prevents future editors from removing terms they don't recognise.
+#   Example: "  - maandamano  # SW: demonstration/march — BBC Swahili headlines"
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# WHAT TO AVOID
+# ─────────────────────────────────────────────────────────────────────────────
+#   × State-response words alone ("arrestation", "اعتقال") — too broad; fire
+#     when arrest is the article subject, not the protest context
+#   × Organisation names ("COSATU", "NLC") — too narrow and version-sensitive
+#   × Transliterated spellings ("ihtijaj") — GDELT stores native Unicode; ASCII
+#     transliterations will not match
+#   × Very common words ("action", "mouvement") — enormous false-positive rate
+# ─────────────────────────────────────────────────────────────────────────────
+
 protest_signals:
-  # English
+  # ── English ────────────────────────────────────────────────────────────────
   - protest
   - protests
   - protester
@@ -50,18 +109,80 @@ protest_signals:
   - detained
   - arrested
   - dispersed
-  # Spanish / French
-  - manifestation
-  - manifestantes
-  - huelga
-  - paro
-  - grève
-  # Indonesian / Malay
-  - aksi
-  - demonstrasi
-  # Arabic
-  - احتجاج
-  - مظاهرة
+
+  # ── French (DZ, SN, CI, DRC, BF, ML, CM) ──────────────────────────────────
+  # Primary action words — high precision in news headlines
+  - manifestation      # FR: demonstration (DZ, SN, CI, DRC) — RFI, Jeune Afrique
+  - manifestants       # FR: demonstrators (masc. plural — more common than manifestantes)
+  - manifestantes      # FR: demonstrators (fem./mixed plural — retained from v1)
+  - grève              # FR: strike (all Francophone Africa) — RFI, Liberté
+  - grévistes          # FR: strikers — El Watan, Liberté
+  - débrayage          # FR: work stoppage / walkout — Liberté, Le Monde Afrique
+  - émeute             # FR: riot (DZ, DRC, BF) — RFI, Jeune Afrique
+  - émeutes            # FR: riots (plural)
+  - rassemblement      # FR: rally / gathering — Le Monde Afrique, RFI
+  - blocus             # FR: blockade (roads, ports) — common in DZ, DRC service protests
+  - revendications     # FR: demands / grievances — Liberté, TSA-Algérie
+  - contestation       # FR: challenge / protest movement — Jeune Afrique
+  - cortège            # FR: procession / march column — used for large organised marches
+  - huelga             # ES: strike (retained; relevant for Equatorial Guinea)
+  - paro               # ES: work stoppage (retained; relevant for Equatorial Guinea)
+
+  # ── Arabic (DZ, EG, SD, MR, SO) ────────────────────────────────────────────
+  # All terms verified against Al Jazeera Arabic and Algerian press headlines
+  - احتجاج             # AR: protest / objection (DZ, EG, SD) — most common protest word
+  - احتجاجات           # AR: protests (plural) — El Watan Arabe, Ennahar
+  - محتجون             # AR: protesters (active participle) — Al Jazeera Arabic
+  - مظاهرة             # AR: demonstration (DZ, EG) — retained from v1
+  - مظاهرات            # AR: demonstrations (plural)
+  - مسيرة              # AR: march / procession (DZ Hirak usage) — TSA-Algérie, El Bilad
+  - إضراب              # AR: strike (DZ, EG, SD) — Liberté Arabe, Al Jazeera
+  - اعتصام             # AR: sit-in / occupation (DZ, EG) — Ennahar, El Watan Arabe
+  - عصيان              # AR: (civil) disobedience — Al Hiwar, Algerian opposition press
+  - شغب                # AR: riots / unrest (DZ, SD, EG) — Al Jazeera, Ennahar
+  - حراك               # AR: movement / Hirak (DZ-specific; the 2019–2021 movement name)
+  - الحراك             # AR: the Hirak (definite form — dominant in DZ protest coverage)
+  - مقاطعة             # AR: boycott (DZ, EG) — Ennahar, TSA-Algérie
+  - وقفة               # AR: stand / vigil (short public gathering) — common in DZ press
+  - تجمهر              # AR: crowd gathering / assembly — El Watan Arabe
+
+  # ── Swahili (UG, TZ, KE) ───────────────────────────────────────────────────
+  # Verified against Daily Nation Swahili, Mwananchi (TZ), BBC Swahili headlines
+  - mgomo              # SW: strike (UG, TZ, KE) — extremely common in EA labour news
+  - migomo             # SW: strikes (plural) — Mwananchi, Nation Africa
+  - maandamano         # SW: demonstration / march (UG, KE) — BBC Swahili, Daily Monitor
+  - waandamanaji       # SW: demonstrators (UG, KE) — NTV Uganda Swahili feeds
+  - machafuko          # SW: unrest / disorder (UG, TZ) — New Vision, Mwananchi
+  - ghasia             # SW: violence / riots (UG, TZ, KE) — Daily Nation, BBC Swahili
+  - mapigano           # SW: clashes / fighting in protest context (KE, UG) — Nation
+  - kizuizi            # SW: blockade / obstruction (road blocks, UG, TZ)
+  - matakwa            # SW: demands / demands list — used in labour protest coverage
+
+  # ── Yoruba (NG: Lagos, Oyo, Ogun, Osun, Ekiti, Kwara, Ondo) ────────────────
+  # Verified against BBC Yoruba (bbc.com/yoruba) headline vocabulary.
+  # Yoruba uses tonal diacritics (à á â, ẹ ọ ṣ) — include them; GDELT stores
+  # full Unicode. Both accented and plain forms included where BBC Yoruba varies.
+  - atakò              # YO: protest / opposition — most common in BBC Yoruba headlines
+  - alátakò            # YO: protester (one who opposes) — BBC Yoruba
+  - ìdáwọlé            # YO: strike / work stoppage — BBC Yoruba labour coverage
+  - ìjókòó             # YO: sit-in / sit-down action — BBC Yoruba
+  - ìdàrúdàpọ̀          # YO: unrest / disorder / chaos — BBC Yoruba
+  - ìjàkadì            # YO: struggle / protest action — Alaroye, Iroyin
+  - ìpayàntìtì         # YO: uprising / rebellion — BBC Yoruba political coverage
+
+  # ── Igbo (NG: Anambra, Imo, Enugu, Abia, Rivers, Ebonyi) ───────────────────
+  # Verified against BBC Igbo (bbc.com/igbo) headline vocabulary.
+  # Igbo uses the dotted vowels ị ụ ọ and nasal ṅ — include them.
+  - ngagharị           # IG: protest / agitation / demonstration — primary BBC Igbo term
+  - ndị ngagharị       # IG: protesters (the agitators) — BBC Igbo
+  - esemokwu           # IG: conflict / clashes — BBC Igbo protest coverage
+  - ọrụ nchefuo        # IG: work stoppage / strike (ọrụ=work, nchefuo=abandonment)
+  - nkwupụta           # IG: protest declaration / statement of demands — BBC Igbo
+  - ọchịchọ            # IG: demand / uprising (context-dependent) — BBC Igbo
+
+  # ── Indonesian / Malay (ID, MY) ─────────────────────────────────────────────
+  - aksi               # ID/MY: action / protest action — retained from v1
+  - demonstrasi        # ID/MY: demonstration — retained from v1
 
 # Substrings checked against article URL as a fallback relevance signal.
 url_signals:
@@ -77,9 +198,9 @@ url_signals:
 # Used by RelevanceFilter when domain='drone'
 # =============================================================================
 
-# Keyword signals for drone domain relevance filter fallback.
 drone_signals:
-  # Platform names
+  # ── English — platform names ─────────────────────────────────────────────────
+  # Note: "drone" is used unchanged in SW/YO/IG-language press — covered here.
   - drone
   - drones
   - uav
@@ -104,7 +225,7 @@ drone_signals:
   - loitering munition
   - one-way attack
   - kamikaze drone
-  # Actions
+  # ── English — actions ───────────────────────────────────────────────────────
   - drone strike
   - drone attack
   - drone struck
@@ -115,9 +236,19 @@ drone_signals:
   - drone surveillance
   - drone footage
   - swarm attack
-  # Arabic / multilingual
-  - طائرة مسيّرة
-  - طائرة بدون طيار
+  # ── French (DZ, ML, BF, CI, CM) ────────────────────────────────────────────
+  - frappe de drone        # FR: drone strike — RFI, Le Monde
+  - attaque de drone       # FR: drone attack — RFI Afrique
+  - drone abattu           # FR: drone shot down
+  - engin télépiloté       # FR: remote-piloted vehicle (formal/technical)
+  # ── Arabic (DZ, SD, LY, SO, YE) ────────────────────────────────────────────
+  - طائرة مسيّرة           # AR: drone (lit. remote-controlled aircraft) — Al Jazeera
+  - طائرة بدون طيار        # AR: unmanned aircraft — Al Jazeera, Arabic press
+  - مسيّرة                 # AR: drone (shortened form common in headlines) — Ennahar, TSA
+  - ضربة جوية              # AR: airstrike (broader; includes drone strikes) — Al Jazeera
+  # ── Swahili (UG, TZ, KE, SO) ───────────────────────────────────────────────
+  - shambulio la drone     # SW: drone attack — Nation Africa, BBC Swahili
+  - ndege ya kivita        # SW: military aircraft / combat drone — Mwananchi
 
 drone_url_signals:
   - drone
@@ -126,3 +257,139 @@ drone_url_signals:
   - airstrike
   - shahed
   - bayraktar
+
+# =============================================================================
+# VIOLENT EXTREMISM DOMAIN KEYWORDS
+# Used by RelevanceFilter when domain='violent_extremism'
+# Covers group names, tactic words, and attack vocabulary across all target
+# languages. English group names are used unchanged in most local-language press.
+# =============================================================================
+
+violent_extremism_signals:
+  # ── English — group names ────────────────────────────────────────────────────
+  # Note: these English group names are used unchanged in SW/YO/IG-language press.
+  - boko haram
+  - iswap                     # EN: Islamic State West Africa Province
+  - al-shabaab
+  - al shabaab
+  - jnim                      # EN: Jama'at Nusrat al-Islam wal-Muslimin (Sahel)
+  - aqim                      # EN: Al-Qaeda in the Islamic Maghreb
+  - aqmi                      # EN: same (French acronym used in English press)
+  - ansarul islam
+  - msla                      # EN: Mouvement pour le Salut de l'Azawad
+  - mnla                      # EN: Mouvement National de Libération de l'Azawad
+  - gsk                       # EN: Groupe de Soutien à l'Islam et aux Musulmans
+  # ── English — tactic and status words ────────────────────────────────────────
+  - jihadist
+  - jihadists
+  - insurgent
+  - insurgents
+  - insurgency
+  - extremist
+  - extremists
+  - terrorist
+  - terrorists
+  - terrorism
+  - attack
+  - suicide bomber
+  - suicide bombing
+  - ied
+  - improvised explosive
+  - ambush
+  - massacre
+  - kidnapping
+  - abduction
+  - hostage
+  - counterterrorism
+  - counter-terrorism
+
+  # ── French (DZ, ML, BF, CI, CM, MR, NE) ─────────────────────────────────────
+  # Verified against RFI Afrique, Le Monde Afrique, Jeune Afrique headlines
+  - jihadiste                 # FR: jihadist — RFI, Le Monde Afrique
+  - jihadistes                # FR: jihadists (plural)
+  - terroriste                # FR: terrorist
+  - terroristes               # FR: terrorists (plural)
+  - terrorisme                # FR: terrorism
+  - attentat                  # FR: attack / bombing — most common headline word (FR)
+  - attentats                 # FR: attacks (plural)
+  - groupe armé               # FR: armed group — RFI, Jeune Afrique
+  - groupes armés             # FR: armed groups (plural)
+  - extrémiste                # FR: extremist
+  - extrémistes               # FR: extremists (plural)
+  - djihadiste                # FR: jihadist (alternate spelling common in French press)
+  - insurrection              # FR: insurgency / insurrection — Sahel coverage
+  - embuscade                 # FR: ambush — RFI Afrique, Le Monde
+  - enlèvement                # FR: kidnapping — RFI, Jeune Afrique
+  - prise d'otages            # FR: hostage-taking — RFI Afrique
+  - AQMI                      # FR: Al-Qaeda au Maghreb islamique (acronym in FR press)
+  - JNIM                      # FR: same acronym used in French-language Sahel reporting
+
+  # ── Arabic (DZ, ML, NE, SO, SD, LY) ─────────────────────────────────────────
+  # Verified against Al Jazeera Arabic, Ennahar, El Watan Arabe
+  - إرهاب                     # AR: terrorism — Al Jazeera, Ennahar
+  - إرهابي                    # AR: terrorist (singular)
+  - إرهابيون                  # AR: terrorists (plural) — Al Jazeera
+  - جهاديون                   # AR: jihadists — Al Jazeera Arabic
+  - جهادي                     # AR: jihadist (singular)
+  - متطرفون                   # AR: extremists — Al Jazeera, Arabic press
+  - تنظيم داعش                # AR: ISIS / Daesh organisation — Al Jazeera
+  - داعش                      # AR: Daesh (ISIS shortened form) — dominant in Arabic headlines
+  - بوكو حرام                 # AR: Boko Haram — Al Jazeera Arabic coverage of Nigeria
+  - الشباب                    # AR: Al-Shabaab — Al Jazeera, Ennahar (Somalia coverage)
+  - تفجير                     # AR: bombing / explosion — Ennahar, El Watan
+  - تفجيرات                   # AR: bombings (plural)
+  - هجوم مسلح                 # AR: armed attack — Al Jazeera, Ennahar
+  - كمين                      # AR: ambush — common in Sahel/Mali coverage
+  - خطف                       # AR: kidnapping — Al Jazeera, Ennahar
+  - رهائن                     # AR: hostages — Al Jazeera Arabic
+
+  # ── Swahili (UG, TZ, KE, SO, TZ) ────────────────────────────────────────────
+  # Verified against BBC Swahili, Daily Nation, Mwananchi headlines
+  - ugaidi                    # SW: terrorism — BBC Swahili, Nation Africa
+  - kigaidi                   # SW: terrorist (singular) — BBC Swahili
+  - magaidi                   # SW: terrorists (plural) — BBC Swahili, Daily Nation
+  - waasi                     # SW: rebels / insurgents — Mwananchi, Nation Africa
+  - uasi                      # SW: rebellion / insurgency — BBC Swahili
+  - shambulio                 # SW: attack — BBC Swahili (also appears in drone block)
+  - mlipuko                   # SW: explosion / blast — BBC Swahili, Mwananchi
+  - utekaji nyara             # SW: kidnapping — BBC Swahili
+  - mateka                    # SW: hostages / captives — BBC Swahili
+
+  # ── Yoruba (NG: NE, NW — Boko Haram coverage area) ──────────────────────────
+  # Yoruba-language coverage of Boko Haram/ISWAP is limited; BBC Yoruba uses
+  # English group names. Tactic words are adapted Yoruba.
+  # Verified against BBC Yoruba (bbc.com/yoruba) headline vocabulary.
+  - onijagídìjagan            # YO: terrorist / violent extremist — BBC Yoruba
+  - ikọlù                     # YO: attack — BBC Yoruba
+  - ìjábọ̀                     # YO: shooting / gunfire — BBC Yoruba
+  - ìpànìyàn                  # YO: killing / murder in extremism context — BBC Yoruba
+  - olùkọlù                   # YO: attacker — BBC Yoruba
+  - ajíhàdì                   # YO: jihadist (phonetic adaptation) — BBC Yoruba
+
+  # ── Igbo (NG: NE, SE — Boko Haram + ISWAP coverage area) ────────────────────
+  # Igbo-language coverage of violent extremism uses English group names.
+  # Tactic words draw on BBC Igbo headline vocabulary.
+  # Verified against BBC Igbo (bbc.com/igbo) headline vocabulary.
+  - ndị ajọ ndụ               # IG: terrorists / evil-doers (lit. people of bad life) — BBC Igbo
+  - ndiisi                    # IG: insurgents / militants — BBC Igbo
+  - mwaka                     # IG: attack / assault — BBC Igbo
+  - egbugbu                   # IG: killings / massacre — BBC Igbo
+  - ndị ọ̀tụ̀tụ̀                 # IG: gunmen / attackers — BBC Igbo
+
+violent_extremism_url_signals:
+  - terror
+  - terrorist
+  - jihadist
+  - jihad
+  - boko-haram
+  - bokoharam
+  - al-shabaab
+  - alshabaab
+  - iswap
+  - insurgent
+  - insurgency
+  - extremist
+  - aqim
+  - aqmi
+  - jnim
+  - islamist

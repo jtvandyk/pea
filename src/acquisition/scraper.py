@@ -13,10 +13,9 @@ For Global South sources this module:
 """
 
 import logging
+import random
 import threading
 import time
-import random
-from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
@@ -260,9 +259,7 @@ def scrape_articles(
             position = counters["started"]
 
         if article.get("text"):
-            log.info(
-                f"[{position}/{total}] Skipping (text pre-populated): {url[:80]}"
-            )
+            log.info(f"[{position}/{total}] Skipping (text pre-populated): {url[:80]}")
             with counters_lock:
                 counters["success"] += 1
             return

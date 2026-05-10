@@ -1,0 +1,681 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "codebook_version": "2.4",
+    "description": "20-article ground-truth evaluation set for before/after pipeline quality measurement. 5 articles per target country (NG, ZA, UG, DZ). Each country slot contains 2 clear positives, 2 borderline cases, and 1 clear non-event.",
+    "created": "TODO: YYYY-MM-DD",
+    "annotator": "TODO: name",
+    "instructions": [
+      "1. Find a real article matching each slot's source_guidance. Paste the full text into article.text (no length limit here — the pipeline truncates to 12k chars).",
+      "2. Fill article.url, article.title, article.date.",
+      "3. Hand-code ground_truth.events following protest_codebook.yaml v2.4 rules. This is your gold label — be deliberate.",
+      "4. Set ground_truth.expected_event_count and expected_types to match your coded events.",
+      "5. For non-event slots, set expected_empty: true and events: [].",
+      "6. Record your coding rationale in coding_notes, especially for borderline cases.",
+      "7. Do not run the pipeline before annotating — code from the article text only."
+    ],
+    "evaluation_dimensions": {
+      "extraction_rate": "% of clear_positive articles where pipeline returns ≥1 event",
+      "rejection_rate": "% of non_event articles where pipeline correctly returns []",
+      "type_accuracy": "% of extracted events where pipeline event_type matches ground truth",
+      "false_negative_rate": "% of ground_truth events missing entirely from pipeline output",
+      "confidence_calibration": "mean pipeline confidence for clear_positive vs borderline vs non_event"
+    }
+  },
+
+  "articles": [
+
+    {
+      "_comment": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ NIGERIA ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    },
+
+    {
+      "id": "NG_01",
+      "country": "Nigeria",
+      "category": "clear_positive",
+      "source_guidance": "Find a Punch, Premium Times, or Vanguard article reporting a large demonstration_march in Abuja or Lagos with a named organiser, clear political claims, and no violence. Good periods: cost-of-living protests 2023–2024, NLC/TUC marches, #EndBadGovernance protests Aug 2024. Expected pipeline output: high-confidence demonstration_march.",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO",
+        "date": "TODO",
+        "language": "en",
+        "source_country": "Nigeria"
+      },
+      "ground_truth": {
+        "expected_empty": false,
+        "expected_event_count": 1,
+        "expected_types": ["demonstration_march"],
+        "events": [
+          {
+            "event_type": "demonstration_march",
+            "country": "Nigeria",
+            "city": "TODO",
+            "organizer": "TODO",
+            "claims": ["TODO"],
+            "crowd_size": "TODO",
+            "state_response": "TODO",
+            "arrests": "TODO",
+            "fatalities": null,
+            "injuries": "TODO",
+            "outcome": "TODO",
+            "confidence": "high"
+          }
+        ]
+      },
+      "coding_notes": "TODO: note any decisions made (e.g. why high not medium confidence, how crowd_size was coded)"
+    },
+
+    {
+      "id": "NG_02",
+      "country": "Nigeria",
+      "category": "clear_positive",
+      "source_guidance": "Find a Premium Times or The Cable article on a named union strike (ASUU, NLC, NUPENG, oil workers) with a clear work-stoppage tactic and stated demands. Avoid articles about a strike being threatened or planned — the action must have begun. Expected pipeline output: high-confidence strike_boycott.",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO",
+        "date": "TODO",
+        "language": "en",
+        "source_country": "Nigeria"
+      },
+      "ground_truth": {
+        "expected_empty": false,
+        "expected_event_count": 1,
+        "expected_types": ["strike_boycott"],
+        "events": [
+          {
+            "event_type": "strike_boycott",
+            "country": "Nigeria",
+            "city": "TODO",
+            "organizer": "TODO",
+            "claims": ["TODO"],
+            "crowd_size": null,
+            "duration": "TODO",
+            "state_response": "none",
+            "outcome": "TODO",
+            "confidence": "high"
+          }
+        ]
+      },
+      "coding_notes": "TODO"
+    },
+
+    {
+      "id": "NG_03",
+      "country": "Nigeria",
+      "category": "borderline",
+      "borderline_type": "type_ambiguity",
+      "borderline_description": "confrontation vs riot — burning tyres / clashes present but unclear if violence is protester-initiated or incidental",
+      "source_guidance": "Find a fuel-price or service-delivery protest article where 'clashes' or 'burning tyres' appear in the text alongside a march. The article should be ambiguous about whether violence was protester-initiated or a police response. This tests Change 1 from the codebook v2.4 additions (confrontation/riot threshold). Look in Vanguard or Daily Trust, 2022–2024.",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO",
+        "date": "TODO",
+        "language": "en",
+        "source_country": "Nigeria"
+      },
+      "ground_truth": {
+        "expected_empty": false,
+        "expected_event_count": 1,
+        "expected_types": ["TODO: confrontation or riot — pick one and justify in coding_notes"],
+        "events": [
+          {
+            "event_type": "TODO",
+            "country": "Nigeria",
+            "city": "TODO",
+            "organizer": "TODO",
+            "claims": ["TODO"],
+            "state_response": "TODO",
+            "outcome": "TODO",
+            "confidence": "TODO"
+          }
+        ]
+      },
+      "coding_notes": "TODO: Apply codebook v2.4 Change 1. Was property destruction the PRIMARY reported action? Was there a secondary indicator (arrests/injuries/security deployment)? State which rule resolved the ambiguity."
+    },
+
+    {
+      "id": "NG_04",
+      "country": "Nigeria",
+      "category": "borderline",
+      "borderline_type": "protest_adjacent_reporting",
+      "borderline_description": "Article is primarily about a government or police statement about a past protest — tests confidence downgrade rule (codebook v2.4 Change 5)",
+      "source_guidance": "Find a Punch or Premium Times article where the headline is about a government ban, police arrest count, or official condemnation of a specific named protest that already occurred. The protest event is real and extractable, but the article's primary subject is the official response, not the protest. Expected: event extracted but confidence downgraded one level vs. a contemporaneous report.",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO",
+        "date": "TODO",
+        "language": "en",
+        "source_country": "Nigeria"
+      },
+      "ground_truth": {
+        "expected_empty": false,
+        "expected_event_count": 1,
+        "expected_types": ["TODO"],
+        "events": [
+          {
+            "event_type": "TODO",
+            "country": "Nigeria",
+            "city": "TODO",
+            "organizer": "TODO",
+            "claims": ["TODO"],
+            "state_response": "TODO",
+            "outcome": "TODO",
+            "confidence": "TODO: should be medium or low due to protest-adjacent downgrade"
+          }
+        ]
+      },
+      "coding_notes": "TODO: Apply codebook v2.4 Change 5. Is this article primarily about the protest or primarily about the official response? Record which sentences made you apply the downgrade."
+    },
+
+    {
+      "id": "NG_05",
+      "country": "Nigeria",
+      "category": "non_event",
+      "non_event_type": "institutional_meeting",
+      "source_guidance": "Find a Vanguard or NAN article about an ECOWAS summit, Nigerian government cabinet meeting, or presidential policy announcement. Must contain no protest event whatsoever. This is a false-positive trap: the article may use terms like 'demonstration of support' or 'protest against inflation' in a non-literal sense. Expected pipeline output: [].",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO",
+        "date": "TODO",
+        "language": "en",
+        "source_country": "Nigeria"
+      },
+      "ground_truth": {
+        "expected_empty": true,
+        "expected_event_count": 0,
+        "expected_types": [],
+        "events": []
+      },
+      "coding_notes": "TODO: Note which disqualifier gate applies (e.g. 'conference/summit', 'official statement'). Note any protest-adjacent language in the article that might trick the pipeline."
+    },
+
+    {
+      "_comment": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ SOUTH AFRICA ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    },
+
+    {
+      "id": "ZA_01",
+      "country": "South Africa",
+      "category": "clear_positive",
+      "source_guidance": "Find a GroundUp or Daily Maverick article about a township service-delivery confrontation: burning tyres, road blockade, no looting or assault. Named community forum or residents' association preferred. This mirrors ex_01 in the existing few-shot examples but must be a DIFFERENT event. Expected: high-confidence confrontation.",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO",
+        "date": "TODO",
+        "language": "en",
+        "source_country": "South Africa"
+      },
+      "ground_truth": {
+        "expected_empty": false,
+        "expected_event_count": 1,
+        "expected_types": ["confrontation"],
+        "events": [
+          {
+            "event_type": "confrontation",
+            "country": "South Africa",
+            "city": "TODO",
+            "region": "TODO",
+            "venue": "TODO",
+            "organizer": "TODO",
+            "claims": ["TODO"],
+            "crowd_size": null,
+            "duration": "TODO",
+            "state_response": "TODO",
+            "outcome": "TODO",
+            "confidence": "high"
+          }
+        ]
+      },
+      "coding_notes": "TODO"
+    },
+
+    {
+      "id": "ZA_02",
+      "country": "South Africa",
+      "category": "clear_positive",
+      "source_guidance": "Find a TimesLIVE or Daily Maverick article covering a #FeesMustFall, Fees Commission follow-up, or university worker demonstration_march with named union (NEHAWU, NTEU), crowd size, and a march route. Expected: high-confidence demonstration_march. Alternatively: a NUMSA or NUM march on CCMA or Parliament.",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO",
+        "date": "TODO",
+        "language": "en",
+        "source_country": "South Africa"
+      },
+      "ground_truth": {
+        "expected_empty": false,
+        "expected_event_count": 1,
+        "expected_types": ["demonstration_march"],
+        "events": [
+          {
+            "event_type": "demonstration_march",
+            "country": "South Africa",
+            "city": "TODO",
+            "organizer": "TODO",
+            "claims": ["TODO"],
+            "crowd_size": "TODO",
+            "state_response": "TODO",
+            "outcome": "TODO",
+            "confidence": "high"
+          }
+        ]
+      },
+      "coding_notes": "TODO"
+    },
+
+    {
+      "id": "ZA_03",
+      "country": "South Africa",
+      "category": "borderline",
+      "borderline_type": "type_ambiguity",
+      "borderline_description": "vigil vs demonstration_march — commemorative gathering that may contain political demands",
+      "source_guidance": "Find a GroundUp or Daily Maverick article about a candlelight vigil or commemoration (Marikana anniversary, Fees Must Fall death anniversaries, femicide vigils) where participants ALSO made political demands or marched after the vigil. This tests the vigil/demonstration boundary: if demands are made or a march follows, recode as demonstration_march. Expected: vigil OR demonstration_march depending on the article — annotator decides.",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO",
+        "date": "TODO",
+        "language": "en",
+        "source_country": "South Africa"
+      },
+      "ground_truth": {
+        "expected_empty": false,
+        "expected_event_count": 1,
+        "expected_types": ["TODO: vigil or demonstration_march"],
+        "events": [
+          {
+            "event_type": "TODO",
+            "country": "South Africa",
+            "city": "TODO",
+            "organizer": "TODO",
+            "claims": ["TODO: null or list depending on type"],
+            "state_response": "none",
+            "outcome": "unknown",
+            "confidence": "TODO"
+          }
+        ]
+      },
+      "coding_notes": "TODO: Did participants make demands or march during the event? Cite the specific sentence from the article that determined your type choice."
+    },
+
+    {
+      "id": "ZA_04",
+      "country": "South Africa",
+      "category": "borderline",
+      "borderline_type": "minimum_criteria",
+      "borderline_description": "Possible inter-communal violence — must check whether event has political demand targeting the state (qualifying) or is purely communal conflict (non-event per disqualifier)",
+      "source_guidance": "Find a TimesLIVE or News24 article about a community conflict that MIGHT be protest (e.g. residents blockading a road over foreigners, or anti-crime vigilantism) — these sit on the edge of the disqualifier for 'inter-communal mob violence'. Expected: either [] (if no political demand targeting state) or confrontation/demonstration (if demands target municipality or government). Annotator decides based on codebook minimum criteria.",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO",
+        "date": "TODO",
+        "language": "en",
+        "source_country": "South Africa"
+      },
+      "ground_truth": {
+        "expected_empty": "TODO: true or false — depends on whether state-targeted demand is present",
+        "expected_event_count": "TODO: 0 or 1",
+        "expected_types": ["TODO"],
+        "events": "TODO: [] or [{...}]"
+      },
+      "coding_notes": "TODO: Is there an explicit political demand directed at a government body? If only directed at other community members or foreign nationals → non-event (inter-communal). Cite the specific language."
+    },
+
+    {
+      "id": "ZA_05",
+      "country": "South Africa",
+      "category": "non_event",
+      "non_event_type": "institutional_meeting",
+      "source_guidance": "Find a News24 or TimesLIVE article about an ANC National Executive Committee meeting, SADC summit hosted in South Africa, or BRICS leaders' meeting in Johannesburg. Must contain no protest element. Expected pipeline output: [].",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO",
+        "date": "TODO",
+        "language": "en",
+        "source_country": "South Africa"
+      },
+      "ground_truth": {
+        "expected_empty": true,
+        "expected_event_count": 0,
+        "expected_types": [],
+        "events": []
+      },
+      "coding_notes": "TODO: note the disqualifier gate."
+    },
+
+    {
+      "_comment": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ UGANDA ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    },
+
+    {
+      "id": "UG_01",
+      "country": "Uganda",
+      "category": "clear_positive",
+      "source_guidance": "Find a Daily Monitor or NTV Uganda article covering an opposition demonstration in Kampala — People Power/NUP supporters marching, or activists demonstrating outside Electoral Commission or Parliament. Named organiser preferred. Expected: high-confidence demonstration_march. Avoid anything with violent dispersal for this slot (that's UG_04).",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO",
+        "date": "TODO",
+        "language": "en",
+        "source_country": "Uganda"
+      },
+      "ground_truth": {
+        "expected_empty": false,
+        "expected_event_count": 1,
+        "expected_types": ["demonstration_march"],
+        "events": [
+          {
+            "event_type": "demonstration_march",
+            "country": "Uganda",
+            "city": "Kampala",
+            "organizer": "TODO",
+            "claims": ["TODO"],
+            "crowd_size": "TODO",
+            "state_response": "TODO",
+            "outcome": "TODO",
+            "confidence": "high"
+          }
+        ]
+      },
+      "coding_notes": "TODO"
+    },
+
+    {
+      "id": "UG_02",
+      "country": "Uganda",
+      "category": "clear_positive",
+      "source_guidance": "Find a Daily Monitor or Observer article about a detained activist or opposition figure on hunger strike at Luzira Prison or another facility. Must have political demands stated publicly (via lawyer or family). ≥2 people OR 1 significant person. Expected: medium-confidence hunger_strike (CIVICUS repressed context + possible anonymous organiser).",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO",
+        "date": "TODO",
+        "language": "en",
+        "source_country": "Uganda"
+      },
+      "ground_truth": {
+        "expected_empty": false,
+        "expected_event_count": 1,
+        "expected_types": ["hunger_strike"],
+        "events": [
+          {
+            "event_type": "hunger_strike",
+            "country": "Uganda",
+            "city": "Kampala",
+            "venue": "TODO: prison name",
+            "organizer": null,
+            "participant_groups": ["TODO"],
+            "claims": ["TODO"],
+            "crowd_size": "TODO: number of strikers",
+            "state_response": "none",
+            "outcome": "ongoing",
+            "confidence": "medium"
+          }
+        ]
+      },
+      "coding_notes": "TODO: Apply hunger_strike codebook v2.4 Change 4. Were demands political? Was action publicly announced? Confirm confidence downgrade rationale (CIVICUS repressed)."
+    },
+
+    {
+      "id": "UG_03",
+      "country": "Uganda",
+      "category": "borderline",
+      "borderline_type": "minimum_criteria",
+      "borderline_description": "Very small gathering — tests ≥2 people threshold and whether 'political motivation' is explicit or only implied",
+      "source_guidance": "Find a New Vision or Observer article describing a small demonstration (handful of people, or described only as 'a group') with unclear political demands — e.g. a brief mention of 'residents protested' or 'activists gathered' without further detail. This tests where the minimum criteria gate draws the line. Expected: pipeline may or may not extract; your ground truth determines whether it should.",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO",
+        "date": "TODO",
+        "language": "en",
+        "source_country": "Uganda"
+      },
+      "ground_truth": {
+        "expected_empty": "TODO: true if minimum criteria not met; false if met",
+        "expected_event_count": "TODO",
+        "expected_types": ["TODO"],
+        "events": "TODO"
+      },
+      "coding_notes": "TODO: Go through each minimum criterion explicitly. Which ones are met? Which are uncertain? Record the threshold decision."
+    },
+
+    {
+      "id": "UG_04",
+      "country": "Uganda",
+      "category": "borderline",
+      "borderline_type": "type_ambiguity",
+      "borderline_description": "Post-election unrest — riot vs demonstration_march; violence may be protester-initiated or police-initiated",
+      "source_guidance": "Find a Daily Monitor or NTV article about post-election violence or protest dispersal in Uganda (2021 election or by-elections) where the article describes both marching AND some violence. Apply codebook v2.4 Change 1 (confrontation/riot threshold): was protester-initiated property destruction the primary act? Or was violence primarily state force responding to a march? Expected type depends on your reading.",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO",
+        "date": "TODO",
+        "language": "en",
+        "source_country": "Uganda"
+      },
+      "ground_truth": {
+        "expected_empty": false,
+        "expected_event_count": 1,
+        "expected_types": ["TODO: riot or demonstration_march"],
+        "events": [
+          {
+            "event_type": "TODO",
+            "country": "Uganda",
+            "city": "TODO",
+            "organizer": "TODO",
+            "state_response": "TODO",
+            "fatalities": "TODO",
+            "injuries": "TODO",
+            "arrests": "TODO",
+            "outcome": "TODO",
+            "confidence": "TODO"
+          }
+        ]
+      },
+      "coding_notes": "TODO: Apply Change 1. Was stone-throwing/property damage the primary action per the headline/lead? Or was it incidental to a march? Record which sentence settled the decision."
+    },
+
+    {
+      "id": "UG_05",
+      "country": "Uganda",
+      "category": "non_event",
+      "non_event_type": "state_ceremony",
+      "source_guidance": "Find a New Vision or State House Uganda article covering a presidential speech, cabinet swearing-in, military graduation, or NRM party conference. Must contain no protest element. Articles with titles like 'Museveni opens parliament' or 'Uganda marks independence day' are ideal. Expected: [].",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO",
+        "date": "TODO",
+        "language": "en",
+        "source_country": "Uganda"
+      },
+      "ground_truth": {
+        "expected_empty": true,
+        "expected_event_count": 0,
+        "expected_types": [],
+        "events": []
+      },
+      "coding_notes": "TODO"
+    },
+
+    {
+      "_comment": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ALGERIA ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    },
+
+    {
+      "id": "DZ_01",
+      "country": "Algeria",
+      "category": "clear_positive",
+      "source_guidance": "Find an Arabic-language El Watan, TSA-Algérie, or Ennahar article describing a Hirak Friday march (2019–2021). The article must be in Arabic. Expected: medium-confidence demonstration_march. Do NOT use a French-language source for this slot — that is DZ_02. Apply codebook v2.4 Change 6 (Hirak rules): organizer: null, confidence: medium.",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO: paste Arabic article text here",
+        "date": "TODO",
+        "language": "ar",
+        "source_country": "Algeria"
+      },
+      "ground_truth": {
+        "expected_empty": false,
+        "expected_event_count": 1,
+        "expected_types": ["demonstration_march"],
+        "events": [
+          {
+            "event_type": "demonstration_march",
+            "country": "Algeria",
+            "city": "TODO",
+            "organizer": null,
+            "participant_groups": ["Hirak protesters", "citizens"],
+            "claims": ["TODO: include Arabic slogans transliterated or translated"],
+            "crowd_size": "TODO",
+            "state_response": "TODO",
+            "outcome": "TODO",
+            "confidence": "medium"
+          }
+        ]
+      },
+      "coding_notes": "TODO: Confirm organizer is null (Hirak rule). Confirm confidence is medium not high (CIVICUS repressed + anonymous organiser). Note any Arabic slogan included in claims."
+    },
+
+    {
+      "id": "DZ_02",
+      "country": "Algeria",
+      "category": "clear_positive",
+      "source_guidance": "Find a French-language Liberté, El Watan (French edition), or RFI article about an Algerian civil servants', teachers', or oil workers' strike. The article must be in French. Expected: high-confidence strike_boycott (named union, clear work-stoppage, stated demands). Source language: fr.",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO: paste French article text here",
+        "date": "TODO",
+        "language": "fr",
+        "source_country": "Algeria"
+      },
+      "ground_truth": {
+        "expected_empty": false,
+        "expected_event_count": 1,
+        "expected_types": ["strike_boycott"],
+        "events": [
+          {
+            "event_type": "strike_boycott",
+            "country": "Algeria",
+            "city": "TODO",
+            "organizer": "TODO",
+            "claims": ["TODO"],
+            "duration": "TODO",
+            "state_response": "TODO",
+            "outcome": "TODO",
+            "confidence": "high"
+          }
+        ]
+      },
+      "coding_notes": "TODO"
+    },
+
+    {
+      "id": "DZ_03",
+      "country": "Algeria",
+      "category": "borderline",
+      "borderline_type": "type_ambiguity",
+      "borderline_description": "Pre-emptive arrest before a planned march — tests codebook v2.4 Change 6 Hirak rule for pre-emptive detentions",
+      "source_guidance": "Find an article (Arabic or French) where authorities arrested activists BEFORE a planned Hirak march to prevent it. Apply Change 6: code as demonstration_march, state_response: arrests, outcome: dispersed, outcome_notes: 'pre-emptive detention prevented march'. This is counter-intuitive — the march never happened — but the codebook rule is explicit. Expected: medium-confidence demonstration_march.",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO",
+        "date": "TODO",
+        "language": "TODO: ar or fr",
+        "source_country": "Algeria"
+      },
+      "ground_truth": {
+        "expected_empty": false,
+        "expected_event_count": 1,
+        "expected_types": ["demonstration_march"],
+        "events": [
+          {
+            "event_type": "demonstration_march",
+            "country": "Algeria",
+            "city": "TODO",
+            "organizer": null,
+            "claims": ["TODO"],
+            "state_response": "arrests",
+            "arrests": "TODO",
+            "outcome": "dispersed",
+            "outcome_notes": "Pre-emptive detention prevented march from taking place",
+            "confidence": "medium"
+          }
+        ]
+      },
+      "coding_notes": "TODO: This is the hardest DZ slot. Confirm Change 6 rule applies (pre-emptive arrest). Record any uncertainty about whether the march was genuinely prevented or merely delayed."
+    },
+
+    {
+      "id": "DZ_04",
+      "country": "Algeria",
+      "category": "borderline",
+      "borderline_type": "protest_adjacent_reporting",
+      "borderline_description": "Article about government crackdown on Hirak — tests protest-adjacent confidence downgrade (Change 5) in Arabic or French",
+      "source_guidance": "Find an article (Arabic or French) primarily reporting a government minister's statement, court sentencing of activists, or a Human Rights Watch report about Hirak repression — not a contemporaneous march report. The protest event is real and extractable but the article is secondary. Expected: extractable event with confidence downgraded one level vs. a direct report.",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO",
+        "date": "TODO",
+        "language": "TODO: ar or fr",
+        "source_country": "Algeria"
+      },
+      "ground_truth": {
+        "expected_empty": false,
+        "expected_event_count": 1,
+        "expected_types": ["TODO"],
+        "events": [
+          {
+            "event_type": "TODO",
+            "country": "Algeria",
+            "city": "TODO",
+            "organizer": null,
+            "claims": ["TODO"],
+            "state_response": "TODO",
+            "outcome": "TODO",
+            "confidence": "TODO: apply Change 5 downgrade — likely low"
+          }
+        ]
+      },
+      "coding_notes": "TODO: Apply Change 5. Is the article's lead about the protest or about the official response? Which sentence made you downgrade confidence?"
+    },
+
+    {
+      "id": "DZ_05",
+      "country": "Algeria",
+      "category": "non_event",
+      "non_event_type": "government_meeting",
+      "source_guidance": "Find an Arabic or French Algerian article about an Arab League summit, cabinet reshuffle announcement, or presidential speech with no protest element. APS (Algérie Presse Service) is a good source for official government news. Expected: [].",
+      "article": {
+        "url": "TODO",
+        "title": "TODO",
+        "text": "TODO",
+        "date": "TODO",
+        "language": "TODO: ar or fr",
+        "source_country": "Algeria"
+      },
+      "ground_truth": {
+        "expected_empty": true,
+        "expected_event_count": 0,
+        "expected_types": [],
+        "events": []
+      },
+      "coding_notes": "TODO: Note any protest-adjacent language (e.g. 'tensions', 'discontent') that might trigger a false positive."
+    }
+
+  ]
+}

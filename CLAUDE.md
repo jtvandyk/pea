@@ -294,3 +294,30 @@ The JSON report includes a `match_records` array (one entry per gold event) for 
 | 2026-04-05 | Improved deduplicator (TF-IDF claims similarity, null-city fix, ±3 day window) |
 | 2026-04-05 | GLOCON validator (`src/validation/glocon_validator.py`) |
 | 2026-04-05 | Active learning annotation pipeline (Label Studio + export/import scripts) |
+| 2026-04-25 | CI fixes: black formatting, flake8 violations, Dockerfile.web missing src/constants.py |
+
+---
+
+## Code Quality — Required Before Every Commit
+
+Run these three commands before committing. CI enforces all of them.
+
+```bash
+python -m black src/ tests/          # auto-formats in place — commit the result
+python -m flake8 src/ tests/         # must exit 0
+python -m pytest tests/ -q           # must exit 0
+```
+
+Linter config lives in `.flake8` (max-line-length 120, E203 ignored for black compat).
+
+### Dockerfile coupling rule
+
+`Dockerfile.web` copies individual files from `src/` rather than the whole tree. When you add a **new module** anywhere under `src/` that `src/web/app.py` (or anything it imports) depends on, you must also add the corresponding `COPY` line to `Dockerfile.web`. Current explicit copies:
+
+```dockerfile
+COPY src/web/ ./src/web/
+COPY src/__init__.py ./src/__init__.py
+COPY src/constants.py ./src/constants.py
+```
+
+The pipeline `Dockerfile` uses `COPY src/ ./src/` so it picks up new modules automatically.

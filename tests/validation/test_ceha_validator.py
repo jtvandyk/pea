@@ -1,4 +1,5 @@
 """Tests for src/validation/ceha_validator.py."""
+
 import csv
 import json
 from pathlib import Path
@@ -20,6 +21,7 @@ from src.validation.ceha_validator import (
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
+
 
 def make_ceha_row(
     index="IDX001",
@@ -65,12 +67,25 @@ def ceha_csv(tmp_path) -> Path:
     path = tmp_path / "CEHA_dataset.csv"
     rows = [
         make_ceha_row(index="T001", relevant="Yes", ethnic="X", split="test"),
-        make_ceha_row(index="T002", relevant="No",  split="test",
-                      text="A football match was played in Nairobi."),
-        make_ceha_row(index="T003", relevant="Yes", sgbv="X",  split="test",
-                      text="A woman was attacked in Juba."),
-        make_ceha_row(index="T004", relevant="No",  split="dev",
-                      text="Agricultural yields fell in Kenya."),
+        make_ceha_row(
+            index="T002",
+            relevant="No",
+            split="test",
+            text="A football match was played in Nairobi.",
+        ),
+        make_ceha_row(
+            index="T003",
+            relevant="Yes",
+            sgbv="X",
+            split="test",
+            text="A woman was attacked in Juba.",
+        ),
+        make_ceha_row(
+            index="T004",
+            relevant="No",
+            split="dev",
+            text="Agricultural yields fell in Kenya.",
+        ),
     ]
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
@@ -82,6 +97,7 @@ def ceha_csv(tmp_path) -> Path:
 # ---------------------------------------------------------------------------
 # _normalise_ceha
 # ---------------------------------------------------------------------------
+
 
 class TestNormaliseCeha:
     def test_relevant_yes(self):
@@ -108,8 +124,17 @@ class TestNormaliseCeha:
     def test_all_fields_present(self):
         row = make_ceha_row()
         e = _normalise_ceha(row)
-        for key in ("index", "source", "time", "country", "text", "relevant",
-                    "event_types", "split", "raw"):
+        for key in (
+            "index",
+            "source",
+            "time",
+            "country",
+            "text",
+            "relevant",
+            "event_types",
+            "split",
+            "raw",
+        ):
             assert key in e
 
     def test_raw_preserves_original(self):
@@ -127,6 +152,7 @@ class TestNormaliseCeha:
 # ---------------------------------------------------------------------------
 # load_ceha
 # ---------------------------------------------------------------------------
+
 
 class TestLoadCeha:
     def test_loads_test_split(self, ceha_csv):
@@ -155,6 +181,7 @@ class TestLoadCeha:
 # _events_to_articles
 # ---------------------------------------------------------------------------
 
+
 class TestEventsToArticles:
     def test_creates_article_dicts(self):
         events = [_normalise_ceha(make_ceha_row(index="A1", text="Some text"))]
@@ -173,9 +200,16 @@ class TestEventsToArticles:
 # compute_metrics
 # ---------------------------------------------------------------------------
 
+
 class TestComputeMetrics:
-    def _make_scored_event(self, relevant: bool, predicted: bool, country="Sudan",
-                           source="ACLED", event_types=None):
+    def _make_scored_event(
+        self,
+        relevant: bool,
+        predicted: bool,
+        country="Sudan",
+        source="ACLED",
+        event_types=None,
+    ):
         row = make_ceha_row(
             relevant="Yes" if relevant else "No",
             source=source,
@@ -183,8 +217,8 @@ class TestComputeMetrics:
             ethnic="X" if event_types and "ethnic_communal" in event_types else "",
         )
         e = _normalise_ceha(row)
-        e["_relevance_score"]    = 0.8 if predicted else 0.1
-        e["_relevance_source"]   = "model"
+        e["_relevance_score"] = 0.8 if predicted else 0.1
+        e["_relevance_source"] = "model"
         e["_predicted_relevant"] = predicted
         return e
 
@@ -239,7 +273,9 @@ class TestComputeMetrics:
     def test_by_type_only_counts_relevant_events(self):
         events = [
             self._make_scored_event(True, True, event_types=["ethnic_communal"]),
-            self._make_scored_event(False, False),  # not relevant, should not affect by_type
+            self._make_scored_event(
+                False, False
+            ),  # not relevant, should not affect by_type
         ]
         m = compute_metrics(events)
         assert "ethnic_communal" in m["by_type"]
@@ -255,12 +291,13 @@ class TestComputeMetrics:
 # sweep_thresholds
 # ---------------------------------------------------------------------------
 
+
 class TestSweepThresholds:
     def _make_event(self, relevant: bool, score: float):
         row = make_ceha_row(relevant="Yes" if relevant else "No")
         e = _normalise_ceha(row)
-        e["_relevance_score"]    = score
-        e["_relevance_source"]   = "model"
+        e["_relevance_score"] = score
+        e["_relevance_source"] = "model"
         e["_predicted_relevant"] = score >= 0.30
         return e
 
@@ -276,7 +313,7 @@ class TestSweepThresholds:
 
     def test_higher_threshold_lower_recall(self):
         events = [self._make_event(True, 0.4), self._make_event(False, 0.1)]
-        r_low  = sweep_thresholds(events, thresholds=[0.2])
+        r_low = sweep_thresholds(events, thresholds=[0.2])
         r_high = sweep_thresholds(events, thresholds=[0.9])
         assert r_low[0]["recall"] >= r_high[0]["recall"]
 
@@ -284,6 +321,7 @@ class TestSweepThresholds:
 # ---------------------------------------------------------------------------
 # score_with_filter (integration — mocked)
 # ---------------------------------------------------------------------------
+
 
 class TestScoreWithFilter:
     def test_scores_attached_to_events(self, ceha_csv):
@@ -293,12 +331,26 @@ class TestScoreWithFilter:
 
         # Patch RelevanceFilter to avoid model download
         mock_filter = MagicMock()
-        kept = [{"text": e["text"], "title": "", "_ceha_index": e["index"],
-                 "_relevance_score": 0.8, "_relevance_source": "model"}
-                for e in events[:2]]
-        rejected = [{"text": e["text"], "title": "", "_ceha_index": e["index"],
-                     "_relevance_score": 0.1, "_relevance_source": "model"}
-                    for e in events[2:]]
+        kept = [
+            {
+                "text": e["text"],
+                "title": "",
+                "_ceha_index": e["index"],
+                "_relevance_score": 0.8,
+                "_relevance_source": "model",
+            }
+            for e in events[:2]
+        ]
+        rejected = [
+            {
+                "text": e["text"],
+                "title": "",
+                "_ceha_index": e["index"],
+                "_relevance_score": 0.1,
+                "_relevance_source": "model",
+            }
+            for e in events[2:]
+        ]
         mock_filter.return_value.filter.return_value = (kept, rejected)
 
         with patch("src.acquisition.relevance_filter.RelevanceFilter", mock_filter):

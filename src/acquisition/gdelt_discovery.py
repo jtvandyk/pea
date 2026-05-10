@@ -36,15 +36,32 @@ def _load_keywords(path) -> dict:
         with open(path) as f:
             return yaml.safe_load(f) or {}
     except Exception as e:
-        log.warning(f"Could not load keywords config ({path}): {e} — using fallback defaults")
+        log.warning(
+            f"Could not load keywords config ({path}): {e} — using fallback defaults"
+        )
         return {
             "protest_themes": [
-                "PROTEST", "UNREST", "STRIKE", "DEMONSTRATION",
-                "RIOT", "CIVIL_UNREST", "SOC_PROTEST", "TAX_FNCACT_PROTESTER",
+                "PROTEST",
+                "UNREST",
+                "STRIKE",
+                "DEMONSTRATION",
+                "RIOT",
+                "CIVIL_UNREST",
+                "SOC_PROTEST",
+                "TAX_FNCACT_PROTESTER",
             ],
             "protest_signals": [
-                "protest", "demonstration", "strike", "march", "riot", "unrest",
-                "rally", "uprising", "blockade", "clashes", "crackdown",
+                "protest",
+                "demonstration",
+                "strike",
+                "march",
+                "riot",
+                "unrest",
+                "rally",
+                "uprising",
+                "blockade",
+                "clashes",
+                "crackdown",
             ],
             "url_signals": ["protest", "strike", "demo", "march", "riot", "unrest"],
         }
@@ -292,7 +309,8 @@ def discover_articles_date_range(
 
         for country in countries:
             params = build_gdelt_query(
-                query, [country],
+                query,
+                [country],
                 start_dt=window_start,
                 end_dt=window_end,
             )

@@ -158,18 +158,15 @@ def build_training_pair(event: dict) -> dict | None:
     )
 
     # Build the corrected event — strip annotation metadata fields
-    training_event = {
-        k: v for k, v in event.items()
-        if not k.startswith("_")
-    }
+    training_event = {k: v for k, v in event.items() if not k.startswith("_")}
 
     completion = json.dumps([training_event], ensure_ascii=False)
 
     return {
-        "prompt":     prompt,
+        "prompt": prompt,
         "completion": completion,
         "event_type": event.get("event_type"),
-        "country":    event.get("country"),
+        "country": event.get("country"),
         "confidence": event.get("confidence"),
         "source_url": event.get("article_url"),
     }
@@ -209,7 +206,8 @@ def promote_examples(
         return 0
 
     candidates = [
-        e for e in reviewed_events
+        e
+        for e in reviewed_events
         if not e.get("_is_false_positive") and e.get("_article_text")
     ]
     if not candidates:
@@ -228,7 +226,9 @@ def promote_examples(
         log.warning(f"Could not parse existing examples at {examples_path}: {e}")
         existing_data = {}
 
-    existing_examples = (existing_data.get("examples") or []) if isinstance(existing_data, dict) else []
+    existing_examples = (
+        (existing_data.get("examples") or []) if isinstance(existing_data, dict) else []
+    )
     existing_task_ids = set()
     for ex in existing_examples:
         if not isinstance(ex, dict):
@@ -246,7 +246,10 @@ def promote_examples(
         if len(appended) >= n:
             break
 
-        task_id = event.get("article_url") or f"{event.get('article_title', '')}|{event.get('event_date', '')}"
+        task_id = (
+            event.get("article_url")
+            or f"{event.get('article_title', '')}|{event.get('event_date', '')}"
+        )
         if not task_id or task_id in existing_task_ids:
             continue
 
@@ -289,9 +292,7 @@ def promote_examples(
         width=120,
         default_flow_style=False,
     )
-    indented = "\n".join(
-        ("  " + line) if line else "" for line in snippet.splitlines()
-    )
+    indented = "\n".join(("  " + line) if line else "" for line in snippet.splitlines())
 
     # Append with a leading newline to guarantee separation from the
     # previous last example.
@@ -313,9 +314,14 @@ def import_annotations(
     output_dir: Path,
     promote_to_examples: int = 0,
     examples_path: Optional[Path] = None,
+    upload_to: Optional[str] = None,
 ) -> dict:
     """
     Process a Label Studio export file and write output files.
+
+    upload_to: optional cloud destination for the three output files.
+      Accepts 's3://bucket/prefix' or 'abfss://filesystem/prefix'.
+      Requires AZURE_STORAGE_CONNECTION_STRING (ADLS) or AWS credentials (S3).
 
     Returns a summary dict.
     """
@@ -328,13 +334,13 @@ def import_annotations(
     reviewed_events = []
     training_pairs = []
     stats = {
-        "total_tasks":      len(tasks),
-        "skipped":          0,
+        "total_tasks": len(tasks),
+        "skipped": 0,
         "genuine_protests": 0,
-        "false_positives":  0,
-        "type_corrected":   0,
-        "with_errors":      0,
-        "training_pairs":   0,
+        "false_positives": 0,
+        "type_corrected": 0,
+        "with_errors": 0,
+        "training_pairs": 0,
     }
 
     for task in tasks:
@@ -375,6 +381,17 @@ def import_annotations(
     with open(stats_path, "w", encoding="utf-8") as f:
         json.dump(stats, f, indent=2)
 
+    # Upload to cloud storage before printing summary so any errors surface early
+    if upload_to:
+        try:
+            from src.acquisition.storage import _upload_outputs
+
+            _upload_outputs(upload_to, [reviewed_path, training_path, stats_path])
+            log.info(f"Annotation outputs uploaded to {upload_to}")
+            stats["uploaded_to"] = upload_to
+        except Exception as exc:
+            log.warning(f"Cloud upload failed (files saved locally): {exc}")
+
     # Console summary
     print("\n" + "=" * 55)
     print("ANNOTATION IMPORT SUMMARY")
@@ -386,22 +403,27 @@ def import_annotations(
     print(f"Type corrections:    {stats['type_corrected']}")
     print(f"Extraction errors:   {stats['with_errors']}")
     print(f"Training pairs:      {stats['training_pairs']}")
-    fp_rate = (
-        stats["false_positives"] /
-        max(stats["genuine_protests"] + stats["false_positives"], 1)
+    fp_rate = stats["false_positives"] / max(
+        stats["genuine_protests"] + stats["false_positives"], 1
     )
     print(f"False positive rate: {fp_rate:.1%}")
-    print(f"\nOutputs:")
+    print("\nOutputs:")
     print(f"  {reviewed_path}")
     print(f"  {training_path}")
     print(f"  {stats_path}")
+    if upload_to:
+        print(f"  → uploaded to {upload_to}")
     target = 200
     remaining = max(0, target - stats["training_pairs"])
     if remaining > 0:
-        print(f"\nTraining data progress: {stats['training_pairs']}/{target} "
-              f"pairs ({remaining} more needed before QLoRA fine-tuning)")
+        print(
+            f"\nTraining data progress: {stats['training_pairs']}/{target} "
+            f"pairs ({remaining} more needed before QLoRA fine-tuning)"
+        )
     else:
-        print(f"\n✓ {stats['training_pairs']} training pairs — ready for QLoRA fine-tuning")
+        print(
+            f"\n✓ {stats['training_pairs']} training pairs — ready for QLoRA fine-tuning"
+        )
 
     # Close the loop: promote high-ranked corrections into the few-shot
     # examples file so the next extraction run actually benefits from them.
@@ -418,6 +440,7 @@ def import_annotations(
 
 if __name__ == "__main__":
     import logging as _logging
+
     _logging.basicConfig(level=_logging.INFO, format="%(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(
@@ -454,6 +477,16 @@ if __name__ == "__main__":
             "configs/extraction_examples.yaml."
         ),
     )
+    parser.add_argument(
+        "--upload-to",
+        default=None,
+        metavar="DEST",
+        help=(
+            "Upload the three output files to cloud storage after writing. "
+            "Accepts 'abfss://filesystem/prefix' (Azure ADLS Gen2, requires "
+            "AZURE_STORAGE_CONNECTION_STRING) or 's3://bucket/prefix' (AWS S3)."
+        ),
+    )
     args = parser.parse_args()
 
     import_annotations(
@@ -461,4 +494,5 @@ if __name__ == "__main__":
         output_dir=Path(args.output_dir),
         promote_to_examples=args.promote_to_examples,
         examples_path=Path(args.examples_path) if args.examples_path else None,
+        upload_to=args.upload_to,
     )

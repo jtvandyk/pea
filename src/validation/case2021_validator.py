@@ -76,23 +76,23 @@ PROTEST_SUBTYPES: set = {
 
 # CASE SubType → PEA codebook event_type crosswalk (for extraction mode)
 CASE_TO_PEA: dict = {
-    "PEACE_PROTEST":         "demonstration_march",
-    "VIOL_DEMONSTR":         "riot",
-    "PROTEST_WITH_INTER":    "confrontation",
+    "PEACE_PROTEST": "demonstration_march",
+    "VIOL_DEMONSTR": "riot",
+    "PROTEST_WITH_INTER": "confrontation",
     "FORCE_AGAINST_PROTEST": "demonstration_march",
-    "MOB_VIOL":              "riot",
+    "MOB_VIOL": "riot",
 }
 
 # PEA event_type → broad category (for type-level metrics)
 PEA_TO_BROAD: dict = {
     "demonstration_march": "protest",
-    "strike_boycott":      "strike",
-    "occupation_seizure":  "protest",
-    "confrontation":       "protest",
-    "petition_signature":  "protest",
-    "vigil":               "protest",
-    "hunger_strike":       "protest",
-    "riot":                "riot",
+    "strike_boycott": "strike",
+    "occupation_seizure": "protest",
+    "confrontation": "protest",
+    "petition_signature": "protest",
+    "vigil": "protest",
+    "hunger_strike": "protest",
+    "riot": "riot",
 }
 
 
@@ -112,12 +112,12 @@ def _normalise_case(row: dict) -> dict:
     is_protest = sub_type in PROTEST_SUBTYPES
     pea_gold = CASE_TO_PEA.get(sub_type)
     return {
-        "id":          row.get("id", ""),
-        "text":        row.get("EventSnippet", ""),
-        "sub_type":    sub_type,
-        "is_protest":  is_protest,
-        "pea_gold":    pea_gold,
-        "raw":         row,
+        "id": row.get("id", ""),
+        "text": row.get("EventSnippet", ""),
+        "sub_type": sub_type,
+        "is_protest": is_protest,
+        "pea_gold": pea_gold,
+        "raw": row,
     }
 
 
@@ -129,6 +129,7 @@ def _events_to_articles(events: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Mode 1: Relevance — binary protest / not-protest via RelevanceFilter
 # ---------------------------------------------------------------------------
+
 
 def run_relevance_mode(
     events: list[dict],
@@ -154,16 +155,18 @@ def run_relevance_mode(
     score_map: dict = {}
     for a in kept + rejected:
         score_map[str(a["_case_id"])] = {
-            "score":     a["_relevance_score"],
-            "source":    a["_relevance_source"],
+            "score": a["_relevance_score"],
+            "source": a["_relevance_source"],
             "predicted": a["_relevance_score"] >= threshold,
         }
 
     for e in events:
-        info = score_map.get(str(e["id"]), {"score": 0.0, "source": "unknown", "predicted": False})
-        e["_relevance_score"]    = info["score"]
-        e["_relevance_source"]   = info["source"]
-        e["_predicted_protest"]  = info["predicted"]
+        info = score_map.get(
+            str(e["id"]), {"score": 0.0, "source": "unknown", "predicted": False}
+        )
+        e["_relevance_score"] = info["score"]
+        e["_relevance_source"] = info["source"]
+        e["_predicted_protest"] = info["predicted"]
 
     return _compute_relevance_metrics(events, threshold)
 
@@ -175,39 +178,49 @@ def _compute_relevance_metrics(events: list[dict], threshold: float) -> dict:
     tn = sum(1 for e in events if not e["is_protest"] and not e["_predicted_protest"])
 
     precision = tp / (tp + fp) if (tp + fp) else 0.0
-    recall    = tp / (tp + fn) if (tp + fn) else 0.0
-    f1        = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+    recall = tp / (tp + fn) if (tp + fn) else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
 
     # Recall by CASE SubType
     by_subtype: dict = {}
     for e in events:
         t = e["sub_type"]
         if t not in by_subtype:
-            by_subtype[t] = {"total": 0, "predicted_protest": 0, "is_protest": e["is_protest"]}
+            by_subtype[t] = {
+                "total": 0,
+                "predicted_protest": 0,
+                "is_protest": e["is_protest"],
+            }
         by_subtype[t]["total"] += 1
         if e["_predicted_protest"]:
             by_subtype[t]["predicted_protest"] += 1
     for t in by_subtype:
         v = by_subtype[t]
-        v["recall"] = round(v["predicted_protest"] / v["total"], 3) if v["total"] else 0.0
+        v["recall"] = (
+            round(v["predicted_protest"] / v["total"], 3) if v["total"] else 0.0
+        )
 
     return {
-        "mode":       "relevance",
-        "threshold":  threshold,
-        "precision":  round(precision, 3),
-        "recall":     round(recall, 3),
-        "f1":         round(f1, 3),
-        "tp": tp, "fp": fp, "fn": fn, "tn": tn,
-        "total":           len(events),
-        "n_protest_gold":  tp + fn,
-        "n_protest_pred":  tp + fp,
-        "by_subtype":      by_subtype,
+        "mode": "relevance",
+        "threshold": threshold,
+        "precision": round(precision, 3),
+        "recall": round(recall, 3),
+        "f1": round(f1, 3),
+        "tp": tp,
+        "fp": fp,
+        "fn": fn,
+        "tn": tn,
+        "total": len(events),
+        "n_protest_gold": tp + fn,
+        "n_protest_pred": tp + fp,
+        "by_subtype": by_subtype,
     }
 
 
 # ---------------------------------------------------------------------------
 # Mode 2: Extraction — LLM event_type classification on protest subset
 # ---------------------------------------------------------------------------
+
 
 def run_extraction_mode(
     events: list[dict],
@@ -237,12 +250,12 @@ def run_extraction_mode(
     results = []
     for e in protest_events:
         article = {
-            "url":      f"case2021://task2/{e['id']}",
-            "title":    "",
-            "text":     e["text"],
-            "text_en":  e["text"],
-            "date":     "",
-            "country":  "",
+            "url": f"case2021://task2/{e['id']}",
+            "title": "",
+            "text": e["text"],
+            "text_en": e["text"],
+            "date": "",
+            "country": "",
         }
         try:
             extracted = extract_from_article(
@@ -259,21 +272,23 @@ def run_extraction_mode(
         if extracted:
             predicted_type = extracted[0].get("event_type")
 
-        results.append({
-            "id":             e["id"],
-            "text_preview":   e["text"][:100],
-            "sub_type":       e["sub_type"],
-            "pea_gold":       e["pea_gold"],
-            "pea_predicted":  predicted_type,
-            "correct":        predicted_type == e["pea_gold"],
-        })
+        results.append(
+            {
+                "id": e["id"],
+                "text_preview": e["text"][:100],
+                "sub_type": e["sub_type"],
+                "pea_gold": e["pea_gold"],
+                "pea_predicted": predicted_type,
+                "correct": predicted_type == e["pea_gold"],
+            }
+        )
 
     return _compute_extraction_metrics(results)
 
 
 def _resolve_api_key(provider: str) -> str:
     key_map = {
-        "azure":  "AZURE_FOUNDRY_API_KEY",
+        "azure": "AZURE_FOUNDRY_API_KEY",
         "openai": "OPENAI_API_KEY",
         "claude": "ANTHROPIC_API_KEY",
     }
@@ -287,7 +302,7 @@ def _resolve_api_key(provider: str) -> str:
 
 
 def _compute_extraction_metrics(results: list[dict]) -> dict:
-    total   = len(results)
+    total = len(results)
     correct = sum(1 for r in results if r["correct"])
     accuracy = correct / total if total else 0.0
 
@@ -318,19 +333,20 @@ def _compute_extraction_metrics(results: list[dict]) -> dict:
         v["accuracy"] = round(v["correct"] / v["total"], 3) if v["total"] else 0.0
 
     return {
-        "mode":          "extraction",
-        "total":         total,
-        "correct":       correct,
-        "accuracy":      round(accuracy, 3),
-        "by_pea_gold":   by_pea_gold,
-        "by_sub_type":   by_sub_type,
-        "results":       results,
+        "mode": "extraction",
+        "total": total,
+        "correct": correct,
+        "accuracy": round(accuracy, 3),
+        "by_pea_gold": by_pea_gold,
+        "by_sub_type": by_sub_type,
+        "results": results,
     }
 
 
 # ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
+
 
 def run_validation(
     case_tsv: Path,
@@ -351,35 +367,40 @@ def run_validation(
 
     if mode == "relevance":
         metrics = run_relevance_mode(
-            events, threshold=threshold,
-            model_name=model_name, use_model=use_model,
+            events,
+            threshold=threshold,
+            model_name=model_name,
+            use_model=use_model,
         )
         _print_relevance_summary(metrics)
     elif mode == "extraction":
         metrics = run_extraction_mode(
-            events, provider=provider, model=llm_model, api_key=api_key,
+            events,
+            provider=provider,
+            model=llm_model,
+            api_key=api_key,
         )
         _print_extraction_summary(metrics)
     else:
         raise ValueError(f"Unknown mode '{mode}'. Use 'relevance' or 'extraction'.")
 
     report = {
-        "metrics":  metrics,
+        "metrics": metrics,
         "settings": {
-            "mode":      mode,
+            "mode": mode,
             "threshold": threshold if mode == "relevance" else None,
-            "model":     model_name if mode == "relevance" else llm_model,
+            "model": model_name if mode == "relevance" else llm_model,
         },
     }
     if mode == "relevance":
         report["event_scores"] = [
             {
-                "id":               e["id"],
-                "sub_type":         e["sub_type"],
-                "is_protest":       e["is_protest"],
+                "id": e["id"],
+                "sub_type": e["sub_type"],
+                "is_protest": e["is_protest"],
                 "predicted_protest": e.get("_predicted_protest"),
-                "score":            e.get("_relevance_score"),
-                "text_preview":     e["text"][:100],
+                "score": e.get("_relevance_score"),
+                "text_preview": e["text"][:100],
             }
             for e in events
         ]
@@ -399,7 +420,9 @@ def _print_relevance_summary(m: dict) -> None:
     print("CASE 2021 TASK 2 — RELEVANCE VALIDATION")
     print("=" * 60)
     print(f"Total snippets:  {m['total']}")
-    print(f"Protest gold:    {m['n_protest_gold']}  ({m['n_protest_gold']/m['total']:.0%})")
+    print(
+        f"Protest gold:    {m['n_protest_gold']}  ({m['n_protest_gold']/m['total']:.0%})"
+    )
     print(f"Protest pred:    {m['n_protest_pred']}")
     print(f"Precision:       {m['precision']:.1%}")
     print(f"Recall:          {m['recall']:.1%}")
@@ -409,12 +432,16 @@ def _print_relevance_summary(m: dict) -> None:
     protest_types = {k: v for k, v in m["by_subtype"].items() if v["is_protest"]}
     for t, v in sorted(protest_types.items(), key=lambda x: -x[1]["recall"]):
         bar = "█" * int(v["recall"] * 20)
-        print(f"  {t:30s} {v['recall']:.0%}  {bar}  ({v['predicted_protest']}/{v['total']})")
+        print(
+            f"  {t:30s} {v['recall']:.0%}  {bar}  ({v['predicted_protest']}/{v['total']})"
+        )
     print("\nFalse positive rate by top non-protest SubTypes:")
     non_protest = {k: v for k, v in m["by_subtype"].items() if not v["is_protest"]}
     for t, v in sorted(non_protest.items(), key=lambda x: -x[1]["recall"])[:8]:
         bar = "█" * int(v["recall"] * 20)
-        print(f"  {t:30s} FPR={v['recall']:.0%}  {bar}  ({v['predicted_protest']}/{v['total']})")
+        print(
+            f"  {t:30s} FPR={v['recall']:.0%}  {bar}  ({v['predicted_protest']}/{v['total']})"
+        )
     print("=" * 60 + "\n")
 
 

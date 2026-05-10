@@ -365,7 +365,7 @@ def _parse_events(raw: str) -> list:
     end = text.rfind("]")
     if start != -1 and end != -1 and end > start:
         try:
-            cleaned = _clean_json(text[start: end + 1])
+            cleaned = _clean_json(text[start : end + 1])
             return json.loads(cleaned)
         except json.JSONDecodeError:
             pass
@@ -394,7 +394,9 @@ def extract_from_article(
         retries, so retry storms cannot burst past the RPM ceiling.
     """
     resolved_system = system_prompt if system_prompt is not None else SYSTEM_PROMPT
-    resolved_examples = few_shot_examples if few_shot_examples is not None else _FEW_SHOT_EXAMPLES
+    resolved_examples = (
+        few_shot_examples if few_shot_examples is not None else _FEW_SHOT_EXAMPLES
+    )
 
     text = article.get("text_en") or article.get("text") or ""
 
@@ -534,10 +536,10 @@ def extract_events(
         run_system = SYSTEM_PROMPT
 
     # Rebuild few-shot examples for this run with a run-stable seed.
-    resolved_seed = (
-        examples_seed if examples_seed is not None else time.time_ns()
+    resolved_seed = examples_seed if examples_seed is not None else time.time_ns()
+    resolved_examples_path = (
+        examples_path if examples_path is not None else _EXAMPLES_PATH
     )
-    resolved_examples_path = examples_path if examples_path is not None else _EXAMPLES_PATH
     run_examples = _build_few_shot_examples(
         resolved_examples_path,
         sample_n=examples_sample_n,
@@ -608,12 +610,14 @@ def extract_events(
                 all_events.extend(events)
             elif events is None:
                 article = next((a for a in todo_articles if a.get("url") == url), {})
-                failures.append({
-                    "url": url,
-                    "title": article.get("title", ""),
-                    "reason": "extraction_failed",
-                    "lang": article.get("text_lang", "unknown"),
-                })
+                failures.append(
+                    {
+                        "url": url,
+                        "title": article.get("title", ""),
+                        "reason": "extraction_failed",
+                        "lang": article.get("text_lang", "unknown"),
+                    }
+                )
     else:
         for i, article in enumerate(todo_articles):
             url = article.get("url", "")
@@ -629,12 +633,14 @@ def extract_events(
                 log.info("  [--] No events found")
             else:
                 log.warning(f"  [FAIL] Extraction failed: {url_display}")
-                failures.append({
-                    "url": url,
-                    "title": article.get("title", ""),
-                    "reason": "extraction_failed",
-                    "lang": article.get("text_lang", "unknown"),
-                })
+                failures.append(
+                    {
+                        "url": url,
+                        "title": article.get("title", ""),
+                        "reason": "extraction_failed",
+                        "lang": article.get("text_lang", "unknown"),
+                    }
+                )
 
             if upload_to and checkpoint_path and (i + 1) % 10 == 0:
                 upload_checkpoint(upload_to, Path(checkpoint_path).parent)
