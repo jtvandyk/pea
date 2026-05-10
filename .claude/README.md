@@ -45,8 +45,12 @@ when its triggers match what the user is asking.
 | [`pea-annotation-batch`](skills/pea-annotation-batch/SKILL.md) | "export annotation tasks", "import label studio", "training pairs" | 2026-05-10 |
 | [`pea-smoke`](skills/pea-smoke/SKILL.md) | "post-deploy smoke", "is foundry reachable", "test the foundry endpoint" | 2026-05-10 |
 
-Tier 4 candidates (`pea-domain-add`, `claude-doc-rot`) remain sketches —
-add them when their workflow recurs.
+### Tier 4 — extension / hygiene
+
+| Skill | Triggers on… | Last reviewed |
+|---|---|---|
+| [`pea-domain-add`](skills/pea-domain-add/SKILL.md) | "add a new domain", "wire a domain", "register drone in DOMAIN_CONFIGS" | 2026-05-10 |
+| [`claude-doc-rot`](skills/claude-doc-rot/SKILL.md) | "audit .claude docs", "are these docs stale", "doc rot check" | 2026-05-10 |
 
 ## Rules to keep this from rotting
 
