@@ -44,6 +44,7 @@ examples:
         organizer: "South Gauteng Community Forum"
         participant_groups: ["residents", "hostel community"]
         claims: ["running water restoration", "electricity restoration"]
+        issue_tags: ["service_delivery"]
         crowd_size: null
         duration: "4 hours"
         state_response: "none"
@@ -106,6 +107,7 @@ examples:
         organizer: "Academic Staff Union of Universities (ASUU)"
         participant_groups: ["academic staff", "university lecturers"]
         claims: ["release of withheld salary funds"]
+        issue_tags: ["labor_wages"]
         crowd_size: null
         duration: "ongoing (indefinite)"
         state_response: "none"
@@ -132,6 +134,7 @@ examples:
         organizer: null
         participant_groups: ["students"]
         claims: ["resumption of lectures", "resolution of salary dispute"]
+        issue_tags: ["labor_wages", "education"]
         crowd_size: "300"
         duration: null
         state_response: "monitoring"
@@ -176,6 +179,7 @@ examples:
         organizer: "Take It Back Movement"
         participant_groups: ["civil society groups", "protesters"]
         claims: ["reversal of fuel subsidy removal", "reduction in cost of food and basic goods"]
+        issue_tags: ["food_water_subsistence"]
         crowd_size: "hundreds"
         duration: null
         state_response: "teargas"
@@ -224,6 +228,7 @@ examples:
         organizer: "National Union of Ugandan Students"
         participant_groups: ["students", "Makerere University students", "Kyambogo University students"]
         claims: ["rollback of 40% tuition fee increase"]
+        issue_tags: ["education"]
         crowd_size: "800"
         duration: null
         state_response: "monitoring"
@@ -272,6 +277,7 @@ examples:
         organizer: null
         participant_groups: ["Hirak movement detainees", "pre-trial detainees"]
         claims: ["immediate release of detainees", "dropping of politically motivated charges"]
+        issue_tags: ["human_rights_civic_space"]
         crowd_size: "23"
         duration: "ongoing (open-ended)"
         state_response: "none"
@@ -321,6 +327,7 @@ examples:
         organizer: null
         participant_groups: ["mourners", "community members", "Madikizela family"]
         claims: ["prosecution of officers involved in custody death", "independent IPID inquiry"]
+        issue_tags: ["human_rights_civic_space"]
         crowd_size: "250"
         duration: "1 hour"
         state_response: "none"
@@ -367,6 +374,7 @@ examples:
         organizer: null
         participant_groups: ["opposition supporters", "youths"]
         claims: ["rejection of election results"]
+        issue_tags: ["elections"]
         crowd_size: null
         duration: null
         state_response: "rubber_bullets"

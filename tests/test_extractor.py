@@ -103,27 +103,44 @@ class TestParseEvents:
 
 
 class TestBuildSystemPrompt:
-    """The extraction_prompt YAML section must render the same base prompt the
-    hardcoded _BASE_SYSTEM_PROMPT used to provide (golden equivalence), and
-    codebooks without the section must fall back to it byte-identically."""
+    """The extraction_prompt YAML section drives the rendered base prompt
+    (verified byte-identical to the legacy _BASE_SYSTEM_PROMPT at the v2.4
+    refactor, before v3.0 additions), and codebooks without the section must
+    fall back to the legacy prompt byte-identically."""
 
-    def test_protest_prompt_golden_equivalence(self):
-        """Rendered protest prompt == legacy prompt, modulo the codebook
-        version (legacy hardcoded 2.3; the renderer reads metadata.version)."""
-        from src.acquisition.extractor import (
-            _BASE_SYSTEM_PROMPT,
-            _CODEBOOK_PATH,
-            _build_codebook_context,
-            _build_system_prompt,
-        )
-        import re
+    def test_protest_prompt_structure(self):
+        """The rendered protest prompt carries the full STEP 1/2/3 scaffolding,
+        the current metadata.version, every taxonomy key, the issue_tags field,
+        and the injected event-type definitions."""
+        import yaml
+        from src.acquisition.extractor import _CODEBOOK_PATH, _build_system_prompt
 
-        legacy = _BASE_SYSTEM_PROMPT + _build_codebook_context(_CODEBOOK_PATH)
+        with open(_CODEBOOK_PATH) as f:
+            cb = yaml.safe_load(f)
         rendered = _build_system_prompt(_CODEBOOK_PATH)
-        normalise = re.compile(r"codebook version \d+\.\d+")
-        assert normalise.sub("codebook version X", rendered) == normalise.sub(
-            "codebook version X", legacy
-        )
+
+        version = cb["metadata"]["version"]
+        assert f"codebook version {version}" in rendered
+        assert "== STEP 1: DISQUALIFY NON-PROTEST ARTICLES FIRST ==" in rendered
+        assert "== STEP 2: APPLY MINIMUM CRITERIA ==" in rendered
+        assert "== STEP 3: EXTRACT EVENTS ==" in rendered
+        assert '"issue_tags":' in rendered  # v3.0 output schema field
+        for key in cb["event_types"]:
+            assert f"- {key}" in rendered  # generated valid-key list
+            assert f"TYPE: {key.upper()}" in rendered  # injected definitions
+        assert "== FULL EVENT TYPE DEFINITIONS" in rendered
+
+    def test_issue_taxonomy_keys_in_prompt(self):
+        """Every closed issue_taxonomy key must appear in the rendered prompt's
+        issue_tags rule, so the LLM sees the full closed vocabulary."""
+        import yaml
+        from src.acquisition.extractor import _CODEBOOK_PATH, _build_system_prompt
+
+        with open(_CODEBOOK_PATH) as f:
+            cb = yaml.safe_load(f)
+        rendered = _build_system_prompt(_CODEBOOK_PATH)
+        for tag in cb["issue_taxonomy"]:
+            assert tag in rendered, f"issue tag '{tag}' missing from prompt"
 
     def test_fallback_without_extraction_prompt(self, tmp_path):
         """A codebook lacking extraction_prompt gets the legacy base prompt."""

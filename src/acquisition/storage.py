@@ -43,6 +43,7 @@ CSV_COLUMNS = [
     "organizer",
     "participant_groups",
     "claims",
+    "issue_tags",
     "crowd_size",
     "duration",
     "state_response",
