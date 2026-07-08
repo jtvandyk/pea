@@ -237,3 +237,60 @@ def test_translation_runs_before_relevance_filter(tmp_path, monkeypatch):
     assert call_order.index("translate") < call_order.index(
         "relevance_filter"
     ), f"translation must run before the relevance filter; got {call_order}"
+
+
+# ── Multilingual keyword fallback (pan-Africa coverage) ──────────────────────
+
+
+@pytest.fixture(scope="module")
+def protest_keyword_filter():
+    """One shared degraded-mode filter — constructing RelevanceFilter attempts
+    a model load (network) per call, so per-test construction is slow."""
+    return RelevanceFilter(
+        domain="protest", model_name="nonexistent/model-for-structural-test"
+    )
+
+
+@pytest.mark.parametrize(
+    "headline",
+    [
+        # Portuguese (Mozambique/Angola)
+        "Manifestação em Maputo termina em confrontos com a polícia",
+        "Greve dos taxistas paralisa Luanda pelo segundo dia",
+        "Paralisação nacional convocada pela oposição",
+        # Amharic (Ethiopia)
+        "በአዲስ አበባ ተቃውሞ ሰልፍ ተካሄደ",
+        "የገበያ አድማ በኦሮሚያ ከተሞች",
+        # Hausa (Northern Nigeria/Niger)
+        "An gudanar da zanga-zangar kin jinin tsadar rayuwa a Kano",
+        "Ma'aikata sun shiga yajin aiki a Abuja",
+        # Somali
+        "Banaanbax ka dhacay Muqdisho oo lagu diidan yahay",
+        "Mudaaharaad ballaaran oo Hargeysa ka dhacay",
+        # French (regression — pre-existing coverage)
+        "Grève générale à Dakar contre la vie chère",
+        # Arabic (regression — pre-existing coverage)
+        "احتجاجات في الجزائر العاصمة",
+    ],
+    ids=[
+        "pt-manifestacao",
+        "pt-greve",
+        "pt-paralisacao",
+        "am-teqawmo-self",
+        "am-adma",
+        "ha-zanga-zanga",
+        "ha-yajin-aiki",
+        "so-banaanbax",
+        "so-mudaaharaad",
+        "fr-greve",
+        "ar-ihtijajat",
+    ],
+)
+def test_keyword_fallback_matches_african_language_headlines(
+    protest_keyword_filter, headline
+):
+    """The keyword fallback must fire on protest headlines in every language
+    the pipeline claims to cover — Portuguese, Amharic, Hausa, and Somali were
+    added for pan-Africa coverage (the NLI model path handles translated text;
+    this fallback is what runs in degraded mode)."""
+    assert protest_keyword_filter._score_with_keywords(headline) == 1.0, headline
