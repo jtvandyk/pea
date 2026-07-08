@@ -62,6 +62,6 @@ pytest==7.4.0
 pytest-cov==4.1.0
 
 # Code Quality (optional)
-black==23.12.0
+black==25.11.0  # keep in sync with .github/workflows/lint.yml + docker.yml
 flake8==6.1.0
 mypy==1.7.0

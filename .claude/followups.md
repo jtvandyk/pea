@@ -1,6 +1,6 @@
 # Production Follow-ups — Remaining Priority Items
 
-> Last reviewed: 2026-05-10
+> Last reviewed: 2026-07-08
 
 Working reference for items not landed in the two production-readiness commits
 (`f1b2acc` B1-B5, `bdfa472` priority items #1-10). Items below are the rest of
@@ -60,6 +60,13 @@ patch (we can't act on those anyway).
 
 ### 13. Tier-2 few-shot examples: standalone strike, cultural-celebration negative, peaceful-march-attacked negative
 
+> **STATUS 2026-07-08 — mostly done.** `ex_09` (UG police-attacked peaceful
+> march) and `ex_10` (NG cultural-celebration negative) landed in the
+> pan-Africa v3 work (with `ex_11` MZ and `ex_12` ET going beyond the original
+> sketch). REMAINING: the standalone ZA mining-strike example (the original
+> `ex_09` sketch below) — the multi-event strike bias from `ex_03` is still
+> uncovered.
+
 **Why it matters.** After Day 5 the highest-frequency misclassifications will
 be:
 - A strike that's **not** part of a multi-event article gets coded with the
@@ -91,6 +98,11 @@ are the template. Each should:
 ---
 
 ### 14. UG and DZ ground-truth examples; Algeria bilingual stress test
+
+> **STATUS 2026-07-08 — still open (needs real crawl data).** Synthetic UG
+> coverage improved (`ex_09`), and Lusophone/Horn examples added (`ex_11`,
+> `ex_12`), but the REAL ground-truth requirement and the Algeria
+> French-body/Arabic-slogans stress test still wait for 7 days of data.
 
 **Why it matters.** After `ex_06`/`ex_07`/`ex_08` we have one UG and one DZ
 example each, but they're paraphrased. A real ground-truth example from each
@@ -288,15 +300,19 @@ in the Streamlit UI instead of an opaque 4xx/5xx.
 
 ### 24. Drone codebook is research prototype, not production
 
+> **STATUS 2026-07-08 — productionization prep done; validation gate open.**
+> Drone now has its own `extraction_prompt` (no more protest persona), 4
+> pinned Africa anchors (ET/ML/NG incl. Sahel + Lake Chad), `_REQUIRED_CONFIGS`
+> entries, and structural tests. REMAINING before cron: build the 25–50-event
+> reference set from ACLED air/drone-strike rows, run
+> `--domains drone --countries ML,BF,NE,NG,ET` canaries, clear the ≥60%
+> recall gate (see CLAUDE.md § Domain registry & rollout gates).
+
 **Why it matters.** Acceptable for monitoring; not production-ready. Don't
 expand `--domains` to include `drone` in the cron job until ground-truth
 validation is run.
 
-**Files.** None to change today. Track separately. The `_validate_domains`
-guard in `pipeline.py` already rejects unknown domains, so the only way
-drone gets used is by explicit operator opt-in via `--domains protest,drone`.
-
-**Effort.** Zero today; revisit when you have drone ground-truth data.
+**Effort.** Reference-set build ~3h + one canary window.
 
 ---
 
@@ -317,6 +333,69 @@ is clearly hit.
 
 **Effort.** Weeks of annotation work. Defer until the codebook tuning loop
 plateaus.
+
+---
+
+### 26. Gold mini-sets + recall validation for the four research domains
+
+**Why it matters.** `drone`, `violent_extremism`, `election_events`, and
+`state_repression` are registered research opt-ins gated on ≥60% recall
+before cron (CLAUDE.md § Domain registry & rollout gates). None has a gold
+set yet, so none can clear its gate.
+
+**Approach per domain.** 25–50 events: drone/VE from ACLED rows for the canary
+window; election_events hand-labeled from an active electoral window
+(TZ/CI/UG); state_repression from CPJ/RSF alerts + #KeepItOn incident lists.
+Reuse the validator pattern in `tests/validation/`.
+
+**Effort.** ~3h per domain + one canary run each. **Priority order:** drone →
+election_events → state_repression → violent_extremism (owner sign-off).
+
+---
+
+### 27. Remaining pan-Africa keyword languages
+
+**Why it matters.** Portuguese/Amharic/Hausa/Somali landed 2026-07-08;
+Tigrinya (ER), Oromo (ET), Wolof (SN), and Lingala (CD/CG) are still missing
+from `protest_signals` — Eritrea/Oromia/Senegal/DRC coverage leans on
+French/English/Amharic only.
+
+**Files.** `configs/keywords.yaml` (follow the in-file how-to);
+`tests/test_domain_configs.py` headline fixtures.
+
+**Effort.** ~30 min per language incl. sourcing headline vocabulary.
+
+---
+
+### 28. Behavioral-faithfulness canary (event-type order shuffle)
+
+**Why it matters.** Accuracy ≠ codebook faithfulness (arXiv:2606.06781):
+models can score well while exploiting label semantics or prompt order. A
+cheap check: run one canary with `event_types` order shuffled in the codebook
+and diff `events_by_type` against the unshuffled run via
+`scripts/compare_runs.py` — large deltas mean the model is keying on
+position, not definitions.
+
+**Files.** New scratch codebook variant (shuffle at run time — do NOT commit
+a shuffled codebook); `pea-canary-run` skill flow.
+
+**Effort.** ~1h once canary data flows.
+
+---
+
+### 29. Retire the legacy `_BASE_SYSTEM_PROMPT` fallback
+
+**Why it matters.** All five codebooks now carry `extraction_prompt`, so the
+hardcoded protest base prompt in `extractor.py` is dead code kept only as a
+fallback for codebooks without the section. Once the v3 rollout has soaked in
+production (one clean month), delete `_BASE_SYSTEM_PROMPT` and make
+`extraction_prompt` mandatory (structural test + hard error instead of
+silent fallback).
+
+**Files.** `src/acquisition/extractor.py`, `tests/test_extractor.py`,
+`tests/test_domain_configs.py`.
+
+**Effort.** ~1h. **Signal needed:** one clean production month on v3.
 
 ---
 
