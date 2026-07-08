@@ -270,7 +270,8 @@ Console prints running count toward 200-pair fine-tuning threshold.
 Automated benchmark — no manual annotation. Run against `data/processed/events_consolidated.jsonl` (deduplicated) for the cleanest recall number.
 
 ```bash
-# GLOCON (awaiting data access — applied 2026-04-05)
+# GLOCON (data access granted 2026-07-08; dataset not yet fetched into any
+# working environment — the git clone below is still a manual prerequisite)
 # Download dataset to somewhere outside the repo first:
 #   git clone <glocon-url> ~/datasets/glocon
 python -m src.validation.glocon_validator \
@@ -279,7 +280,7 @@ python -m src.validation.glocon_validator \
   --output data/validation/recall_report_glocon.json
 
 # ACLED (register at acleddata.com — free for researchers, token by email)
-# acled_validator.py not yet built — blocked on token
+# acled_validator.py not yet built — blocked on token (still pending 2026-07-08)
 python -m src.validation.acled_validator \
   --countries ZA \
   --start-date 2026-01-01 \
@@ -296,7 +297,9 @@ python -m src.validation.acled_validator \
 | 40–60% | Investigate misses by type and country |
 | < 40% | Diagnose stage by stage: GDELT → scraper → relevance filter → LLM |
 
-The JSON report includes a `match_records` array (one entry per gold event) for diagnosing specific misses.
+The JSON report includes a `match_records` array (one entry per gold event) for diagnosing specific misses. Real shape is nested — read `report["metrics"]["recall"]`, `["metrics"]["by_type"]`, `["metrics"]["by_country"]` (not flat `overall_recall`/`recall_by_type`/`recall_by_country` keys).
+
+**GLOCON coverage limits (important — do not over-read a clean run):** the validator's documented/tested benchmark is the **South Africa English subset only** (`_norm_country()` in `glocon_validator.py` also aliases NG/UG/DZ, but no non-SA subset has ever been fetched or exercised here). It scores a **coarse 3-bucket event-type recall** (`protest`/`strike`/`riot`) — not the fine 8 protest event types, and nothing about `issue_tags`, the v3.0 boundary-case rules (coerced ghost-towns, pro-junta rally exclusion, state-media decoy vocabulary), or any of the four research domains (drone/violent_extremism/election_events/state_repression — all out of GLOCON's protest-only scope). **A GLOCON run, once data is fetched, checks non-regression on the pre-existing South Africa capability — it does NOT validate the pan-Africa expansion itself**, and it cannot be used to clear any of the § Domain registry & rollout gates recall requirements below. CEHA (Horn of Africa, no token needed) is the nearest available signal for the new Horn geography, but only validates the relevance filter (binary relevant/not), not event-type or `issue_tags` classification.
 
 ---
 
@@ -307,8 +310,8 @@ The JSON report includes a `match_records` array (one entry per gold event) for 
 | Anthropic API key recovery | `--provider claude` |
 | Azure Container Registry + GitHub Secrets | Docker CI workflow |
 | Azure Storage Account | `--upload-to az://...` |
-| ACLED API token | `acled_validator.py` validation |
-| GLOCON data access | `glocon_validator.py` (applied 2026-04-05) |
+| ACLED API token | `acled_validator.py` validation (still pending 2026-07-08) — also the only planned validator with real Sahel/Horn/Central/Lusophone coverage |
+| GLOCON dataset fetch | `glocon_validator.py` — access granted 2026-07-08, dataset not yet downloaded into any working environment |
 
 ---
 
@@ -316,7 +319,9 @@ The JSON report includes a `match_records` array (one entry per gold event) for 
 
 | Issue | File | Notes |
 |---|---|---|
-| ACLED validator not yet built | `src/validation/` | Unblocked — ACLED token needed |
+| ACLED validator not yet built | `src/validation/` | Blocked — ACLED token still pending |
+| Annotation pipeline built but never run | `src/annotation/` | `data/annotation/` has no git history — zero batches ever exported/imported. This is the only mechanism that can validate `issue_tags` correctness, fine 8-type accuracy, and the v3.0 boundary-case rules (no automated validator covers any of these) |
+| `labeling_config.xml` has no `issue_tags` correction widget | `src/annotation/labeling_config.xml` | Only `corrected_event_type` is annotatable today; annotation can't validate the v3.0 field until this widget is added |
 | BBC token has no refresh on 401 | `src/acquisition/bbc_discovery.py` | Long backfills may expire mid-run |
 | Checkpoint append is thread-safe but not crash-atomic | `src/acquisition/extractor.py:_write_checkpoint` | SIGKILL during write can leave a partial line that fails the resume-skip match |
 

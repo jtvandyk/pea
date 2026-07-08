@@ -399,6 +399,98 @@ silent fallback).
 
 ---
 
+### 30. Fetch GLOCON SA-English subset and run pea-validate now that access exists
+
+**Why it matters.** GLOCON registration was approved 2026-07-08, but the
+dataset has not been downloaded into any working environment yet, so no run
+has ever happened. **Scope caveat — read before running:** this is a
+**South-Africa-only, coarse 3-bucket (protest/strike/riot) non-regression
+check on the pre-existing ZA capability.** It does NOT validate the
+pan-Africa expansion (Sahel/Horn/Central/Lusophone context), `issue_tags`, the
+v3.0 boundary-case rules, or any of the four research domains — don't treat a
+clean GLOCON run as closing out the broader pan-Africa validation gap. See
+CLAUDE.md § Validation for the full limitation writeup.
+
+**Approach.** `git clone` the GLOCON dataset per the setup instructions in
+`src/validation/glocon_validator.py`'s own docstring, point `--glocon-dir` at
+`.../data/south_africa/english`, run against
+`data/processed/events_consolidated.jsonl` from a ZA-only run, compare recall
+against the pre-v3.0 baseline (if one was ever captured — if not, this
+becomes the first baseline going forward).
+
+**Files.** No code changes — `src/validation/glocon_validator.py` already
+works. Just the fetch + run + record the result somewhere durable (this file
+or CLAUDE.md).
+
+**Effort.** ~30 min once the dataset is downloaded.
+
+---
+
+### 31. Add `issue_tags` correction widget to `labeling_config.xml`
+
+**Why it matters.** The Label Studio config only lets an annotator correct
+`corrected_event_type` (the original 8 protest types) — there's no widget for
+`issue_tags` (v3.0). Even once real annotation batches start (see #32), they
+can't validate the new field without this gap closed first, and it's cheap to
+fix before the first batch rather than after.
+
+**Files.** `src/annotation/labeling_config.xml` (add a multi-select or
+checkbox-group widget listing the 11 closed `issue_taxonomy` keys from
+`configs/protest_codebook.yaml`); `src/annotation/import_annotations.py`
+(read the new field into `reviewed_events.jsonl`/`training_data.jsonl`
+alongside `_type_corrected`).
+
+**Effort.** ~1h.
+
+---
+
+### 32. First real annotation batch, targeted at pan-Africa coverage
+
+**Why it matters.** The annotation pipeline is fully built and tested but has
+never been run once — `data/annotation/` has no git history at all. It's the
+only mechanism that can validate fine 8-type accuracy, `issue_tags`
+correctness, and whether the v3.0 boundary-case rules (ghost-town coercion
+test, pro-junta exclusion, state-media decoy vocabulary) are actually being
+applied by the model, since no automated validator (GLOCON, CEHA, CASE 2021)
+covers any of that.
+
+**Approach.** Once a canary or cron run produces real extracted events for
+Sahel/Horn/Central Africa/Lusophone countries, prioritize annotating THOSE
+articles plus any event carrying `issue_tags`, rather than letting the
+existing tier-1/2 confidence-based logic default to whatever NG/ZA/UG/DZ
+articles happen to be lowest-confidence. This is also the on-ramp toward the
+QLoRA gold-pair threshold in #25 and the four research-domain gold mini-sets
+in #26.
+
+**Files.** No code changes required beyond #31 (issue_tags widget) landing
+first. Operational: `docker compose -f docker-compose.annotation.yml up -d`,
+run `export_for_annotation.py` → annotate in Label Studio → `import_annotations.py`.
+
+**Effort.** First batch ~2-3h operator time. **Signal needed:** real extracted
+events for the new geography (a canary/cron run against Sahel/Horn/Central/
+Lusophone countries) — don't start on the existing NG/ZA/UG/DZ backlog first,
+that doesn't exercise anything new.
+
+---
+
+### 33. Fix `pea-validate` SKILL.md jq example mismatch
+
+**Why it matters.** The skill's documented `jq` invocation reads
+`.overall_recall, .recall_by_type, .recall_by_country`, but
+`glocon_validator.py` actually emits a nested shape:
+`.metrics.recall`, `.metrics.by_type`, `.metrics.by_country`. The documented
+command as written returns `null` for all three fields — anyone following
+the skill literally gets silently wrong output.
+
+**Files.** `.claude/skills/pea-validate/SKILL.md` (fix the jq paths; add a
+one-line callout on GLOCON's SA-only/coarse-bucket scope so the skill itself
+warns an operator before they over-interpret a clean run — see #30 and
+CLAUDE.md § Validation).
+
+**Effort.** ~10 min.
+
+---
+
 ## Items intentionally **not** on this list
 
 - **VE codebook expansion.** Treat as research-only until a domain owner
@@ -426,6 +518,14 @@ silent fallback).
 - **Week 4:** P2 item 14 (UG/DZ ground-truth examples) — by now you have
   real data to draw from.
 - **Month 2:** P3 polish + start the annotation cadence for #25.
+
+**Tracked signals (2026-07-08):** GLOCON access is now GRANTED (dataset not
+yet fetched — #30 is unblocked whenever it is); the ACLED token is STILL
+PENDING (acled_validator.py, and the #24/#26 gold-set work that depends on
+ACLED rows, stay blocked). Neither changes the Month-2 annotation-cadence
+timing above — no signal yet to accelerate it — but #31 (issue_tags widget)
+is cheap enough to land before Month 2 regardless, since it's a prerequisite
+for #32 whenever that cadence starts.
 
 If a single one of these is more urgent than this ordering suggests, it'll
 be visible in either the run-summary `degraded_modes` list (added in the
