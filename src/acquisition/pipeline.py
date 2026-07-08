@@ -106,6 +106,8 @@ _REQUIRED_CONFIGS = [
     _REPO_ROOT / "configs" / "violent_extremism_extraction_examples.yaml",
     _REPO_ROOT / "configs" / "election_events_codebook.yaml",
     _REPO_ROOT / "configs" / "election_extraction_examples.yaml",
+    _REPO_ROOT / "configs" / "state_repression_codebook.yaml",
+    _REPO_ROOT / "configs" / "state_repression_extraction_examples.yaml",
 ]
 
 
@@ -153,6 +155,13 @@ DOMAIN_CONFIGS: dict = {
         "codebook": _REPO_ROOT / "configs" / "election_events_codebook.yaml",
         "examples": _REPO_ROOT / "configs" / "election_extraction_examples.yaml",
         "query": "election voters ballot candidate opposition intimidation boycott",
+    },
+    "state_repression": {
+        "codebook": _REPO_ROOT / "configs" / "state_repression_codebook.yaml",
+        "examples": _REPO_ROOT
+        / "configs"
+        / "state_repression_extraction_examples.yaml",
+        "query": "journalist arrested activist detained NGO banned internet shutdown crackdown",
     },
 }
 

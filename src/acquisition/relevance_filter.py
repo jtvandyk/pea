@@ -112,6 +112,27 @@ _DOMAIN_CONFIG: dict = {
             "vote buying",
         },
     },
+    "state_repression": {
+        "positive_labels": [
+            "state repression of journalists, activists, civil society, or civic space"
+        ],
+        "rejection_label": "unrelated news or ordinary criminal justice",
+        "keyword_key": "repression_signals",
+        "keyword_fallback": {
+            "journalist arrested",
+            "journalist detained",
+            "activist arrested",
+            "activist detained",
+            "ngo banned",
+            "internet shutdown",
+            "social media blocked",
+            "station suspended",
+            "crackdown",
+            "deregistered",
+            "dissolved",
+            "curfew",
+        },
+    },
 }
 
 

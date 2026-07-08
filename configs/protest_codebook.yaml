@@ -867,6 +867,20 @@ non_events:
       (see edge_cases.ghost_town_stay_away). The coercion test: does the article
       report enforcement violence, threats, or punishment for non-compliance?
 
+  - category: "State repression outside a specific protest"
+    examples:
+      - "Journalist arrested at home over reporting"
+      - "NGOs deregistered by government decree"
+      - "Internet shutdown ordered ahead of planned demonstrations"
+      - "Blanket ban on all assemblies in the capital"
+    reason: |
+      When the STATE ACTION is the subject of the article (not the response to
+      one specific protest being reported), it belongs to the state_repression
+      domain (configs/state_repression_codebook.yaml). Repression that answers
+      a specific protest stays HERE as that event's state_response. Decision
+      rule: who is the subject of the lede — the crowd, or the state? Never
+      code the same physical act in both domains.
+
   - category: "Pro-government and state-orchestrated rallies"
     examples:
       - "Ruling party buses supporters to a rally supporting the president"

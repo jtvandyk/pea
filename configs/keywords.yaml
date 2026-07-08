@@ -493,3 +493,74 @@ election_signals:
   - tashin hankalin zabe       # HA: election violence — BBC Hausa
   - magudin zabe               # HA: election rigging — BBC Hausa
   - kauracewa zabe             # HA: election boycott — BBC Hausa
+
+# =============================================================================
+# STATE REPRESSION DOMAIN KEYWORDS
+# Used by RelevanceFilter when domain='state_repression'
+# Targets state-action-on-civic-actor vocabulary. Deliberately avoids bare
+# "arrested"/"detained" (protest_signals territory, huge false-positive rate) —
+# repression phrases pair the action with a civic target or instrument.
+# =============================================================================
+
+repression_signals:
+  # ── English ──────────────────────────────────────────────────────────────
+  - journalist arrested
+  - journalist detained
+  - journalists detained
+  - reporter arrested
+  - activist arrested
+  - activist detained
+  - activists arrested
+  - human rights defender
+  - opposition leader detained
+  - ngo deregistered
+  - ngos deregistered
+  - ngo banned
+  - civil society crackdown
+  - crackdown on dissent
+  - internet shutdown
+  - internet cut
+  - social media blocked
+  - social media ban
+  - network disruption
+  - station suspended
+  - newspaper shut down
+  - media house raided
+  - licence revoked
+  - assembly ban
+  - protests banned
+  - curfew imposed
+  - enforced disappearance
+  - incommunicado detention
+  - treason charges
+  - sedition charges
+  - cybercrime charges
+  # ── French (CM, DRC, TD, GN, DZ, SN) ─────────────────────────────────────
+  - journaliste arrêté          # FR: journalist arrested — RFI, CPJ Afrique
+  - journaliste détenu          # FR: journalist detained
+  - militant arrêté             # FR: activist arrested — RFI Afrique
+  - défenseur des droits        # FR: (human) rights defender — Amnesty/FIDH usage
+  - coupure d'internet          # FR: internet cut/shutdown — RFI, Jeune Afrique
+  - réseaux sociaux bloqués     # FR: social media blocked
+  - interdiction de manifester  # FR: ban on demonstrations — RFI
+  - couvre-feu                  # FR: curfew — RFI Afrique
+  - dissolution                 # FR: dissolution (of association/movement) — official decrees
+  - disparition forcée          # FR: enforced disappearance — FIDH, RFI
+  # ── Portuguese (MZ, AO, GW) ──────────────────────────────────────────────
+  - jornalista detido           # PT: journalist detained — VOA Português, Lusa
+  - activista detido            # PT: activist detained — DW Português (also 'ativista')
+  - ativista detido             # PT: activist detained (Brazilian-influenced spelling)
+  - corte de internet           # PT: internet cut — VOA Português
+  - recolher obrigatório        # PT: curfew — Lusa, O País
+  # ── Arabic (DZ, SD, EG, MR) ──────────────────────────────────────────────
+  - اعتقال صحفي                 # AR: arrest of a journalist — Al Jazeera, CPJ Arabic
+  - اعتقال ناشط                 # AR: arrest of an activist — Al Jazeera
+  - قطع الإنترنت                # AR: internet cut/shutdown — Al Jazeera, AccessNow Arabic
+  - حجب مواقع التواصل           # AR: blocking of social media sites
+  - حظر التجول                  # AR: curfew — Al Jazeera
+  - حل الجمعية                  # AR: dissolution of an association — official/legal usage
+  # ── Swahili (KE, TZ, UG) ─────────────────────────────────────────────────
+  - mwandishi wa habari kukamatwa   # SW: journalist arrested — BBC Swahili
+  - mwanaharakati kukamatwa         # SW: activist arrested — BBC Swahili
+  - kufungiwa kwa chombo cha habari # SW: media outlet suspension — Mwananchi/TCRA coverage
+  - amri ya kutotoka nje            # SW: curfew (order not to go out) — BBC Swahili

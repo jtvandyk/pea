@@ -298,3 +298,56 @@ def test_keyword_fallback_matches_african_language_headlines(
     added for pan-Africa coverage (the NLI model path handles translated text;
     this fallback is what runs in degraded mode)."""
     assert protest_keyword_filter._score_with_keywords(headline) == 1.0, headline
+
+
+# ── Turmoil derivation covers repression-domain vocabulary ───────────────────
+
+
+def test_internet_shutdown_derives_medium_turmoil():
+    """The state_repression domain emits state_response: internet_shutdown;
+    storage.py's turmoil sets must know it (codebook<->storage sync rule)."""
+    from src.acquisition.storage import _derive_turmoil_level
+
+    event = {"state_response": "internet_shutdown"}
+    assert _derive_turmoil_level(event) == "medium"
+
+
+def test_repression_vocabulary_covered_by_turmoil_sets():
+    """Every state_response value the repression codebook instructs the LLM to
+    emit must be classifiable by _derive_turmoil_level's severity sets (or be
+    an explicitly-low value), so no repression event silently defaults."""
+    from src.acquisition.storage import (
+        _HIGH_TURMOIL_RESPONSES,
+        _MEDIUM_TURMOIL_RESPONSES,
+    )
+
+    known = (
+        _HIGH_TURMOIL_RESPONSES
+        | _MEDIUM_TURMOIL_RESPONSES
+        | {"none", "monitoring", "unknown"}
+    )
+    # The vocabulary the repression extraction_prompt tells the model to use:
+    with open(CONFIGS_DIR / "state_repression_codebook.yaml") as f:
+        cb = yaml.safe_load(f)
+    rules = "\n".join(cb["extraction_prompt"]["extraction_rules"])
+    vocab_rule = next(r for r in rules.split("\n\n") if "shared" in r)
+    import re
+
+    listed = set(re.findall(r"[a-z_]{4,}", vocab_rule.split(":", 1)[1]))
+    listed &= {
+        "arrests",
+        "ban",
+        "curfew",
+        "legal_criminalisation",
+        "anti_terrorism_designation",
+        "organisational_dissolution",
+        "non_association_bail",
+        "internet_shutdown",
+        "live_ammunition",
+        "rubber_bullets",
+        "teargas",
+        "dispersal",
+        "unknown",
+    }
+    missing = listed - known
+    assert not missing, f"repression vocabulary not covered by turmoil sets: {missing}"
