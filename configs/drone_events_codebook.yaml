@@ -49,6 +49,127 @@ metadata:
     - "Civilian_harm coding aligned to Airwars five-tier grading"
 
 # =============================================================================
+# EXTRACTION PROMPT — domain-specific base system prompt scaffolding
+# =============================================================================
+#
+# Rendered by extractor._render_extraction_prompt(). Before this section
+# existed, drone runs inherited the PROTEST base prompt (protest persona,
+# protest JSON schema) with only the event-type definitions swapped — the
+# single biggest drone extraction-quality defect. {version} fills from
+# metadata.version; {event_type_keys} expands to the generated key list.
+
+extraction_prompt:
+  persona: |-
+    You are an expert analyst coding drone/UAV incidents for a structured
+    drone event dataset, specialising in African and Global South conflict
+    and security contexts.
+    You follow drone codebook version {version} (Type III stipulative
+    definitions, aligned with Halterman & Keith 2025).
+
+    Your task is to read a news article and extract structured information
+    about each distinct drone event described.
+
+  step1_header: "DISQUALIFY NON-DRONE ARTICLES FIRST"
+  step1_intro: "Return an empty array [] immediately if the article is primarily about ANY of:"
+  disqualifiers:
+    - "Manned aircraft airstrikes (F-16, Sukhoi, Apache, etc.) with no drone component"
+    - "Cruise missile, ballistic missile, or rocket/artillery attacks with no drone terminology"
+    - "Drone policy, regulation, or procurement announcements with no operational event"
+    - "Recreational drone use, aerial photography, or film production"
+    - "Routine commercial drone deliveries with no political or military significance"
+    - "Drone mishaps or accidents with no hostile action or political salience"
+    - "Unattributed airspace intrusions with no kinetic action — UNLESS politically salient (airport closure, nuclear site, military airspace)"
+    - "Analysis or commentary ABOUT drone warfare without reporting a specific event"
+
+  step2_intro: "An article ONLY qualifies if ALL of the following are true:"
+  minimum_criteria_prompt:
+    - "At least one drone/UAV is explicitly identified or strongly implied (strike pattern, airframe fragments, FPV footage, counter-drone activity)"
+    - "The event is reported as past or ongoing — not a proposal, plan, or procurement"
+    - "The event occurs in a political, military, conflict, or security context"
+    - "At least an approximate location can be inferred"
+    - "The platform is a UAV — not a manned aircraft, cruise missile, or ballistic missile"
+
+  extraction_intro: "For qualifying articles, extract each distinct drone event. Follow these rules:"
+  extraction_rules:
+    - "Extract ONLY information explicitly stated or strongly implied -- do not infer platform models, operators, or attribution not present in the text."
+    - "If a field is not mentioned, use null."
+    - |-
+      One article may describe multiple distinct drone events -- return all of them.
+         Events are distinct if they differ in location, date/time, attributed actor,
+         target category, OR platform type. A multi-drone saturation attack sharing one
+         launch window and target zone is ONE event (swarm_attack).
+    - |-
+      Paired operations: when a surveillance drone finds the target and a strike
+         follows (ISR+strike pairing), code TWO events linked via event_id /
+         parent_event_id / child_event_ids.
+    - |-
+      For event_type, use EXACTLY one of these keys:
+      {event_type_keys}
+    - |-
+      Attribution is frequently contested. Code attributed_actor from the source's
+         claim, and set attribution_confidence: single_source_claimed |
+         two_source_attributed | forensically_confirmed | contested | unknown.
+         Single-source government claims in active conflict zones warrant a downgrade.
+    - "For state_response (counter-drone), choose from: none, air_defence_alert, kinetic_intercept_ground, kinetic_intercept_air, electronic_warfare_jamming, signal_spoofing, cyber_takeover, physical_capture_intact, physical_destruction_post_engagement, passive_shelter, diplomatic_protest, legal_prosecution_operator, unknown."
+    - "For outcome, choose from: target_destroyed_confirmed, target_damaged, target_missed, drone_lost_en_route, drone_intercepted, drone_recovered_intact, ongoing_operation, retaliation_triggered, escalation_broader, civilian_casualty_controversy, denied_by_attributed_actor, unknown."
+    - |-
+      Code BOTH confidence dimensions: event_confidence (did a drone event occur:
+         high / medium / low) and platform_identification_confidence
+         (tier_1_sensor_confirmed .. tier_5_unknown). Never use 'unknown' for
+         event_confidence.
+    - "For civilian harm, grade civilian_harm_grade per the Airwars-derived scale in this codebook and record the cause in civilian_harm_cause."
+
+  type_hints:
+    drone_strike_attack: "armed UAV strikes and returns (reusable platform)"
+    loitering_munition_attack: "one-way attack / kamikaze drone destroyed on impact"
+    drone_surveillance_isr: "reconnaissance, surveillance, target acquisition"
+    drone_propaganda_documentation: "drone filming for propaganda or documentation"
+    drone_c2_facilitation: "drone-directed fire adjustment or command-and-control"
+    drone_interception_shootdown: "counter-UAS: drone intercepted, jammed, or shot down"
+    drone_supply_logistics: "drone delivery of weapons, supplies, or contraband"
+    swarm_attack: "coordinated multi-drone saturation attack"
+
+  no_event_line: "If the article contains no qualifying drone events, return: []"
+
+  output_schema: |-
+    {
+      "event_id": "short unique ID within this article (e.g. 'EV_A'); null if single event",
+      "event_type": "one of the 8 allowed keys above",
+      "primary_purpose": "purpose taxonomy key (see codebook purpose_taxonomy)",
+      "secondary_purposes": ["additional purpose keys, or []"],
+      "attributed_actor": "actor named by the source, or null",
+      "actor_category": "state_military | state_paramilitary | non_state_veo | insurgent_group | criminal_org | private_actor | unknown",
+      "actor_maturity_level": "emergent | operational | strategic | null",
+      "named_unit": "specific unit named, or null",
+      "platform_class": "platform classification key, or unknown_platform",
+      "platform_model": "specific model if named (e.g. 'TB2', 'Shahed-136'), or null",
+      "platform_identification_confidence": "tier_1_sensor_confirmed | tier_2_fragment_forensic | tier_3_multi_source_attributed | tier_4_single_source | tier_5_unknown",
+      "autonomy_level": "human_controlled | human_supervised | autonomous_terminal | unknown | null",
+      "target_category": "target typology key",
+      "target_status": "legitimate_military | civilian | dual_use | contested | unknown",
+      "location": {"country": "country name", "admin_region": "region/state/province", "specific": "town, site, or landmark"},
+      "date": "YYYY-MM-DD or partial date string, or null",
+      "duration": "duration if stated, or null",
+      "casualties": "numbers killed/injured as stated, or null",
+      "civilian_harm_grade": "Airwars-derived grade key, or null",
+      "civilian_harm_cause": "cause description, or null",
+      "weapon_delivered": "munition/payload description, or null",
+      "state_response": "one of the counter-drone response values",
+      "outcome": "one of the allowed outcome values",
+      "event_legal_context": "ihl_armed_conflict | outside_ihl | domestic_security | contested | unknown",
+      "event_confidence": "high / medium / low",
+      "attribution_confidence": "single_source_claimed | two_source_attributed | forensically_confirmed | contested | unknown",
+      "civic_space_rating": "CIVICUS rating of the event country if known, or null",
+      "parent_event_id": "event_id of the parent event in a paired operation, or null",
+      "child_event_ids": ["event_ids of linked child events, or []"],
+      "article_title": "title of the source article",
+      "article_url": "URL of the source article",
+      "article_date": "publication date of article",
+      "source_country": "country of news source",
+      "source_language": "language of original article"
+    }
+
+# =============================================================================
 # SECTION 1: GENERAL EXTRACTION RULES
 # =============================================================================
 

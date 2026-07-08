@@ -157,10 +157,14 @@ def test_codebook_context_nonempty(domain):
     assert "DECISION RULES:" in context
 
 
-def test_codebook_context_nonempty_unregistered_ve():
-    """The VE codebook is not yet registered but must stay injection-ready."""
+def test_ve_codebook_taxonomy_key_regression():
+    """Regression for the original VE bug: the taxonomy must live under
+    `event_types` (the injected key), never `attack_types` (which injected
+    zero context). Kept explicit even though VE is now a registered domain."""
+    with open(CONFIGS_DIR / "violent_extremism_codebook.yaml") as f:
+        cb = yaml.safe_load(f)
+    assert "attack_types" not in cb
     context = _build_codebook_context(CONFIGS_DIR / "violent_extremism_codebook.yaml")
-    assert context.strip()
     assert "TYPE: ASSASSINATION" in context
 
 

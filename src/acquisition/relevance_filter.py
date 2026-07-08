@@ -70,6 +70,29 @@ _DOMAIN_CONFIG: dict = {
             "airstrike",
         },
     },
+    "violent_extremism": {
+        "positive_labels": [
+            "terrorist attack or violent extremist incident by a non-state actor"
+        ],
+        "rejection_label": "unrelated news with no violent attack",
+        "keyword_key": "violent_extremism_signals",
+        "keyword_fallback": {
+            "bombing",
+            "suicide bomber",
+            "ied",
+            "militants",
+            "insurgents",
+            "gunmen",
+            "kidnapping",
+            "abducted",
+            "hostage",
+            "terrorist",
+            "boko haram",
+            "al-shabaab",
+            "iswap",
+            "jnim",
+        },
+    },
 }
 
 

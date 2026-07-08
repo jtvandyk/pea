@@ -7,13 +7,15 @@
 # FORMAT REQUIREMENT: top-level key must be 'examples:' (list).
 # Each entry: id, description, rationale, article_snippet, extracted_events (list).
 #
-# Selected 6 of 25 available examples to cover:
+# Example roster (pinned = Africa anchors, always injected; rest rotate):
 #   ex_01 — drone_strike_attack (state UCAV, counterterrorism, high confidence)
 #   ex_02 — drone_surveillance_isr + loitering_munition_attack (paired, parent_event_id)
 #   ex_03 — drone_interception_shootdown (counter-drone, multi-platform)
-#   ex_04 — drone_surveillance_isr (civic surveillance, CIVICUS repressed, medium confidence)
+#   ex_04 — drone_surveillance_isr (civic surveillance, CIVICUS repressed) [pinned]
 #   ex_05 — drone_supply_logistics (criminal context, border smuggling)
-#   ex_06 — drone_strike_attack (civilian harm, contested attribution, Africa, IDP camp)
+#   ex_06 — drone_strike_attack (civilian harm, contested attribution, Ethiopia) [pinned]
+#   ex_07 — drone_strike_attack (Mali/Sahel, contested civilian harm, single-source) [pinned]
+#   ex_08 — loitering_munition_attack (ISWAP non-state drone, Lake Chad) [pinned]
 # =============================================================================
 
 examples:
@@ -340,6 +342,119 @@ examples:
         event_confidence: "high"
         attribution_confidence: "contested"
         civic_space_rating: "repressed"
+        parent_event_id: null
+        child_event_ids: []
+        date: null
+
+  - id: "ex_07"
+    pinned: true  # Africa anchor — Sahel state strike with contested civilian harm
+    description: "drone_strike_attack — Malian armed forces strike, contested civilian harm, Sahel, single-source attribution"
+    rationale: |
+      Sahel anchor example (pan-Africa productionization). Demonstrates the dominant
+      Sahel drone pattern: a state military strike against a claimed 'terrorist'
+      target, with local sources reporting civilian casualties and the military
+      denying them. Key codings: attribution_confidence = single_source_claimed
+      (military statement only), civilian_harm_grade = fair_contested (competing
+      casualty accounts), event_legal_context = ihl_disputed, and event_confidence
+      capped at medium — junta-era Mali has no independent domestic press to
+      corroborate (CIVICUS repressed).
+    article_snippet: |
+      The Malian army said its air force carried out a drone strike on Tuesday against
+      what it called a terrorist logistics base near Douentza, in central Mali, killing
+      several fighters. A local community association said the strike hit a wedding
+      gathering in a nearby village, killing at least eight civilians including two
+      children. The army statement said the operation was based on 'precise intelligence'
+      and denied any civilian casualties. Residents reached by telephone said a
+      Turkish-made drone had been seen over the area for two days before the strike.
+      No independent verification was possible in the junta-controlled region.
+    extracted_events:
+      - event_type: "drone_strike_attack"
+        primary_purpose: "kinetic_attack_counterterrorism"
+        secondary_purposes: []
+        attributed_actor: "Malian Armed Forces (FAMa)"
+        actor_category: "state_military"
+        actor_maturity_level: "tactical"
+        named_unit: null
+        platform_class: "ucav_male"
+        platform_model: null
+        platform_identification_confidence: "tier_4_single_source"
+        autonomy_level: null
+        target_category: "non_state_armed_group"
+        target_status: "contested"
+        target_location:
+          country: "Mali"
+          admin_region: "Mopti region"
+          specific: "village near Douentza"
+        casualties:
+          killed_combatants_min: 0
+          killed_combatants_max: null
+          killed_civilians_min: 8
+          killed_civilians_max: null
+        civilian_harm_grade: "fair_contested"
+        civilian_harm_cause: "direct_strike"
+        state_response: "none"
+        outcome: "civilian_casualty_controversy"
+        event_legal_context: "ihl_disputed"
+        event_confidence: "medium"
+        attribution_confidence: "single_source_claimed"
+        civic_space_rating: "repressed"
+        parent_event_id: null
+        child_event_ids: []
+        date: null
+
+  - id: "ex_08"
+    pinned: true  # Africa anchor — non-state armed-group drone use, Lake Chad
+    description: "loitering_munition_attack — ISWAP modified commercial drone attack on army position, Lake Chad, emergent actor"
+    rationale: |
+      Lake Chad anchor example (pan-Africa productionization). Demonstrates
+      NON-STATE drone use — the fastest-growing African drone threat: a jihadist
+      group dropping or crashing modified commercial quadcopters with explosives.
+      Key codings: actor_category = non_state_veo, actor_maturity_level = emergent
+      (improvised munitions, small quadcopters), platform_class = commercial_quadcopter,
+      platform_identification_confidence = tier_3 (army + independent monitor),
+      and the type distinction: a drone that is EXPENDED in the attack (explosive
+      payload crashed into the target) → loitering_munition_attack, not
+      drone_strike_attack (reusable platform releasing munitions).
+    article_snippet: |
+      Islamic State West Africa Province fighters attacked a Nigerian army forward
+      operating base near Baga on the shores of Lake Chad on Thursday night using at
+      least three small drones rigged with explosive charges, two of which detonated
+      inside the perimeter, the army said. A security monitoring group corroborated
+      the attack, saying commercial quadcopters had been modified to crash into the
+      base. Three soldiers were wounded. ISWAP claimed the attack in a statement,
+      calling it a response to recent air raids. It is the group's third drone
+      attack on military positions this year.
+    extracted_events:
+      - event_type: "loitering_munition_attack"
+        primary_purpose: "kinetic_attack_military"
+        secondary_purposes: ["propaganda_value"]
+        attributed_actor: "ISWAP (Islamic State West Africa Province)"
+        actor_category: "non_state_veo"
+        actor_maturity_level: "emergent"
+        named_unit: null
+        platform_class: "commercial_quadcopter"
+        platform_model: null
+        platform_identification_confidence: "tier_3_multi_source_attributed"
+        autonomy_level: "level_1"
+        target_category: "hard_military_installation"
+        target_status: "legitimate_military"
+        target_location:
+          country: "Nigeria"
+          admin_region: "Borno State"
+          specific: "army forward operating base near Baga, Lake Chad"
+        casualties:
+          killed_combatants_min: 0
+          killed_combatants_max: 0
+          killed_civilians_min: 0
+          killed_civilians_max: 0
+        civilian_harm_grade: null
+        civilian_harm_cause: null
+        state_response: "none"
+        outcome: "target_damaged"
+        event_legal_context: "ihl_armed_conflict"
+        event_confidence: "high"
+        attribution_confidence: "two_source_attributed"
+        civic_space_rating: null
         parent_event_id: null
         child_event_ids: []
         date: null
