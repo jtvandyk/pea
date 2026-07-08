@@ -97,3 +97,89 @@ class TestParseEvents:
 
     def test_none_equivalent_empty_string(self):
         assert _parse_events("") == []
+
+
+# ── system prompt parameterization ───────────────────────────────────────────
+
+
+class TestBuildSystemPrompt:
+    """The extraction_prompt YAML section must render the same base prompt the
+    hardcoded _BASE_SYSTEM_PROMPT used to provide (golden equivalence), and
+    codebooks without the section must fall back to it byte-identically."""
+
+    def test_protest_prompt_golden_equivalence(self):
+        """Rendered protest prompt == legacy prompt, modulo the codebook
+        version (legacy hardcoded 2.3; the renderer reads metadata.version)."""
+        from src.acquisition.extractor import (
+            _BASE_SYSTEM_PROMPT,
+            _CODEBOOK_PATH,
+            _build_codebook_context,
+            _build_system_prompt,
+        )
+        import re
+
+        legacy = _BASE_SYSTEM_PROMPT + _build_codebook_context(_CODEBOOK_PATH)
+        rendered = _build_system_prompt(_CODEBOOK_PATH)
+        normalise = re.compile(r"codebook version \d+\.\d+")
+        assert normalise.sub("codebook version X", rendered) == normalise.sub(
+            "codebook version X", legacy
+        )
+
+    def test_fallback_without_extraction_prompt(self, tmp_path):
+        """A codebook lacking extraction_prompt gets the legacy base prompt."""
+        import yaml
+        from src.acquisition.extractor import (
+            _BASE_SYSTEM_PROMPT,
+            _CODEBOOK_PATH,
+            _build_system_prompt,
+        )
+
+        with open(_CODEBOOK_PATH) as f:
+            cb = yaml.safe_load(f)
+        cb.pop("extraction_prompt")
+        stripped = tmp_path / "no_prompt_codebook.yaml"
+        stripped.write_text(yaml.safe_dump(cb, allow_unicode=True))
+
+        rendered = _build_system_prompt(stripped)
+        assert rendered.startswith(_BASE_SYSTEM_PROMPT)
+
+    def test_unreadable_codebook_falls_back_to_base(self, tmp_path):
+        from src.acquisition.extractor import _BASE_SYSTEM_PROMPT, _build_system_prompt
+
+        rendered = _build_system_prompt(tmp_path / "does_not_exist.yaml")
+        assert rendered == _BASE_SYSTEM_PROMPT
+
+    def test_event_type_keys_generated_from_taxonomy(self):
+        """The STEP 3 valid-key list is generated from event_types, so adding
+        or renaming a type can never desync the prompt from the taxonomy."""
+        import yaml
+        from src.acquisition.extractor import _CODEBOOK_PATH, _render_extraction_prompt
+
+        with open(_CODEBOOK_PATH) as f:
+            cb = yaml.safe_load(f)
+        rendered = _render_extraction_prompt(cb)
+        for key in cb["event_types"]:
+            assert f"- {key}" in rendered
+
+    def test_renamed_type_flows_into_prompt(self):
+        import copy
+        import yaml
+        from src.acquisition.extractor import _CODEBOOK_PATH, _render_extraction_prompt
+
+        with open(_CODEBOOK_PATH) as f:
+            cb = yaml.safe_load(f)
+        mutated = copy.deepcopy(cb)
+        mutated["event_types"]["totally_new_type"] = mutated["event_types"].pop("vigil")
+        rendered = _render_extraction_prompt(mutated)
+        assert "- totally_new_type" in rendered
+
+    def test_version_templated_from_metadata(self):
+        import copy
+        import yaml
+        from src.acquisition.extractor import _CODEBOOK_PATH, _render_extraction_prompt
+
+        with open(_CODEBOOK_PATH) as f:
+            cb = yaml.safe_load(f)
+        mutated = copy.deepcopy(cb)
+        mutated["metadata"]["version"] = "99.9"
+        assert "codebook version 99.9" in _render_extraction_prompt(mutated)

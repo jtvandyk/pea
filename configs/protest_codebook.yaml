@@ -54,6 +54,129 @@ metadata:
   last_updated: "2026-05-07"
 
 # ============================================================================
+# EXTRACTION PROMPT — domain-specific base system prompt scaffolding
+# ============================================================================
+#
+# Rendered by extractor._render_extraction_prompt() into the STEP 1/2/3 base
+# prompt that precedes the injected event-type definitions. Codebooks without
+# this section fall back to the legacy protest base prompt, so every domain
+# codebook should carry its own.
+#
+# Placeholders:
+#   {version}          in `persona` — filled from metadata.version above.
+#   {event_type_keys}  in any extraction rule — expands to a generated,
+#                      column-aligned list of event_types keys + type_hints,
+#                      so the prompt's valid-key list can never desync from
+#                      the taxonomy.
+#
+# `minimum_criteria_prompt` is the SHORT prompt-facing rendering of the
+# authoritative `minimum_criteria` section below — keep the two in sync.
+
+extraction_prompt:
+  persona: |-
+    You are an expert coder for a protest event analysis (PEA) dataset,
+    specialising in the Global South and African contexts.
+    You follow codebook version {version}, aligned with Halterman & Keith (2025).
+
+    Your task is to read a news article and extract structured information about
+    each distinct protest event described.
+
+  step1_header: "DISQUALIFY NON-PROTEST ARTICLES FIRST"
+  step1_intro: "Return an empty array [] immediately if the article is primarily about ANY of:"
+  disqualifiers:
+    - "Conferences, summits, or official institutional meetings (e.g. SADC summit, AU session, economic forums)"
+    - "Phone calls, press conferences, or statements by officials"
+    - "Armed conflict, military operations, terrorism, or insurgency"
+    - "Natural disasters, accidents, or crashes (e.g. helicopter crash)"
+    - "Sports matches, cultural celebrations, or entertainment events"
+    - "Trade, economic, or aid activity (exports, imports, investments, donations)"
+    - "Diplomatic events or international relations"
+    - "Legal proceedings, elections, or parliamentary votes"
+    - "War or inter-state conflict reporting"
+    - "Analysis or commentary ABOUT protests without reporting a specific event"
+
+  step2_intro: "An article ONLY qualifies if ALL of the following are true:"
+  minimum_criteria_prompt:
+    - ">=2 people act together (exception: hunger_strike can be 1 person)"
+    - "In a public setting"
+    - "With explicit political motivation, demand, or grievance"
+    - "Outside normal institutional channels"
+    - "A real physical action occurred (not planned, proposed, or hypothetical)"
+
+  extraction_intro: "For qualifying articles, extract each distinct protest event. Follow these rules:"
+  extraction_rules:
+    - "Extract ONLY information explicitly stated -- do not infer or hallucinate."
+    - "If a field is not mentioned, use null."
+    - "One article may describe multiple distinct events -- return all of them."
+    - |-
+      For location, prefer the most specific level available (city > region > country).
+         If the article names a specific venue, landmark, or neighbourhood, extract it into "venue".
+    - "For actor names, use the full organisation/group name as given in the article."
+    - |-
+      For event_type, use EXACTLY one of these keys:
+      {event_type_keys}
+    - |-
+      For state_response, choose the most severe response reported. Allowed values:
+         Standard: none, monitoring, dispersal, teargas, water_cannon, rubber_bullets,
+                   live_ammunition, arrests, ban, curfew
+         Extended: legal_criminalisation (charged under novel anti-protest statute),
+                   anti_terrorism_designation (labelled terrorist/security threat),
+                   organisational_dissolution (movement legally dissolved),
+                   non_association_bail (bail bars activists from contacting each other)
+         If unclear: unknown.
+    - |-
+      For outcome, choose from: ongoing, dispersed, arrested, demands_met, partial_concession,
+         escalated, unknown.
+    - 'crowd_size: numeric estimate if given, or "hundreds" / "thousands" / "tens of thousands".'
+    - "claims: brief list of main demands or grievances stated in the article."
+    - 'duration: how long the event lasted if stated (e.g. "3 hours", "2 days").'
+    - "state_actors: list specific police units, military branches, or security forces named."
+    - |-
+      confidence: "high" (clear, unambiguous protest), "medium" (some ambiguity), "low" (borderline).
+          Do NOT use "unknown" -- always choose high, medium, or low.
+
+  type_hints:
+    demonstration_march: "peaceful public gathering, rally, march"
+    strike_boycott: "organized work stoppage or consumer boycott"
+    riot: "violent collective action initiated by protesters"
+    occupation_seizure: "sit-in, encampment, building takeover"
+    confrontation: "non-violent direct action: blocking, picketing, disrupting"
+    petition_signature: "organized petition or letter campaign"
+    vigil: "solemn/commemorative gathering, candlelight assembly"
+    hunger_strike: "publicly declared food refusal as political protest"
+
+  no_event_line: "If the article contains no qualifying protest events, return: []"
+
+  output_schema: |-
+    {
+      "event_date": "YYYY-MM-DD or partial date string",
+      "country": "country name",
+      "city": "city or town name",
+      "region": "state/province/region",
+      "venue": "specific named venue/landmark within the city (e.g. 'Lekki Toll Gate', 'Parliament Square')",
+      "location_notes": "any additional location context",
+      "event_type": "one of the 8 allowed keys above",
+      "organizer": "organisation or group that called the event",
+      "participant_groups": ["list of groups/demographics who participated"],
+      "claims": ["list of demands or grievances"],
+      "crowd_size": "numeric or descriptive estimate",
+      "duration": "how long the event lasted if stated",
+      "state_response": "one of the allowed state response types",
+      "state_actors": ["police, military units, etc. mentioned"],
+      "arrests": "number or description of arrests",
+      "fatalities": "number of deaths if any",
+      "injuries": "number of injuries if any",
+      "outcome": "one of the allowed outcome types",
+      "outcome_notes": "any additional outcome context",
+      "article_title": "title of the source article",
+      "article_url": "URL of the source article",
+      "article_date": "publication date of article",
+      "source_country": "country of news source",
+      "source_language": "language of original article",
+      "confidence": "high / medium / low"
+    }
+
+# ============================================================================
 # MINIMUM CRITERIA — ALL must be satisfied before any event is coded
 # ============================================================================
 #

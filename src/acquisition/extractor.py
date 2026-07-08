@@ -8,7 +8,8 @@ Requires:
   AZURE_FOUNDRY_API_KEY  — API key for Azure AI Foundry
   AZURE_OPENAI_ENDPOINT  — endpoint URL for Azure AI Foundry project
 
-Codebook version: 2.3
+Codebook version: read from configs/protest_codebook.yaml metadata.version
+(injected into the system prompt at import time — never hardcode it here).
 Follows the meta-codebook schema, extracting:
   - Event identification (date, location, country)
   - Actor information (who organised/participated)
@@ -161,6 +162,108 @@ def _build_few_shot_examples(
     return "\n".join(lines)
 
 
+def _render_event_type_keys(event_types: dict, type_hints: dict) -> str:
+    """
+    Generate the STEP 3 event-type key list from the codebook's ``event_types``
+    keys, so the prompt's valid-key list can never desync from the taxonomy.
+
+    Hints come from ``extraction_prompt.type_hints`` (fallback: the type's
+    ``name`` field, lowercased). Keys are column-aligned like the original
+    hand-written prompt.
+    """
+    keys = list(event_types)
+    width = max(len(k) for k in keys) + 2
+    lines = []
+    for key in keys:
+        hint = type_hints.get(key) or event_types[key].get("name", "").lower()
+        lines.append(f"   - {key.ljust(width)}({hint})")
+    return "\n".join(lines)
+
+
+def _render_extraction_prompt(cb: dict) -> Optional[str]:
+    """
+    Render a domain-specific base system prompt from the codebook's
+    ``extraction_prompt`` section (persona + STEP 1 disqualifiers + STEP 2
+    minimum criteria + STEP 3 extraction rules + output schema).
+
+    Returns None when the codebook has no ``extraction_prompt`` section, in
+    which case the caller falls back to the legacy protest ``_BASE_SYSTEM_PROMPT``.
+
+    The ``{version}`` placeholder in ``persona`` is filled from
+    ``metadata.version`` — the codebook version in the prompt can never go
+    stale again. The ``{event_type_keys}`` placeholder in any extraction rule
+    expands to the generated key list (see _render_event_type_keys).
+    """
+    ep = cb.get("extraction_prompt")
+    if not ep:
+        return None
+
+    version = cb.get("metadata", {}).get("version", "unknown")
+    type_hints = ep.get("type_hints", {}) or {}
+
+    parts = [ep["persona"].rstrip().replace("{version}", str(version))]
+    parts.append("")
+    parts.append(f"== STEP 1: {ep['step1_header']} ==")
+    parts.append("")
+    parts.append(ep["step1_intro"])
+    parts.extend(f"- {d}" for d in ep["disqualifiers"])
+    parts.append("")
+    parts.append("== STEP 2: APPLY MINIMUM CRITERIA ==")
+    parts.append("")
+    parts.append(ep["step2_intro"])
+    parts.extend(f"{i}. {c}" for i, c in enumerate(ep["minimum_criteria_prompt"], 1))
+    parts.append("")
+    parts.append("== STEP 3: EXTRACT EVENTS ==")
+    parts.append("")
+    parts.append(ep["extraction_intro"])
+    for i, rule in enumerate(ep["extraction_rules"], 1):
+        rule = rule.rstrip("\n")
+        if "{event_type_keys}" in rule:
+            rule = rule.replace(
+                "{event_type_keys}",
+                _render_event_type_keys(cb.get("event_types", {}), type_hints),
+            )
+        parts.append(f"{i}. {rule}")
+    parts.append("")
+    parts.append(
+        "Return ONLY a valid JSON array. No preamble, no explanation, no markdown fences."
+    )
+    parts.append(ep["no_event_line"])
+    parts.append("")
+    parts.append("JSON schema for each event:")
+    parts.append(ep["output_schema"].rstrip("\n"))
+    return "\n".join(parts)
+
+
+def _build_system_prompt(codebook_path: Path) -> str:
+    """
+    Compose the full system prompt for a domain codebook: the domain's own
+    ``extraction_prompt`` scaffolding (STEP 1/2/3 + output schema) when the
+    codebook provides one, otherwise the legacy protest ``_BASE_SYSTEM_PROMPT``
+    byte-identical fallback — followed in both cases by the injected event-type
+    definitions from _build_codebook_context().
+
+    Built once per run and shared across workers so the byte sequence is
+    stable — a prerequisite for Azure prompt cache hits.
+    """
+    base = None
+    try:
+        with open(codebook_path) as f:
+            cb = yaml.safe_load(f)
+        base = _render_extraction_prompt(cb)
+    except KeyError as e:
+        log.warning(
+            f"Codebook extraction_prompt section is incomplete (missing {e}); "
+            "falling back to the legacy protest base prompt."
+        )
+    except Exception as e:
+        log.warning(f"Could not load codebook for system prompt: {e}")
+
+    if base is None:
+        base = _BASE_SYSTEM_PROMPT
+    return base + _build_codebook_context(codebook_path)
+
+
 _BASE_SYSTEM_PROMPT = """You are an expert coder for a protest event analysis (PEA) dataset,
 specialising in the Global South and African contexts.
 You follow codebook version 2.3, aligned with Halterman & Keith (2025).
@@ -258,7 +361,7 @@ JSON schema for each event:
   "confidence": "high / medium / low"
 }"""
 
-SYSTEM_PROMPT = _BASE_SYSTEM_PROMPT + _build_codebook_context(_CODEBOOK_PATH)
+SYSTEM_PROMPT = _build_system_prompt(_CODEBOOK_PATH)
 
 _FEW_SHOT_EXAMPLES = _build_few_shot_examples(_EXAMPLES_PATH)
 
@@ -530,7 +633,7 @@ def extract_events(
     # Build system prompt ONCE before the article loop so all workers share the
     # identical byte sequence -- prerequisite for Azure prompt cache hits.
     if codebook_path is not None:
-        run_system = _BASE_SYSTEM_PROMPT + _build_codebook_context(codebook_path)
+        run_system = _build_system_prompt(codebook_path)
         log.info(f"Using custom codebook: {codebook_path}")
     else:
         run_system = SYSTEM_PROMPT
