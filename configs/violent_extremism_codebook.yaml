@@ -2,8 +2,10 @@
 # Based on: Global Terrorism Database (GTD) Codebook, August 2021 (START / University of Maryland)
 #           CSIS Domestic Terrorism Case Studies Methodology (McCabe 2024)
 #
-# Version: 1.0
+# Version: 1.1
 # Created: 2026-04-22
+# Updated: 2026-07-08 — top-level taxonomy key renamed attack_types → event_types
+#   (extractor contract), negative_examples added to `unknown`, general_rules added.
 #
 # Unit of analysis: A single violent extremism INCIDENT — one attack event at one
 # location at one time. Unlike the protest codebook (collective political action),
@@ -30,8 +32,12 @@ metadata:
   unit_of_analysis: "Individual violent extremism incident"
   minimum_participants: 1
   llm_backend: "Azure AI Foundry (gpt-5.4)"
-  version: "1.0"
-  last_updated: "2026-04-22"
+  version: "1.1"
+  last_updated: "2026-07-08"
+  changelog_1_1: |
+    Schema remediation: renamed top-level `attack_types` to `event_types` so the
+    extractor's codebook injection works (attack_types injected zero context);
+    added negative_examples to `unknown`; added general_rules section.
 
 # ============================================================================
 # MINIMUM CRITERIA — check BEFORE assigning any attack_type
@@ -148,14 +154,17 @@ type_aliases:
   "machete attack": "armed_assault"
 
 # ============================================================================
-# ATTACK TYPES
+# EVENT TYPES (attack types)
 # ============================================================================
 #
-# Use the exact key names below as the attack_type value.
+# Top-level key MUST be `event_types` — it is the only taxonomy key the
+# extractor's _build_codebook_context() injects into the system prompt.
+# Each event's output field remains `attack_type`; use the exact key names
+# below as its value.
 # Valid keys: assassination | armed_assault | bombing_explosion | hijacking |
 #             barricade_hostage | kidnapping | facility_attack | unarmed_assault | unknown
 
-attack_types:
+event_types:
 
   assassination:
     name: "Assassination"
@@ -454,6 +463,11 @@ attack_types:
     positive_examples:
       - "An explosion of unknown origin killed three people near a government building"
       - "A security official was killed in unclear circumstances attributed by authorities to militant activity"
+
+    negative_examples:
+      - "Attack method unclear AND no evidence any VE incident occurred at all (fails minimum criteria — return [])"
+      - "A person died in a road accident that officials have not yet explained (no violence or intent — not VE)"
+      - "Article describes only generic 'insecurity' in a region with no specific incident (no unit of analysis)"
 
     decision_rules:
       - "Use UNKNOWN only after genuinely attempting to assign one of the eight typed categories"
@@ -828,3 +842,19 @@ confidence_guidance:
     example: |
       "Unconfirmed reports circulating on social media claim an explosion occurred
        in a border area; no official confirmation available."
+
+# ============================================================================
+# CODING RULES SUMMARY
+# ============================================================================
+
+general_rules:
+  1_primary_type: "Assign ONE primary attack type per incident (from the nine valid event_types keys)"
+  2_confidence: "Provide confidence score: high / medium / low — never 'unknown'"
+  3_text_only: "Use only information in provided text; do not infer or hallucinate"
+  4_ve_motive: "All classifications require the GTD intentionality + ideological/political/social-goal criteria in minimum_criteria"
+  5_doubt_designation: "When state 'terrorism' labels are the only evidence of VE motive, apply doubt_terrorism_designations and prefer [] or low confidence"
+  6_unknown_last: "Assign UNKNOWN attack type only after genuinely attempting the eight typed categories"
+  7_location_temporal: "All incidents must have identifiable country and approximate date"
+  8_separate_incidents: "Code each distinct incident separately; do not merge multi-day campaigns into one event"
+  9_non_event_gate: "Apply minimum_criteria check FIRST — if any disqualifier applies (insurgency battle, ordinary crime, state action), return []"
+  10_vocabularies: "Use only the closed target_type / weapon_type / perpetrator_ideology vocabularies defined in this codebook"

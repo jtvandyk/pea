@@ -100,6 +100,8 @@ _REQUIRED_CONFIGS = [
     _REPO_ROOT / "configs" / "extraction_examples.yaml",
     _REPO_ROOT / "configs" / "keywords.yaml",
     _REPO_ROOT / "configs" / "countries.yaml",
+    _REPO_ROOT / "configs" / "drone_events_codebook.yaml",
+    _REPO_ROOT / "configs" / "drone_extraction_examples.yaml",
 ]
 
 

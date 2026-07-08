@@ -197,6 +197,7 @@ examples:
 
   # ---------------------------------------------------------------------------
   - id: "ex_04"
+    pinned: true  # Africa anchor — always included regardless of sample rotation
     description: "drone_surveillance_isr — Ethiopian civilian surveillance of refugee camp, CIVICUS repressed, medium confidence"
     rationale: |
       Surveillance of a refugee camp → primary_purpose = isr_civic_surveillance (not
@@ -290,6 +291,7 @@ examples:
 
   # ---------------------------------------------------------------------------
   - id: "ex_06"
+    pinned: true  # Africa anchor — always included regardless of sample rotation
     description: "drone_strike_attack — Ethiopian TB2 kills 56+ civilians at IDP camp, contested attribution, Africa, CIVICUS repressed"
     rationale: |
       Africa-specific example: civilian harm, contested attribution, CIVICUS repressed country.

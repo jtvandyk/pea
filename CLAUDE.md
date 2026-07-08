@@ -19,7 +19,7 @@ Protest Event Analysis (PEA) pipeline. Discovers news articles via GDELT DOC 2.0
 | `configs/protest_codebook.yaml` | Codebook v2.3 — 8 event types with positive/negative examples, decision rules, non-event disqualifiers, African context, edge cases, state response vocabulary, confidence guidance |
 | `configs/extraction_examples.yaml` | 3 gold-standard few-shot examples injected into every user prompt |
 | `configs/keywords.yaml` | GDELT GKG themes, protest signal keywords (39, multilingual), URL signals — edit here not in source |
-| `src/acquisition/pipeline.py` | Entry point — 6-stage pipeline (discover → scrape → **relevance filter** → translate → extract → store) |
+| `src/acquisition/pipeline.py` | Entry point — 6-stage pipeline (discover → scrape → translate → **relevance filter** → extract → store) |
 | `src/acquisition/extractor.py` | LLM extraction — codebook v2.3 injected into SYSTEM_PROMPT, few-shot examples in USER_PROMPT, prompt caching logging |
 | `src/acquisition/gdelt_discovery.py` | GDELT DOC 2.0 API — **one query per country** using FIPS `sourcecountry` filter; keywords from `configs/keywords.yaml` |
 | `src/acquisition/relevance_filter.py` | Stage 2.5 — zero-shot NLI classifier (DeBERTa) rejects non-protest articles before LLM; keyword fallback if model unavailable |
@@ -275,7 +275,6 @@ The JSON report includes a `match_records` array (one entry per gold event) for 
 | Issue | File | Notes |
 |---|---|---|
 | ACLED validator not yet built | `src/validation/` | Unblocked — ACLED token needed |
-| Single-domain pipeline runs translation **after** relevance filter | `src/acquisition/pipeline.py` (`run_acquire_pipeline`) | Multi-domain path already does translate-first; align them so the NLI relevance filter sees translated text |
 | BBC token has no refresh on 401 | `src/acquisition/bbc_discovery.py` | Long backfills may expire mid-run |
 | Checkpoint append is thread-safe but not crash-atomic | `src/acquisition/extractor.py:_write_checkpoint` | SIGKILL during write can leave a partial line that fails the resume-skip match |
 
