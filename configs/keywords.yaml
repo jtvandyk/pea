@@ -437,3 +437,59 @@ violent_extremism_url_signals:
   - aqmi
   - jnim
   - islamist
+
+# =============================================================================
+# ELECTION EVENTS DOMAIN KEYWORDS
+# Used by RelevanceFilter when domain='election_events'
+# Targets coercion/contestation vocabulary, NOT routine election coverage —
+# 'election results' or 'campaign rally' alone would flood the filter with
+# administration news the codebook disqualifies anyway.
+# =============================================================================
+
+election_signals:
+  # ── English ──────────────────────────────────────────────────────────────
+  - election violence
+  - electoral violence
+  - voter intimidation
+  - ballot box snatching
+  - ballot boxes snatched
+  - polling station attacked
+  - polling unit attacked
+  - candidate arrested
+  - candidate detained
+  - opposition leader arrested
+  - opposition leader detained
+  - election boycott
+  - boycott the election
+  - withdraw from the election
+  - election rigging
+  - vote buying
+  - electoral clash
+  - collation centre
+  - election observers attacked
+  - election postponed after violence
+  # ── French (SN, CI, CM, DRC, GN, TD) ─────────────────────────────────────
+  - violences électorales      # FR: electoral violence — RFI, Jeune Afrique
+  - fraude électorale          # FR: electoral fraud — RFI Afrique
+  - boycott des élections      # FR: election boycott — Jeune Afrique
+  - candidat arrêté            # FR: candidate arrested — RFI
+  - bureau de vote attaqué     # FR: polling station attacked
+  - urnes                      # FR: ballot boxes (saisie/destruction d'urnes) — RFI
+  - achat de voix              # FR: vote buying — Jeune Afrique
+  # ── Portuguese (MZ, AO, GW) ──────────────────────────────────────────────
+  - violência eleitoral        # PT: electoral violence — VOA Português, Lusa
+  - fraude eleitoral           # PT: electoral fraud — O País
+  - boicote eleitoral          # PT: election boycott — Lusa
+  - urnas                      # PT: ballot boxes — O País, Jornal de Angola
+  # ── Arabic (DZ, SD, EG, MR) ──────────────────────────────────────────────
+  - عنف انتخابي                # AR: electoral violence — Al Jazeera
+  - تزوير الانتخابات           # AR: election rigging — Al Jazeera, Ennahar
+  - مقاطعة الانتخابات          # AR: election boycott — common in DZ press
+  # ── Swahili (KE, TZ, UG) ─────────────────────────────────────────────────
+  - vurugu za uchaguzi         # SW: election violence — BBC Swahili, Mwananchi
+  - wizi wa kura               # SW: vote theft/rigging — Daily Nation Swahili
+  - kususia uchaguzi           # SW: to boycott the election — BBC Swahili
+  # ── Hausa (NG-North, NE) ─────────────────────────────────────────────────
+  - tashin hankalin zabe       # HA: election violence — BBC Hausa
+  - magudin zabe               # HA: election rigging — BBC Hausa
+  - kauracewa zabe             # HA: election boycott — BBC Hausa

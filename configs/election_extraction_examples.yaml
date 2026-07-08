@@ -1,0 +1,197 @@
+# =============================================================================
+# ELECTION EVENTS CODEBOOK — FEW-SHOT EXTRACTION EXAMPLES (v1.0)
+# =============================================================================
+# Companion to election_events_codebook.yaml.
+# Injected into every user prompt by _build_few_shot_examples() in extractor.py.
+#
+# FORMAT REQUIREMENT: top-level key must be 'examples:' (list).
+# Each entry: id, pinned, description, rationale, article_snippet,
+# extracted_events (list).
+# =============================================================================
+
+examples:
+
+  - id: "el_ex_01"
+    pinned: true
+    description: "political_target_arrest — opposition candidate detained pre-election, Tanzania, high confidence"
+    rationale: |
+      Clean positive anchor: state actor (police) arrests a partisan electoral
+      actor (presidential candidate) in a named electoral context →
+      POLITICAL_TARGET_ARREST, election_phase: pre_election. Multi-source
+      (police statement + party) → high confidence. The party's planned
+      response march is NOT extracted — a plan, not an occurred event.
+    article_snippet: |
+      Tanzanian police detained the opposition CHADEMA party's presidential
+      candidate at his home in Dar es Salaam on Thursday, three weeks before the
+      general election, charging him with publishing false statements about the
+      voter register. A police spokesperson confirmed the arrest and said he would
+      appear in court on Monday. The party called the charges 'a transparent
+      attempt to remove our candidate from the ballot' and said it would announce
+      protest marches in the coming days.
+    extracted_events:
+      - event_date: null
+        country: "Tanzania"
+        city: "Dar es Salaam"
+        region: null
+        venue: null
+        location_notes: "Arrested at his home"
+        event_type: "political_target_arrest"
+        election_name: "Tanzanian general election"
+        election_phase: "pre_election"
+        perpetrator_name: "Tanzania Police Force"
+        perpetrator_category: "state_security"
+        target_name: "CHADEMA presidential candidate"
+        target_category: "candidate"
+        participant_count: null
+        arrests: "1"
+        fatalities: null
+        injuries: null
+        state_response: "arrests"
+        outcome: "arrested"
+        outcome_notes: "Charged with publishing false statements about the voter register; court appearance Monday; party alleges ballot-removal motive"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "high"
+
+  - id: "el_ex_02"
+    pinned: true
+    description: "Boundary example — post-election citizen march returns [] (protest-domain territory)"
+    rationale: |
+      THE core division-of-labour demonstration: a results-rejection march is a
+      citizen protest form. It belongs to the PROTEST domain (event_type:
+      demonstration_march, issue_tags: [elections]) — NOT to this dataset.
+      Coding it here would double-count the same physical act across domains.
+      The model must return [] even though the article is saturated with
+      electoral vocabulary.
+    article_snippet: |
+      Thousands of opposition supporters marched through central Lilongwe on
+      Tuesday to protest the announced results of last week's presidential
+      election, which they say was rigged. The demonstrators, waving party flags
+      and singing, walked from the party headquarters to the electoral commission
+      offices, where they handed over a petition demanding a recount. Police
+      monitored the march but did not intervene. Organisers pledged weekly
+      marches until the commission responds.
+    extracted_events: []
+
+  - id: "el_ex_03"
+    pinned: true
+    description: "electoral_clash + vote_process_disruption — two distinct events, Nigeria, partisan-source caution"
+    rationale: |
+      Multi-event split with two type distinctions: (1) rival party youth wings
+      fighting each other = ELECTORAL_CLASH (mutual partisan violence, not
+      one-sided assault); (2) ballot-box snatching at polling units =
+      VOTE_PROCESS_DISRUPTION (the process is the target). The second event's
+      perpetrator is claimed by one party against the other with no independent
+      confirmation → confidence capped at medium per general_rules
+      6_partisan_source_cap.
+    article_snippet: |
+      Violence marred governorship voting in parts of Rivers State on Saturday.
+      In Obio-Akpor, supporters of the two leading parties fought running street
+      battles near a collation centre, leaving at least seven people injured
+      before soldiers separated them. Separately, the opposition alleged that
+      thugs loyal to the ruling party snatched ballot boxes from four polling
+      units in Okrika; the ruling party denied the accusation and blamed
+      'hoodlums'. Electoral officials said voting would be rerun in the affected
+      units.
+    extracted_events:
+      - event_date: null
+        country: "Nigeria"
+        city: "Obio-Akpor"
+        region: "Rivers State"
+        venue: null
+        location_notes: "Street battles near a collation centre"
+        event_type: "electoral_clash"
+        election_name: "Rivers State governorship election"
+        election_phase: "election_day"
+        perpetrator_name: null
+        perpetrator_category: "party_youth_wing"
+        target_name: null
+        target_category: "party_supporters"
+        participant_count: null
+        arrests: null
+        fatalities: null
+        injuries: "7"
+        state_response: "dispersal"
+        outcome: "dispersed"
+        outcome_notes: "Soldiers separated the rival groups"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "high"
+      - event_date: null
+        country: "Nigeria"
+        city: "Okrika"
+        region: "Rivers State"
+        venue: null
+        location_notes: "Four polling units"
+        event_type: "vote_process_disruption"
+        election_name: "Rivers State governorship election"
+        election_phase: "election_day"
+        perpetrator_name: null
+        perpetrator_category: "unknown"
+        target_name: null
+        target_category: "election_infrastructure"
+        participant_count: null
+        arrests: null
+        fatalities: null
+        injuries: null
+        state_response: "none"
+        outcome: "postponed_vote"
+        outcome_notes: "Opposition blames ruling-party thugs, ruling party denies — partisan attribution unconfirmed; rerun ordered in affected units"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "medium"
+
+  - id: "el_ex_04"
+    pinned: true
+    description: "party_election_boycott — opposition coalition withdrawal, francophone Africa, French-language source"
+    rationale: |
+      Boycott anchor with two lessons: (1) a FORMAL party withdrawal is the
+      codeable act (contrast: a conditional boycott threat is not); (2) the
+      civil-society 'ville morte' (dead city) call in the same article is a
+      citizen stay-away → protest domain (strike_boycott), not coded here.
+      French-language source preserved as source_language: fr.
+    article_snippet: |
+      The main opposition coalition announced on Sunday its withdrawal from the
+      presidential election scheduled for December 12, denouncing 'a rigged
+      electoral register and a captured commission'. The coalition's candidate
+      said its name would remain on the printed ballots but that any votes cast
+      for him should be considered void. Civil society groups, meanwhile, called
+      for a 'ville morte' operation on nomination day to press for an audit of
+      the register. The electoral commission said the withdrawal changed nothing
+      legally and the vote would proceed.
+    extracted_events:
+      - event_date: null
+        country: null
+        city: null
+        region: null
+        venue: null
+        location_notes: null
+        event_type: "party_election_boycott"
+        election_name: "presidential election of December 12"
+        election_phase: "pre_election"
+        perpetrator_name: "main opposition coalition"
+        perpetrator_category: "opposition_party"
+        target_name: null
+        target_category: "election_officials"
+        participant_count: null
+        arrests: null
+        fatalities: null
+        injuries: null
+        state_response: "none"
+        outcome: "boycott_held"
+        outcome_notes: "Withdrawal announced citing rigged register; commission says vote proceeds; separate civil-society ville morte call belongs to the protest dataset"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "fr"
+        confidence: "high"

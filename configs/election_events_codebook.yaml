@@ -1,0 +1,435 @@
+# Election Events Codebook for LLM Classification
+# Based on: ECAV — Electoral Contention and Violence dataset (Daxecker,
+#           Amicarelli & Jung 2019, Journal of Peace Research):
+#           "public acts of mobilization, contestation, or coercion intended
+#           to affect the electoral process", coded within a ±6-month window
+#           around election day.
+#           DECO — Deadly Electoral Conflict dataset (Fjelde & Höglund 2022)
+#           for the lethal subset.
+#
+# Version: 1.0
+# Created: 2026-07-08
+#
+# Unit of analysis: a single election-related coercion or contestation INCIDENT.
+#
+# Relationship to the protest codebook (DIVISION OF LABOUR — no double-coding):
+#   Citizen protest forms about elections (results-rejection marches,
+#   anti-rigging demonstrations, election-delay protests) belong to the
+#   PROTEST domain, tagged issue_tags: [elections]. THIS codebook codes
+#   coercion and contestation acts that are NOT citizen protest forms:
+#   intimidation, clashes between party supporters, arrests of political
+#   targets, electoral killings, disruption of the vote process, and formal
+#   election boycotts by parties. ECAV-equivalent coverage of a country is
+#   the UNION of (protest events tagged elections) and (this domain's events).
+
+metadata:
+  title: "Election Events Codebook for LLM Classification — Africa Focus"
+  description: |
+    Type III stipulative definitions for LLM extraction of election-related
+    coercion and contestation events from news articles. Grounded in ECAV's
+    definition and event repertoire, restricted to acts that are not citizen
+    protest forms (those stay in the protest domain with issue_tags: elections).
+  temporal_scope: "±6 months around a named or clearly implied election"
+  geographic_scope: "African countries (primary); Global South secondary"
+  source_datasets:
+    - "ECAV — Electoral Contention and Violence (Daxecker, Amicarelli & Jung 2019, JPR)"
+    - "DECO — Deadly Electoral Conflict (Fjelde & Höglund 2022, JCR)"
+    - "ACLED (Political violence targeting elections; sub-events various)"
+  unit_of_analysis: "Individual election-related coercion/contestation incident"
+  minimum_participants: 1
+  llm_backend: "Azure AI Foundry (gpt-5.4)"
+  version: "1.0"
+  last_updated: "2026-07-08"
+
+# =============================================================================
+# EXTRACTION PROMPT — domain-specific base system prompt scaffolding
+# =============================================================================
+
+extraction_prompt:
+  persona: |-
+    You are an expert coder for an election-events dataset covering electoral
+    contention and violence in Africa, following the ECAV framework
+    (Daxecker, Amicarelli & Jung 2019).
+    You follow election codebook version {version} (Type III stipulative
+    definitions, aligned with Halterman & Keith 2025).
+
+    Your task is to read a news article and extract structured information
+    about each distinct election-related coercion or contestation event
+    described.
+
+  step1_header: "DISQUALIFY NON-ELECTION-EVENT ARTICLES FIRST"
+  step1_intro: "Return an empty array [] immediately if the article is primarily about ANY of:"
+  disqualifiers:
+    - "Citizen protests, marches, or demonstrations about an election (results-rejection marches, anti-rigging protests) — these belong to the protest dataset, not this one"
+    - "Routine campaign activity: rallies, speeches, manifesto launches, endorsements, candidate nominations conducted without coercion"
+    - "Election administration news: voter registration statistics, ballot logistics, observer accreditation, results announcements themselves"
+    - "Court rulings and legal petitions about elections (the RULING is institutional; violence or arrests AROUND it may qualify)"
+    - "Opinion polls, punditry, analysis, or commentary about electoral prospects"
+    - "Ordinary crime or communal violence with no link to the electoral process"
+    - "Armed-conflict events (insurgent attacks) that do not target the electoral process"
+    - "Elections outside the ±6-month window with no named election context"
+
+  step2_intro: "An article ONLY qualifies if ALL of the following are true:"
+  minimum_criteria_prompt:
+    - "A specific election (national, regional, or local) is named or clearly implied"
+    - "The event occurs within roughly ±6 months of that election (ECAV window)"
+    - "The act is public mobilization, contestation, or coercion intended to affect the electoral process or its outcome"
+    - "A real physical action occurred (not a plan, threat analysis, or hypothetical)"
+    - "The act is NOT a citizen protest form (marches/demonstrations/riots about elections belong to the protest dataset)"
+
+  extraction_intro: "For qualifying articles, extract each distinct election event. Follow these rules:"
+  extraction_rules:
+    - "Extract ONLY information explicitly stated -- do not infer perpetrators, party affiliations, or casualty figures."
+    - "If a field is not mentioned, use null."
+    - "One article may describe multiple distinct events -- return all of them. Events are distinct if they differ in location, date, perpetrator, or target."
+    - |-
+      For event_type, use EXACTLY one of these keys:
+      {event_type_keys}
+    - "For election_phase, choose from: pre_election, election_day, post_election (relative to the election the event targets)."
+    - "For perpetrator_category, choose from: incumbent_party, opposition_party, state_security, party_youth_wing, militia_armed_group, election_officials, unknown."
+    - "For target_category, choose from: candidate, party_official, party_supporters, voters, election_officials, election_infrastructure, journalists_observers, judiciary, unknown."
+    - "Record the named election in election_name (e.g. '2025 Tanzanian general election'); if the article only implies it, construct 'YYYY <country> <level> election' from context."
+    - "For state_response, reuse the protest vocabulary where applicable: none, monitoring, dispersal, teargas, water_cannon, rubber_bullets, live_ammunition, arrests, ban, curfew, unknown."
+    - 'confidence: "high" / "medium" / "low". Never "unknown". Single-source partisan claims (one party accusing another) cap at medium.'
+
+  type_hints:
+    voter_intimidation_coercion: "threats, vote-buying under duress, coercive pressure on voters"
+    electoral_clash: "violent clash between rival party supporters or campaigns"
+    political_target_arrest: "arrest/detention of candidates, party officials, or campaign staff"
+    electoral_killing_assault: "killing or violent assault of electoral actors"
+    vote_process_disruption: "attacks on polling stations, ballot destruction, results-process disruption"
+    party_election_boycott: "formal boycott or withdrawal from the election by a party/candidate"
+
+  no_event_line: "If the article contains no qualifying election events, return: []"
+
+  output_schema: |-
+    {
+      "event_date": "YYYY-MM-DD or partial date string",
+      "country": "country name",
+      "city": "city or town name",
+      "region": "state/province/region",
+      "venue": "specific named venue (e.g. polling station, party office), or null",
+      "location_notes": "any additional location context",
+      "event_type": "one of the 6 allowed keys above",
+      "election_name": "the election the event targets (e.g. '2025 Ivorian presidential election')",
+      "election_phase": "pre_election | election_day | post_election",
+      "perpetrator_name": "named perpetrator (party, unit, group), or null",
+      "perpetrator_category": "one of the allowed perpetrator categories",
+      "target_name": "named target (person/organisation), or null",
+      "target_category": "one of the allowed target categories",
+      "participant_count": "numeric or descriptive estimate of those involved, or null",
+      "arrests": "number or description of arrests",
+      "fatalities": "number of deaths if any",
+      "injuries": "number of injuries if any",
+      "state_response": "one of the allowed state response values",
+      "outcome": "ongoing | dispersed | arrested | postponed_vote | annulled_result | boycott_held | boycott_withdrawn | unknown",
+      "outcome_notes": "any additional outcome context",
+      "article_title": "title of the source article",
+      "article_url": "URL of the source article",
+      "article_date": "publication date of article",
+      "source_country": "country of news source",
+      "source_language": "language of original article",
+      "confidence": "high / medium / low"
+    }
+
+# =============================================================================
+# MINIMUM CRITERIA — check BEFORE assigning any event type
+# =============================================================================
+
+minimum_criteria:
+  1_named_election: "A specific election is named or clearly implied by context"
+  2_ecav_window: "Event occurs within ±6 months of the election (ECAV operationalisation)"
+  3_electoral_intent: "The act is intended to affect the electoral process, participation, or outcome"
+  4_real_action: "A physical act occurred — not a plan, forecast, or rhetorical threat alone"
+  5_not_citizen_protest: "The act is not a citizen protest form (protest domain territory)"
+
+  disqualify_immediately:
+    - "Results-rejection marches or demonstrations (→ protest domain, issue_tags: elections)"
+    - "Routine campaign rallies and speeches without coercion"
+    - "Voter education, registration drives, observer mission reports"
+    - "Judicial election petitions and their rulings (institutional channel)"
+    - "Post-election government formation politics (coalition talks, appointments)"
+    - "Coups and military takeovers (separate phenomenon — not electoral contention)"
+
+# =============================================================================
+# EVENT TYPES
+# =============================================================================
+#
+# Top-level key MUST be `event_types` (extractor contract).
+# Valid keys: voter_intimidation_coercion | electoral_clash |
+#             political_target_arrest | electoral_killing_assault |
+#             vote_process_disruption | party_election_boycott
+
+event_types:
+
+  voter_intimidation_coercion:
+    name: "Voter Intimidation or Coercion"
+    definition: |
+      Threats, harassment, or coercive pressure directed at voters or communities
+      to compel, suppress, or direct their electoral participation. Includes armed
+      groups warning communities against voting, party agents threatening
+      retaliation for 'wrong' votes, coercive vote-buying (inducement plus explicit
+      or implicit threat), and destruction of voter cards under duress. The act
+      targets participation itself rather than a specific electoral actor.
+    positive_examples:
+      - "Militia distributes leaflets in villages warning residents not to vote for the opposition 'or face consequences'"
+      - "Party agents go door-to-door confiscating voter cards from suspected opposition supporters"
+      - "Armed men order a market crowd to boycott the vote, firing into the air"
+    negative_examples:
+      - "Party hands out rice and cash at a rally with no accompanying threat (inducement without coercion — not codeable here; may be a campaign-finance story)"
+      - "Opposition leader urges supporters to vote despite fears (speech, no coercive act)"
+      - "Radio pundit predicts violence if results are disputed (commentary, no act)"
+    decision_rules:
+      - "IF pressure on voters includes an explicit or implicit threat of harm → VOTER_INTIMIDATION_COERCION"
+      - "IF the coercion escalates to physical violence against voters → ELECTORAL_KILLING_ASSAULT (violence takes priority)"
+      - "IF an armed group enforces a full election-day lockdown → VOTER_INTIMIDATION_COERCION (the electoral analogue of a coerced ghost town)"
+    confidence_threshold: 0.70
+    codebook_equivalents:
+      ecav: "Intimidation/harassment by state or non-state actors"
+      acled: "Violence against civilians: Attack (election context) / Strategic developments"
+
+  electoral_clash:
+    name: "Electoral Clash Between Rival Groups"
+    definition: |
+      Physical, violent confrontation between supporters, agents, or youth wings
+      of rival parties or candidates in connection with an election — campaign
+      convoy attacks, fights at rallies between rival supporter groups, street
+      battles between party youth wings. Both sides are partisan actors; violence
+      is mutual or initiated by one partisan side against another.
+    positive_examples:
+      - "Clashes erupt between ruling-party and opposition youth wings after rival rallies in the same town, injuring twelve"
+      - "Opposition campaign convoy stoned by ruling-party supporters; opposition supporters retaliate"
+      - "Machete fight between supporters of two rival candidates at a constituency office"
+    negative_examples:
+      - "Police disperse an opposition rally with teargas (state action → check political_target_arrest or protest domain)"
+      - "Peaceful rival rallies held in the same city without incident (no violence)"
+      - "Communal clash over land during an election year with no electoral link (communal violence, not electoral)"
+    decision_rules:
+      - "IF partisan groups fight each other over the election → ELECTORAL_CLASH"
+      - "IF state security forces are the perpetrator against one side → POLITICAL_TARGET_ARREST or ELECTORAL_KILLING_ASSAULT, not electoral_clash"
+      - "IF a death results → still ELECTORAL_CLASH when violence was mutual; ELECTORAL_KILLING_ASSAULT when one side attacked a specific target"
+    confidence_threshold: 0.75
+    codebook_equivalents:
+      ecav: "Clashes between partisan groups"
+      acled: "Riots: Mob violence (partisan); Political violence (militia interactions)"
+
+  political_target_arrest:
+    name: "Arrest or Detention of Political Targets"
+    definition: |
+      Arrest, detention, or criminal charging of candidates, party officials,
+      campaign staff, or prominent supporters in connection with an election —
+      including disqualification-by-prosecution, house arrest of opposition
+      leaders around election day, and mass arrests of party agents. The
+      perpetrator is a state actor; the target is a partisan electoral actor.
+    positive_examples:
+      - "Opposition presidential candidate detained at the airport two weeks before the vote"
+      - "Forty party polling agents arrested overnight before election day"
+      - "Opposition campaign manager charged with 'incitement' after announcing parallel vote tabulation plans"
+    negative_examples:
+      - "Journalist arrested for covering a protest (→ repression domain unless the journalist is an electoral actor)"
+      - "Protesters arrested at a results-rejection march (→ protest domain event with state_response: arrests)"
+      - "Candidate convicted of genuine unrelated fraud a year before the election window (routine justice unless timed to disqualify)"
+    decision_rules:
+      - "IF the target is a candidate, party official, or campaign staff AND the context is electoral → POLITICAL_TARGET_ARREST"
+      - "IF the arrest occurs during a protest the person led → code the protest in the protest domain; ALSO code here only if the arrest is separately targeted (e.g. days later, at home)"
+      - "IF a court disqualifies a candidate without detention → not this type (institutional channel); note only if arrests accompany it"
+    confidence_threshold: 0.75
+    codebook_equivalents:
+      ecav: "State repression of electoral actors"
+      acled: "Strategic developments: Arrests"
+
+  electoral_killing_assault:
+    name: "Electoral Killing or Assault"
+    definition: |
+      Killing or violent physical assault of electoral actors — candidates, party
+      officials, supporters, voters, election officials, journalists covering the
+      election — in connection with the electoral process. One-sided violence
+      against a specific electoral target (contrast with the mutual violence of
+      electoral_clash). DECO's core event.
+    positive_examples:
+      - "Local council candidate shot dead outside his home a week after winning the primary"
+      - "Election observer beaten unconscious by unidentified men after reporting ballot stuffing"
+      - "Presiding officer stabbed at a collation centre by party agents contesting the count"
+    negative_examples:
+      - "Two rival supporter groups fight; three injured (mutual → ELECTORAL_CLASH)"
+      - "Politician dies in a road accident during the campaign (no violence/intent)"
+      - "Soldier killed in an insurgent ambush on an election-security convoy (armed conflict targeting security forces, not electoral actors — unless the attack targets the electoral process itself)"
+    decision_rules:
+      - "IF a specific electoral actor is killed or assaulted one-sidedly → ELECTORAL_KILLING_ASSAULT"
+      - "IF security forces kill protesters at an election protest → protest domain event (state_response: live_ammunition), NOT this type"
+      - "IF an insurgent group attacks a polling station → VOTE_PROCESS_DISRUPTION (the process is the target), with fatalities recorded"
+    confidence_threshold: 0.80
+    codebook_equivalents:
+      ecav: "Electoral violence against persons"
+      deco: "Deadly electoral conflict event"
+      acled: "Violence against civilians: Attack (electoral target)"
+
+  vote_process_disruption:
+    name: "Disruption of the Vote Process"
+    definition: |
+      Physical disruption of electoral administration: attacks on polling
+      stations or collation centres, destruction or theft of ballot materials,
+      ballot-box snatching, arson of electoral-commission offices, armed
+      disruption of voting or counting, and blockades preventing electoral
+      materials or officials from reaching polling sites.
+    positive_examples:
+      - "Gunmen storm a collation centre and burn ballot papers before results were announced"
+      - "Ballot-box snatching by party thugs reported at a dozen polling units"
+      - "Electoral commission regional office set ablaze days before the vote"
+    negative_examples:
+      - "Polling stations open late due to logistics failures (administration, not disruption)"
+      - "Voters queue peacefully despite heavy rain (no event)"
+      - "Electoral commission cancels results for procedural irregularities (institutional decision)"
+    decision_rules:
+      - "IF physical force or destruction targets the voting/counting process or its materials → VOTE_PROCESS_DISRUPTION"
+      - "IF insurgents attack a polling station → VOTE_PROCESS_DISRUPTION with perpetrator_category: militia_armed_group"
+      - "IF officials themselves manipulate results without physical force → not codeable here (fraud, not physical disruption)"
+    confidence_threshold: 0.75
+    codebook_equivalents:
+      ecav: "Disruption of electoral administration"
+      acled: "Political violence / Strategic developments (election infrastructure)"
+
+  party_election_boycott:
+    name: "Party or Candidate Election Boycott"
+    definition: |
+      Formal, announced boycott of or withdrawal from an election by a party,
+      candidate, or coalition — a public act of contestation that affects the
+      electoral process (ECAV codes boycotts as contention). The unit is the
+      boycott ANNOUNCEMENT/act, not subsequent commentary about it.
+    positive_examples:
+      - "Main opposition coalition announces withdrawal from the presidential race citing a rigged voter register"
+      - "Three parties jointly boycott the re-run election and instruct supporters to stay home"
+      - "Candidate withdraws on the eve of the vote, alleging intimidation of his agents"
+    negative_examples:
+      - "Party threatens to boycott unless reforms are made (conditional threat, no act — wait for the actual withdrawal)"
+      - "Low voter turnout attributed to apathy (no organised boycott act)"
+      - "Civil-society group calls for a voter stay-away over cost of living (citizen action → protest domain strike_boycott)"
+    decision_rules:
+      - "IF a party/candidate formally announces boycott or withdrawal → PARTY_ELECTION_BOYCOTT"
+      - "IF the boycott call is made by civil society to citizens (stay-away) → protest domain (strike_boycott), not this type"
+      - "IF a boycott is later withdrawn, code the withdrawal in outcome (boycott_withdrawn) on the original event rather than as a new event"
+    confidence_threshold: 0.70
+    codebook_equivalents:
+      ecav: "Electoral boycott"
+      acled: "Strategic developments (non-violent political development)"
+
+# =============================================================================
+# NON-EVENTS
+# =============================================================================
+
+non_events:
+  - category: "Citizen election protests (protest-domain territory)"
+    examples:
+      - "March against announced results"
+      - "Demonstration demanding electoral reforms"
+      - "Riot after results declaration"
+    reason: |
+      Division of labour with the protest codebook: citizen protest forms are
+      coded there with issue_tags: [elections]. Coding them here would
+      double-count. This domain codes coercion/contestation acts that are not
+      citizen protest forms.
+
+  - category: "Routine campaign activity"
+    examples:
+      - "Campaign rally with speeches and music"
+      - "Manifesto launch, endorsement announcement"
+      - "Door-to-door canvassing"
+    reason: "Institutional electoral participation without coercion"
+
+  - category: "Election administration and results news"
+    examples:
+      - "Voter registration statistics released"
+      - "Results announced by the electoral commission"
+      - "Observer mission preliminary statement"
+    reason: "Administration is not contention; contestation OF administration may qualify"
+
+  - category: "Judicial election petitions"
+    examples:
+      - "Opposition files results petition at the supreme court"
+      - "Court annuls the election"
+    reason: "Institutional channel (though arrests/violence AROUND rulings may qualify)"
+
+  - category: "Coups and military takeovers"
+    examples:
+      - "Military seizes power after disputed election"
+    reason: "Separate phenomenon with its own literature (Powell & Thyne); not electoral contention in the ECAV sense"
+
+  - category: "Insurgent violence not targeting the electoral process"
+    examples:
+      - "Jihadist ambush on an army patrol during election week"
+    reason: "Armed conflict; qualifies here only when the electoral process itself is the target"
+
+# =============================================================================
+# EDGE CASES
+# =============================================================================
+
+edge_cases:
+  protest_or_election_event:
+    description: "An article describes both a citizen march AND targeted electoral coercion"
+    rule: |
+      Code each act in its own domain: the march goes to the protest domain
+      (issue_tags: elections); the coercion act (e.g. candidate arrested, agents
+      attacked) is coded here. Never code the same physical act in both domains.
+
+  election_security_deployment:
+    description: "Heavy security deployment around elections"
+    rule: "Deployment alone is not an event. Code only when force is used or arrests/coercion occur."
+
+  rally_turned_clash:
+    description: "A campaign rally where violence breaks out"
+    rule: |
+      The rally itself is not codeable. IF rival partisans fought → ELECTORAL_CLASH.
+      IF security forces attacked rally-goers → ELECTORAL_KILLING_ASSAULT (or
+      POLITICAL_TARGET_ARREST for detentions). Record the rally context in
+      location_notes.
+
+  window_boundary:
+    description: "Event occurs more than 6 months from the election"
+    rule: |
+      The ±6-month ECAV window is a guide, not a cliff: when the article explicitly
+      ties the act to a scheduled election (e.g. 'ahead of elections due next year'),
+      extract with confidence capped at medium and note the distance in outcome_notes.
+
+  postponed_or_annulled_elections:
+    description: "Contention around postponed, re-run, or annulled elections"
+    rule: "The window re-anchors to the new date. Events contesting postponement/annulment qualify."
+
+# =============================================================================
+# CONFIDENCE GUIDANCE
+# =============================================================================
+
+confidence_guidance:
+  high:
+    criteria:
+      - "Named perpetrator and target with clear electoral link"
+      - "Specific location and date"
+      - "Independent or multi-source reporting"
+    example: "Named opposition MP detained at a named police station on a named date, confirmed by police spokesperson and party"
+  medium:
+    criteria:
+      - "Electoral link clear but perpetrator generic ('party thugs', 'unknown gunmen')"
+      - "Single-source or partisan-source reporting (one party accusing another)"
+      - "Location only at region level"
+    example: "Opposition claims its agents were beaten by ruling-party supporters; no independent confirmation"
+  low:
+    criteria:
+      - "Electoral link inferred rather than stated"
+      - "Event outside the ±6-month window tied to a future election"
+      - "Contested accounts with no corroboration"
+    example: "Social-media reports of voter-card confiscation in a rural area, unverified"
+
+# =============================================================================
+# CODING RULES SUMMARY
+# =============================================================================
+
+general_rules:
+  1_primary_type: "Assign ONE primary event type per incident (from the six valid keys)"
+  2_confidence: "Provide confidence score: high / medium / low — never 'unknown'"
+  3_text_only: "Use only information in provided text; do not infer or hallucinate"
+  4_electoral_link: "Every event must name or clearly imply the election it targets"
+  5_no_double_coding: "Citizen protest forms about elections belong to the protest domain (issue_tags: elections) — never code the same act in both domains"
+  6_partisan_source_cap: "One party accusing another with no independent confirmation caps confidence at medium"
+  7_location_temporal: "All events must have identifiable country and approximate date"
+  8_separate_incidents: "Code each distinct incident separately (different location, date, perpetrator, or target)"
+  9_non_event_gate: "Apply minimum_criteria check FIRST — if any disqualifier applies, return []"
+  10_state_response_reuse: "Use the protest state_response vocabulary where state force answers an event"

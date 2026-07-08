@@ -93,6 +93,25 @@ _DOMAIN_CONFIG: dict = {
             "jnim",
         },
     },
+    "election_events": {
+        "positive_labels": [
+            "election-related violence, intimidation, arrest, disruption, or boycott"
+        ],
+        "rejection_label": "unrelated news or routine election administration",
+        "keyword_key": "election_signals",
+        "keyword_fallback": {
+            "election violence",
+            "voter intimidation",
+            "ballot box",
+            "polling station",
+            "candidate arrested",
+            "opposition leader arrested",
+            "election boycott",
+            "electoral commission",
+            "rigging",
+            "vote buying",
+        },
+    },
 }
 
 

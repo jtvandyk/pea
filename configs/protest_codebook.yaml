@@ -1165,8 +1165,12 @@ edge_cases:
       Code the protest normally by its action form (demonstration_march, riot, etc.)
       and ALWAYS include 'elections' in issue_tags. Campaign rallies organised BY
       parties/candidates are not protests (institutional mobilisation); electoral
-      violence BY parties, security forces, or militias against voters/candidates is
-      out of scope here (belongs to an election-events dataset, not PEA).
+      coercion BY parties, security forces, or militias (voter intimidation,
+      candidate arrests, ballot-box snatching, partisan clashes, party boycotts)
+      is out of scope here — it belongs to the election_events domain
+      (configs/election_events_codebook.yaml). ECAV-equivalent coverage of a
+      country = the union of protest events tagged 'elections' and
+      election_events output. Never code the same physical act in both domains.
     example: "Opposition supporters march against announced results, teargassed → DEMONSTRATION_MARCH, issue_tags: [elections], state_response: teargas"
 
 # ============================================================================

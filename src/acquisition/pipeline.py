@@ -104,6 +104,8 @@ _REQUIRED_CONFIGS = [
     _REPO_ROOT / "configs" / "drone_extraction_examples.yaml",
     _REPO_ROOT / "configs" / "violent_extremism_codebook.yaml",
     _REPO_ROOT / "configs" / "violent_extremism_extraction_examples.yaml",
+    _REPO_ROOT / "configs" / "election_events_codebook.yaml",
+    _REPO_ROOT / "configs" / "election_extraction_examples.yaml",
 ]
 
 
@@ -146,6 +148,11 @@ DOMAIN_CONFIGS: dict = {
         / "configs"
         / "violent_extremism_extraction_examples.yaml",
         "query": "bombing militants insurgents attack kidnapping terrorist",
+    },
+    "election_events": {
+        "codebook": _REPO_ROOT / "configs" / "election_events_codebook.yaml",
+        "examples": _REPO_ROOT / "configs" / "election_extraction_examples.yaml",
+        "query": "election voters ballot candidate opposition intimidation boycott",
     },
 }
 
