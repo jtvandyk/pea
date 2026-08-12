@@ -1,6 +1,6 @@
 # Production Follow-ups — Remaining Priority Items
 
-> Last reviewed: 2026-05-10
+> Last reviewed: 2026-07-08
 
 Working reference for items not landed in the two production-readiness commits
 (`f1b2acc` B1-B5, `bdfa472` priority items #1-10). Items below are the rest of
@@ -60,6 +60,13 @@ patch (we can't act on those anyway).
 
 ### 13. Tier-2 few-shot examples: standalone strike, cultural-celebration negative, peaceful-march-attacked negative
 
+> **STATUS 2026-07-08 — mostly done.** `ex_09` (UG police-attacked peaceful
+> march) and `ex_10` (NG cultural-celebration negative) landed in the
+> pan-Africa v3 work (with `ex_11` MZ and `ex_12` ET going beyond the original
+> sketch). REMAINING: the standalone ZA mining-strike example (the original
+> `ex_09` sketch below) — the multi-event strike bias from `ex_03` is still
+> uncovered.
+
 **Why it matters.** After Day 5 the highest-frequency misclassifications will
 be:
 - A strike that's **not** part of a multi-event article gets coded with the
@@ -91,6 +98,11 @@ are the template. Each should:
 ---
 
 ### 14. UG and DZ ground-truth examples; Algeria bilingual stress test
+
+> **STATUS 2026-07-08 — still open (needs real crawl data).** Synthetic UG
+> coverage improved (`ex_09`), and Lusophone/Horn examples added (`ex_11`,
+> `ex_12`), but the REAL ground-truth requirement and the Algeria
+> French-body/Arabic-slogans stress test still wait for 7 days of data.
 
 **Why it matters.** After `ex_06`/`ex_07`/`ex_08` we have one UG and one DZ
 example each, but they're paraphrased. A real ground-truth example from each
@@ -288,15 +300,19 @@ in the Streamlit UI instead of an opaque 4xx/5xx.
 
 ### 24. Drone codebook is research prototype, not production
 
+> **STATUS 2026-07-08 — productionization prep done; validation gate open.**
+> Drone now has its own `extraction_prompt` (no more protest persona), 4
+> pinned Africa anchors (ET/ML/NG incl. Sahel + Lake Chad), `_REQUIRED_CONFIGS`
+> entries, and structural tests. REMAINING before cron: build the 25–50-event
+> reference set from ACLED air/drone-strike rows, run
+> `--domains drone --countries ML,BF,NE,NG,ET` canaries, clear the ≥60%
+> recall gate (see CLAUDE.md § Domain registry & rollout gates).
+
 **Why it matters.** Acceptable for monitoring; not production-ready. Don't
 expand `--domains` to include `drone` in the cron job until ground-truth
 validation is run.
 
-**Files.** None to change today. Track separately. The `_validate_domains`
-guard in `pipeline.py` already rejects unknown domains, so the only way
-drone gets used is by explicit operator opt-in via `--domains protest,drone`.
-
-**Effort.** Zero today; revisit when you have drone ground-truth data.
+**Effort.** Reference-set build ~3h + one canary window.
 
 ---
 
@@ -317,6 +333,161 @@ is clearly hit.
 
 **Effort.** Weeks of annotation work. Defer until the codebook tuning loop
 plateaus.
+
+---
+
+### 26. Gold mini-sets + recall validation for the four research domains
+
+**Why it matters.** `drone`, `violent_extremism`, `election_events`, and
+`state_repression` are registered research opt-ins gated on ≥60% recall
+before cron (CLAUDE.md § Domain registry & rollout gates). None has a gold
+set yet, so none can clear its gate.
+
+**Approach per domain.** 25–50 events: drone/VE from ACLED rows for the canary
+window; election_events hand-labeled from an active electoral window
+(TZ/CI/UG); state_repression from CPJ/RSF alerts + #KeepItOn incident lists.
+Reuse the validator pattern in `tests/validation/`.
+
+**Effort.** ~3h per domain + one canary run each. **Priority order:** drone →
+election_events → state_repression → violent_extremism (owner sign-off).
+
+---
+
+### 27. Remaining pan-Africa keyword languages
+
+**Why it matters.** Portuguese/Amharic/Hausa/Somali landed 2026-07-08;
+Tigrinya (ER), Oromo (ET), Wolof (SN), and Lingala (CD/CG) are still missing
+from `protest_signals` — Eritrea/Oromia/Senegal/DRC coverage leans on
+French/English/Amharic only.
+
+**Files.** `configs/keywords.yaml` (follow the in-file how-to);
+`tests/test_domain_configs.py` headline fixtures.
+
+**Effort.** ~30 min per language incl. sourcing headline vocabulary.
+
+---
+
+### 28. Behavioral-faithfulness canary (event-type order shuffle)
+
+**Why it matters.** Accuracy ≠ codebook faithfulness (arXiv:2606.06781):
+models can score well while exploiting label semantics or prompt order. A
+cheap check: run one canary with `event_types` order shuffled in the codebook
+and diff `events_by_type` against the unshuffled run via
+`scripts/compare_runs.py` — large deltas mean the model is keying on
+position, not definitions.
+
+**Files.** New scratch codebook variant (shuffle at run time — do NOT commit
+a shuffled codebook); `pea-canary-run` skill flow.
+
+**Effort.** ~1h once canary data flows.
+
+---
+
+### 29. Retire the legacy `_BASE_SYSTEM_PROMPT` fallback
+
+**Why it matters.** All five codebooks now carry `extraction_prompt`, so the
+hardcoded protest base prompt in `extractor.py` is dead code kept only as a
+fallback for codebooks without the section. Once the v3 rollout has soaked in
+production (one clean month), delete `_BASE_SYSTEM_PROMPT` and make
+`extraction_prompt` mandatory (structural test + hard error instead of
+silent fallback).
+
+**Files.** `src/acquisition/extractor.py`, `tests/test_extractor.py`,
+`tests/test_domain_configs.py`.
+
+**Effort.** ~1h. **Signal needed:** one clean production month on v3.
+
+---
+
+### 30. Fetch GLOCON SA-English subset and run pea-validate now that access exists
+
+**Why it matters.** GLOCON registration was approved 2026-07-08, but the
+dataset has not been downloaded into any working environment yet, so no run
+has ever happened. **Scope caveat — read before running:** this is a
+**South-Africa-only, coarse 3-bucket (protest/strike/riot) non-regression
+check on the pre-existing ZA capability.** It does NOT validate the
+pan-Africa expansion (Sahel/Horn/Central/Lusophone context), `issue_tags`, the
+v3.0 boundary-case rules, or any of the four research domains — don't treat a
+clean GLOCON run as closing out the broader pan-Africa validation gap. See
+CLAUDE.md § Validation for the full limitation writeup.
+
+**Approach.** `git clone` the GLOCON dataset per the setup instructions in
+`src/validation/glocon_validator.py`'s own docstring, point `--glocon-dir` at
+`.../data/south_africa/english`, run against
+`data/processed/events_consolidated.jsonl` from a ZA-only run, compare recall
+against the pre-v3.0 baseline (if one was ever captured — if not, this
+becomes the first baseline going forward).
+
+**Files.** No code changes — `src/validation/glocon_validator.py` already
+works. Just the fetch + run + record the result somewhere durable (this file
+or CLAUDE.md).
+
+**Effort.** ~30 min once the dataset is downloaded.
+
+---
+
+### 31. Add `issue_tags` correction widget to `labeling_config.xml`
+
+**Why it matters.** The Label Studio config only lets an annotator correct
+`corrected_event_type` (the original 8 protest types) — there's no widget for
+`issue_tags` (v3.0). Even once real annotation batches start (see #32), they
+can't validate the new field without this gap closed first, and it's cheap to
+fix before the first batch rather than after.
+
+**Files.** `src/annotation/labeling_config.xml` (add a multi-select or
+checkbox-group widget listing the 11 closed `issue_taxonomy` keys from
+`configs/protest_codebook.yaml`); `src/annotation/import_annotations.py`
+(read the new field into `reviewed_events.jsonl`/`training_data.jsonl`
+alongside `_type_corrected`).
+
+**Effort.** ~1h.
+
+---
+
+### 32. First real annotation batch, targeted at pan-Africa coverage
+
+**Why it matters.** The annotation pipeline is fully built and tested but has
+never been run once — `data/annotation/` has no git history at all. It's the
+only mechanism that can validate fine 8-type accuracy, `issue_tags`
+correctness, and whether the v3.0 boundary-case rules (ghost-town coercion
+test, pro-junta exclusion, state-media decoy vocabulary) are actually being
+applied by the model, since no automated validator (GLOCON, CEHA, CASE 2021)
+covers any of that.
+
+**Approach.** Once a canary or cron run produces real extracted events for
+Sahel/Horn/Central Africa/Lusophone countries, prioritize annotating THOSE
+articles plus any event carrying `issue_tags`, rather than letting the
+existing tier-1/2 confidence-based logic default to whatever NG/ZA/UG/DZ
+articles happen to be lowest-confidence. This is also the on-ramp toward the
+QLoRA gold-pair threshold in #25 and the four research-domain gold mini-sets
+in #26.
+
+**Files.** No code changes required beyond #31 (issue_tags widget) landing
+first. Operational: `docker compose -f docker-compose.annotation.yml up -d`,
+run `export_for_annotation.py` → annotate in Label Studio → `import_annotations.py`.
+
+**Effort.** First batch ~2-3h operator time. **Signal needed:** real extracted
+events for the new geography (a canary/cron run against Sahel/Horn/Central/
+Lusophone countries) — don't start on the existing NG/ZA/UG/DZ backlog first,
+that doesn't exercise anything new.
+
+---
+
+### 33. Fix `pea-validate` SKILL.md jq example mismatch
+
+**Why it matters.** The skill's documented `jq` invocation reads
+`.overall_recall, .recall_by_type, .recall_by_country`, but
+`glocon_validator.py` actually emits a nested shape:
+`.metrics.recall`, `.metrics.by_type`, `.metrics.by_country`. The documented
+command as written returns `null` for all three fields — anyone following
+the skill literally gets silently wrong output.
+
+**Files.** `.claude/skills/pea-validate/SKILL.md` (fix the jq paths; add a
+one-line callout on GLOCON's SA-only/coarse-bucket scope so the skill itself
+warns an operator before they over-interpret a clean run — see #30 and
+CLAUDE.md § Validation).
+
+**Effort.** ~10 min.
 
 ---
 
@@ -347,6 +518,14 @@ plateaus.
 - **Week 4:** P2 item 14 (UG/DZ ground-truth examples) — by now you have
   real data to draw from.
 - **Month 2:** P3 polish + start the annotation cadence for #25.
+
+**Tracked signals (2026-07-08):** GLOCON access is now GRANTED (dataset not
+yet fetched — #30 is unblocked whenever it is); the ACLED token is STILL
+PENDING (acled_validator.py, and the #24/#26 gold-set work that depends on
+ACLED rows, stay blocked). Neither changes the Month-2 annotation-cadence
+timing above — no signal yet to accelerate it — but #31 (issue_tags widget)
+is cheap enough to land before Month 2 regardless, since it's a prerequisite
+for #32 whenever that cadence starts.
 
 If a single one of these is more urgent than this ordering suggests, it'll
 be visible in either the run-summary `degraded_modes` list (added in the

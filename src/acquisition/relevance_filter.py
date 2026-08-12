@@ -70,6 +70,69 @@ _DOMAIN_CONFIG: dict = {
             "airstrike",
         },
     },
+    "violent_extremism": {
+        "positive_labels": [
+            "terrorist attack or violent extremist incident by a non-state actor"
+        ],
+        "rejection_label": "unrelated news with no violent attack",
+        "keyword_key": "violent_extremism_signals",
+        "keyword_fallback": {
+            "bombing",
+            "suicide bomber",
+            "ied",
+            "militants",
+            "insurgents",
+            "gunmen",
+            "kidnapping",
+            "abducted",
+            "hostage",
+            "terrorist",
+            "boko haram",
+            "al-shabaab",
+            "iswap",
+            "jnim",
+        },
+    },
+    "election_events": {
+        "positive_labels": [
+            "election-related violence, intimidation, arrest, disruption, or boycott"
+        ],
+        "rejection_label": "unrelated news or routine election administration",
+        "keyword_key": "election_signals",
+        "keyword_fallback": {
+            "election violence",
+            "voter intimidation",
+            "ballot box",
+            "polling station",
+            "candidate arrested",
+            "opposition leader arrested",
+            "election boycott",
+            "electoral commission",
+            "rigging",
+            "vote buying",
+        },
+    },
+    "state_repression": {
+        "positive_labels": [
+            "state repression of journalists, activists, civil society, or civic space"
+        ],
+        "rejection_label": "unrelated news or ordinary criminal justice",
+        "keyword_key": "repression_signals",
+        "keyword_fallback": {
+            "journalist arrested",
+            "journalist detained",
+            "activist arrested",
+            "activist detained",
+            "ngo banned",
+            "internet shutdown",
+            "social media blocked",
+            "station suspended",
+            "crackdown",
+            "deregistered",
+            "dissolved",
+            "curfew",
+        },
+    },
 }
 
 

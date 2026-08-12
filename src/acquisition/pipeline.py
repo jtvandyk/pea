@@ -100,6 +100,14 @@ _REQUIRED_CONFIGS = [
     _REPO_ROOT / "configs" / "extraction_examples.yaml",
     _REPO_ROOT / "configs" / "keywords.yaml",
     _REPO_ROOT / "configs" / "countries.yaml",
+    _REPO_ROOT / "configs" / "drone_events_codebook.yaml",
+    _REPO_ROOT / "configs" / "drone_extraction_examples.yaml",
+    _REPO_ROOT / "configs" / "violent_extremism_codebook.yaml",
+    _REPO_ROOT / "configs" / "violent_extremism_extraction_examples.yaml",
+    _REPO_ROOT / "configs" / "election_events_codebook.yaml",
+    _REPO_ROOT / "configs" / "election_extraction_examples.yaml",
+    _REPO_ROOT / "configs" / "state_repression_codebook.yaml",
+    _REPO_ROOT / "configs" / "state_repression_extraction_examples.yaml",
 ]
 
 
@@ -119,12 +127,12 @@ def _assert_required_configs() -> None:
 # Maps domain name → default codebook, examples, and GDELT query.
 # Override individual fields via --codebook / --examples / --query CLI flags.
 #
-# `violent_extremism` is intentionally NOT registered here. The codebook and
-# examples files exist in configs/ but have not yet been validated end-to-end
-# on real news data. Wiring VE in production would mean either thin examples
-# misclassifying terrorism-adjacent reporting, or unvalidated event-type
-# crosswalks. Treat VE as research-only until a domain owner signs off and
-# adds the entry below.
+# Registration ≠ production. `drone` and `violent_extremism` are registered
+# research opt-in domains: runnable via --domains for validation work, but
+# they must NOT be added to the production cron until they clear the rollout
+# gate — ≥60% recall on a reference set (ACLED air/drone-strike rows for
+# drone; an ACLED-referenced mini gold set for VE), a clean pea-token-audit,
+# and (for VE) explicit domain-owner sign-off. See CLAUDE.md § Domain rollout.
 DOMAIN_CONFIGS: dict = {
     "protest": {
         "codebook": _REPO_ROOT / "configs" / "protest_codebook.yaml",
@@ -136,13 +144,32 @@ DOMAIN_CONFIGS: dict = {
         "examples": _REPO_ROOT / "configs" / "drone_extraction_examples.yaml",
         "query": "drone UAV airstrike unmanned aircraft",
     },
+    "violent_extremism": {
+        "codebook": _REPO_ROOT / "configs" / "violent_extremism_codebook.yaml",
+        "examples": _REPO_ROOT
+        / "configs"
+        / "violent_extremism_extraction_examples.yaml",
+        "query": "bombing militants insurgents attack kidnapping terrorist",
+    },
+    "election_events": {
+        "codebook": _REPO_ROOT / "configs" / "election_events_codebook.yaml",
+        "examples": _REPO_ROOT / "configs" / "election_extraction_examples.yaml",
+        "query": "election voters ballot candidate opposition intimidation boycott",
+    },
+    "state_repression": {
+        "codebook": _REPO_ROOT / "configs" / "state_repression_codebook.yaml",
+        "examples": _REPO_ROOT
+        / "configs"
+        / "state_repression_extraction_examples.yaml",
+        "query": "journalist arrested activist detained NGO banned internet shutdown crackdown",
+    },
 }
 
 
 def _validate_domains(domains: list) -> None:
     """Reject unknown domains before any expensive work.
 
-    Without this, `--domains violent_extremism` silently falls through to
+    Without this, an unregistered --domains value silently falls through to
     DOMAIN_CONFIGS.get(domain, {}) and runs with no codebook injection —
     the LLM produces protest output against an empty system prompt.
     """

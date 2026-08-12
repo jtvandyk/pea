@@ -43,6 +43,7 @@ CSV_COLUMNS = [
     "organizer",
     "participant_groups",
     "claims",
+    "issue_tags",
     "crowd_size",
     "duration",
     "state_response",
@@ -62,8 +63,9 @@ CSV_COLUMNS = [
 ]
 
 # State responses ranked by severity (highest first).
-# Mirrors state_response_vocabulary in configs/protest_codebook.yaml v2.3.
-# Update both if the codebook adds new values.
+# Mirrors state_response_vocabulary in configs/protest_codebook.yaml (and the
+# state_repression codebook, which reuses the same vocabulary plus
+# internet_shutdown). Update both if a codebook adds new values.
 _HIGH_TURMOIL_RESPONSES = {
     "live_ammunition",
     "rubber_bullets",
@@ -79,6 +81,7 @@ _MEDIUM_TURMOIL_RESPONSES = {
     "ban",
     "curfew",
     "non_association_bail",
+    "internet_shutdown",
 }
 
 

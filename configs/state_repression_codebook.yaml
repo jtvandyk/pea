@@ -1,0 +1,461 @@
+# State Repression / Civic Space Events Codebook for LLM Classification
+# Based on: #KeepItOn / Access Now + CIPESA internet-shutdown methodology
+#           (code the reported order/announcement, not network telemetry);
+#           CPJ / RSF journalist-repression documentation practice;
+#           SCAD "pro-government violence (repression)" event type
+#           (Salehyan et al. 2012); ACLED arrests (Strategic developments);
+#           criminalisation-of-protest vocabulary already used by the PEA
+#           protest codebook (legal_criminalisation, anti_terrorism_designation,
+#           organisational_dissolution, non_association_bail).
+#
+# Version: 1.0
+# Created: 2026-07-08
+#
+# Unit of analysis: a single state or pro-state repression ACTION.
+#
+# Relationship to the protest codebook (DIVISION OF LABOUR — no double-coding):
+#   When repression answers ONE SPECIFIC protest (police teargas a march,
+#   arrest its participants), it is that protest event's state_response and
+#   belongs to the PROTEST domain. THIS codebook codes repression events where
+#   the STATE ACTION IS THE EVENT: journalist and activist arrests outside any
+#   single protest, NGO/media bans, internet shutdown orders, blanket assembly
+#   bans, and pro-government violence against civic actors.
+#   The decision rule: "Who is the subject of the lede — the crowd, or the state?"
+
+metadata:
+  title: "State Repression / Civic Space Events Codebook — Africa Focus"
+  description: |
+    Type III stipulative definitions for LLM extraction of state repression
+    and civic-space restriction events from news articles. Codes
+    news-observable repression actions: arrests and prosecutions of
+    journalists/activists, restrictions on media and civil society,
+    internet shutdown orders, blanket assembly bans, and pro-government
+    violence. Internet shutdowns are coded from the reported order or
+    announcement (the #KeepItOn/CIPESA approach), not from telemetry.
+  temporal_scope: "Any time period"
+  geographic_scope: "African countries (primary); Global South secondary"
+  source_datasets:
+    - "#KeepItOn coalition annual shutdown reports (Access Now)"
+    - "CIPESA — Collaboration on International ICT Policy for East and Southern Africa"
+    - "SCAD — pro-government violence / repression (Salehyan et al. 2012)"
+    - "CPJ and RSF journalist detention documentation"
+    - "ACLED Strategic developments: Arrests"
+  unit_of_analysis: "Individual state/pro-state repression action"
+  minimum_participants: 1
+  llm_backend: "Azure AI Foundry (gpt-5.4)"
+  version: "1.0"
+  last_updated: "2026-07-08"
+
+# =============================================================================
+# EXTRACTION PROMPT — domain-specific base system prompt scaffolding
+# =============================================================================
+
+extraction_prompt:
+  persona: |-
+    You are an expert coder for a state repression and civic-space events
+    dataset covering Africa, following #KeepItOn/CIPESA shutdown methodology,
+    CPJ/RSF journalist-repression documentation practice, and SCAD's
+    pro-government violence category.
+    You follow repression codebook version {version} (Type III stipulative
+    definitions, aligned with Halterman & Keith 2025).
+
+    Your task is to read a news article and extract structured information
+    about each distinct state or pro-state repression action described.
+
+  step1_header: "DISQUALIFY NON-REPRESSION ARTICLES FIRST"
+  step1_intro: "Return an empty array [] immediately if the article is primarily about ANY of:"
+  disqualifiers:
+    - "A protest event where repression is the response to that specific protest (teargas at a march, arrests at a sit-in) — that is the protest dataset's state_response, not a repression event"
+    - "Ordinary criminal justice: arrests/prosecutions for non-political offences with no civic-space dimension"
+    - "Armed-conflict operations: military campaigns, counterinsurgency raids, battles"
+    - "Repression by non-state armed groups (jihadist courts, separatist punishments) — not STATE repression"
+    - "Policy debates, draft legislation, or parliamentary discussion about restrictive laws with no enacted action"
+    - "Analysis, commentary, anniversaries, or NGO annual reports without a specific new incident"
+    - "Technical internet outages attributed to cable cuts, power failures, or infrastructure faults with no state order"
+    - "Court acquittals or releases (record as outcome on the original event, not a new event)"
+
+  step2_intro: "An article ONLY qualifies if ALL of the following are true:"
+  minimum_criteria_prompt:
+    - "The actor is a state body, security force, regulator, court acting on state initiative, or pro-government militia/party structure"
+    - "The action targets civic actors or civic space: journalists, activists, HRDs, NGOs, media houses, opposition figures (outside electoral context), lawyers, unions, or the public's assembly/expression/connectivity"
+    - "A concrete action occurred or was formally ordered (arrest made, ban issued, shutdown ordered) — not a threat, warning, or draft"
+    - "The action is repressive in character: it restricts, punishes, or deters civic activity outside ordinary non-political criminal justice"
+    - "The state action is the subject of the report — not the response embedded in one specific protest event"
+
+  extraction_intro: "For qualifying articles, extract each distinct repression event. Follow these rules:"
+  extraction_rules:
+    - "Extract ONLY information explicitly stated -- do not infer motives, charges, or actor identities."
+    - "If a field is not mentioned, use null."
+    - "One article may describe multiple distinct events -- return all of them. Events are distinct if they differ in target, action type, location, or date."
+    - |-
+      For event_type, use EXACTLY one of these keys:
+      {event_type_keys}
+    - "For perpetrator_category, choose from: police, military, intelligence_service, regulator_ministry, judiciary, pro_government_militia, ruling_party_structure, unknown."
+    - "For target_category, choose from: journalist, media_house, activist_hrd, ngo_cso, opposition_figure, lawyer, union, academic, artist, general_public, unknown."
+    - "For legal_instrument, record the named law/charge if stated (e.g. 'cybercrime act', 'terrorism financing charge', 'publication of false news'), else null."
+    - |-
+      Set state_response to the repression action itself, reusing the shared
+         vocabulary: arrests, ban, curfew, legal_criminalisation,
+         anti_terrorism_designation, organisational_dissolution,
+         non_association_bail, internet_shutdown, live_ammunition,
+         rubber_bullets, teargas, dispersal, unknown. This field drives the
+         pipeline's turmoil derivation — always set it.
+    - "Internet shutdowns: code the reported ORDER or observed government-directed disruption as stated by the source (#KeepItOn practice). Record scope (national/regional/platform-specific) in scope_notes. Do not attempt technical verification."
+    - "For outcome, choose from: detained, charged, convicted, released, banned, dissolved, suspended, shutdown_active, shutdown_lifted, exiled, ongoing, unknown."
+    - 'confidence: "high" / "medium" / "low". Never "unknown". Single-source reports from state media about their own actions are usually reliable for the FACT of the action (high) but not for its justification.'
+
+  type_hints:
+    activist_arrest_prosecution: "arrest/prosecution of activists, HRDs, opposition figures, lawyers, unionists"
+    journalist_media_repression: "arrest/assault of journalists; raids, suspensions, closures of media houses"
+    civil_society_restriction: "NGO/CSO deregistration, dissolution, asset freezes, forced compliance"
+    internet_shutdown: "ordered disruption of internet, mobile data, or specific platforms"
+    assembly_ban_curfew: "blanket bans on assembly or curfews not tied to one coded protest"
+    pro_government_violence: "violence by state forces or pro-state militias against civic actors outside a specific protest"
+
+  no_event_line: "If the article contains no qualifying repression events, return: []"
+
+  output_schema: |-
+    {
+      "event_date": "YYYY-MM-DD or partial date string",
+      "country": "country name",
+      "city": "city or town name",
+      "region": "state/province/region",
+      "venue": "specific named venue (court, prison, media house), or null",
+      "location_notes": "any additional location context",
+      "event_type": "one of the 6 allowed keys above",
+      "perpetrator_name": "named unit/body (e.g. 'DMI', 'communications regulator'), or null",
+      "perpetrator_category": "one of the allowed perpetrator categories",
+      "target_name": "named person/organisation targeted, or null",
+      "target_category": "one of the allowed target categories",
+      "target_count": "number of people/organisations targeted, or null",
+      "legal_instrument": "named law or charge used, or null",
+      "scope_notes": "scope of the measure (national/regional/platform; duration), or null",
+      "state_response": "the repression action, from the shared vocabulary (drives turmoil derivation)",
+      "arrests": "number or description of arrests",
+      "fatalities": "number of deaths if any",
+      "injuries": "number of injuries if any",
+      "outcome": "one of the allowed outcome values",
+      "outcome_notes": "any additional outcome context",
+      "article_title": "title of the source article",
+      "article_url": "URL of the source article",
+      "article_date": "publication date of article",
+      "source_country": "country of news source",
+      "source_language": "language of original article",
+      "confidence": "high / medium / low"
+    }
+
+# =============================================================================
+# MINIMUM CRITERIA — check BEFORE assigning any event type
+# =============================================================================
+
+minimum_criteria:
+  1_state_actor: "Perpetrator is a state body or pro-state structure (militia, ruling-party organ)"
+  2_civic_target: "Target is a civic actor or civic space itself (expression, assembly, association, connectivity)"
+  3_concrete_action: "An action occurred or was formally ordered — not a threat, warning, or bill under debate"
+  4_repressive_character: "The action restricts, punishes, or deters civic activity beyond ordinary criminal justice"
+  5_state_is_subject: "The state action is the story — not the state_response line of one specific protest event"
+
+  disqualify_immediately:
+    - "Repression embedded in one specific protest event (→ protest domain state_response)"
+    - "Non-political criminal arrests and trials"
+    - "Military/counterinsurgency operations (→ conflict datasets)"
+    - "Non-state armed group 'justice' or punishments"
+    - "Draft laws and policy debate without an enacted action"
+    - "Retrospectives, reports, and anniversaries without a new incident"
+    - "Technical outages with no state order"
+
+# =============================================================================
+# EVENT TYPES
+# =============================================================================
+#
+# Top-level key MUST be `event_types` (extractor contract).
+# Valid keys: activist_arrest_prosecution | journalist_media_repression |
+#             civil_society_restriction | internet_shutdown |
+#             assembly_ban_curfew | pro_government_violence
+
+event_types:
+
+  activist_arrest_prosecution:
+    name: "Arrest or Prosecution of Activists / Civic Actors"
+    definition: |
+      Arrest, detention, criminal charging, or prosecution of activists, human
+      rights defenders, opposition figures (outside the electoral context),
+      lawyers, unionists, academics, or artists in connection with their civic
+      or expressive activity. Includes house arrest, re-arrest after release,
+      and prosecutions under criminalisation statutes (cybercrime, false news,
+      terrorism financing) applied to civic activity.
+    positive_examples:
+      - "Prominent anti-corruption activist detained at the airport and charged under the cybercrimes act for a social media post"
+      - "Three trade union leaders arrested at their homes days after announcing a strike ballot"
+      - "Human rights lawyer charged with 'terrorism financing' over legal-aid payments to detained protesters"
+    negative_examples:
+      - "Protesters arrested during a march (→ protest domain event, state_response: arrests)"
+      - "Politician arrested for embezzlement with no civic-activity link (ordinary criminal justice)"
+      - "Opposition candidate arrested three weeks before an election (→ election_events domain: political_target_arrest)"
+    decision_rules:
+      - "IF the target is a civic actor AND the trigger is civic/expressive activity → ACTIVIST_ARREST_PROSECUTION"
+      - "IF the arrest happens AT a protest the person joined → protest domain; IF separately targeted (at home, at the airport, days later) → this type"
+      - "IF the target is a journalist arrested for journalism → JOURNALIST_MEDIA_REPRESSION (more specific type wins)"
+      - "IF the target is an electoral actor in the ±6-month window → election_events domain (political_target_arrest)"
+    confidence_threshold: 0.75
+    codebook_equivalents:
+      scad: "Pro-government violence / repression (arrest form)"
+      acled: "Strategic developments: Arrests"
+
+  journalist_media_repression:
+    name: "Journalist or Media Repression"
+    definition: |
+      State action against journalists or media organisations for their
+      reporting: arrest or assault of journalists, newsroom raids, broadcast
+      suspensions, licence revocations, forced closures, seizure of equipment,
+      criminal defamation prosecutions, and expulsion of correspondents.
+      CPJ/RSF-style incidents.
+    positive_examples:
+      - "Broadcasting regulator suspends a television station for 30 days over its protest coverage"
+      - "Two reporters detained while covering a story and held overnight; cameras confiscated"
+      - "Investigative journalist charged with publishing false news over a corruption exposé"
+    negative_examples:
+      - "Media house loses a civil defamation suit brought by a private citizen (private litigation)"
+      - "Journalist attacked by a mob at a rally with no state involvement (→ not state repression; possibly electoral_clash context)"
+      - "Newspaper closes for financial reasons"
+    decision_rules:
+      - "IF the state acts against a journalist/media house because of reporting → JOURNALIST_MEDIA_REPRESSION"
+      - "IF a journalist is among those detained at a protest → protest domain records it; code here ONLY if journalists were specifically targeted for coverage"
+      - "IF the instrument is a licence/regulatory measure against a media house → this type, not civil_society_restriction"
+    confidence_threshold: 0.75
+    codebook_equivalents:
+      scad: "Pro-government repression (media form)"
+      cpj_rsf: "Journalist detention / media obstruction incident"
+
+  civil_society_restriction:
+    name: "Civil Society / NGO Restriction"
+    definition: |
+      State restriction of non-governmental and civil-society organisations:
+      deregistration, dissolution, suspension, asset freezes, office raids,
+      travel bans on staff, forced re-registration under restrictive terms,
+      and designation of NGOs as foreign agents or security threats.
+    positive_examples:
+      - "Government deregisters 54 NGOs for 'non-compliance', including leading human rights groups"
+      - "Human rights organisation's bank accounts frozen by order of the interior ministry"
+      - "Prominent civic movement legally dissolved by decree"
+    negative_examples:
+      - "NGO voluntarily winds down operations"
+      - "Genuine tax enforcement applied equally to all organisations (no civic-space dimension stated)"
+      - "Draft NGO bill debated in parliament (no enacted action yet)"
+    decision_rules:
+      - "IF an NGO/CSO/movement is deregistered, dissolved, suspended, or has assets frozen by state action → CIVIL_SOCIETY_RESTRICTION"
+      - "IF a protest movement is dissolved in response to its protests → this type here; the protest domain separately records organisational_dissolution as state_response on its own events"
+      - "IF the target is a media organisation → JOURNALIST_MEDIA_REPRESSION"
+    confidence_threshold: 0.75
+    codebook_equivalents:
+      scad: "Pro-government repression (organisational form)"
+      protest_codebook: "state_response: organisational_dissolution (event-level mirror)"
+
+  internet_shutdown:
+    name: "Internet or Platform Shutdown Order"
+    definition: |
+      Government-ordered disruption of internet access, mobile data, SMS, or
+      specific platforms (social media, messaging apps), whether national,
+      regional, or service-specific — including throttling ordered around
+      protests, exams, elections, or conflict operations. Per #KeepItOn/CIPESA
+      practice, code the REPORTED ORDER or reported government-directed
+      disruption; do not attempt technical verification.
+    positive_examples:
+      - "Authorities order telecom operators to suspend mobile internet in three regions ahead of planned protests"
+      - "Social media platforms blocked nationwide on election eve, the regulator confirms"
+      - "Internet access cut in the conflict-affected region for a fourth month, operators citing government instructions"
+    negative_examples:
+      - "Nationwide outage caused by a subsea cable cut (technical fault, no order)"
+      - "Platform inaccessible due to the company's own withdrawal from the market"
+      - "Civil society warns a shutdown may happen during elections (anticipatory, no order yet)"
+    decision_rules:
+      - "IF a state order or government-directed disruption is reported → INTERNET_SHUTDOWN; record scope and duration in scope_notes"
+      - "IF sources conflict on attribution (government denies, operators point to instructions) → still code, confidence: medium, note the dispute"
+      - "A multi-month continuing shutdown is ONE event; code a NEW event only for a distinct new order (extension to new regions, new platform)"
+    confidence_threshold: 0.70
+    codebook_equivalents:
+      keepiton: "Internet shutdown incident (Access Now STOP methodology)"
+      cipesa: "Network disruption event"
+
+  assembly_ban_curfew:
+    name: "Blanket Assembly Ban or Curfew"
+    definition: |
+      Blanket prohibition of assemblies, marches, or public gatherings, or
+      imposition of a curfew, NOT tied to one specific coded protest event —
+      e.g. an indefinite ban on all demonstrations in the capital, a
+      protest-season curfew, or a ban on a movement's entire activity.
+      (A ban aimed at one specific upcoming march is that protest event's
+      state_response: ban in the protest domain.)
+    positive_examples:
+      - "Police chief announces an indefinite ban on all public demonstrations in the capital"
+      - "Regional governor imposes a dusk-to-dawn curfew 'until further notice' citing unrest"
+      - "Government outlaws all gatherings of the movement nationwide"
+    negative_examples:
+      - "Police ban next Saturday's planned opposition march (→ protest domain, state_response: ban on that event)"
+      - "Curfew imposed during an armed-conflict operation (conflict measure, not civic-space repression — unless framed against protests)"
+      - "COVID-style public-health gathering limits applied without civic-space targeting"
+    decision_rules:
+      - "IF the ban/curfew is blanket (all assemblies, a whole movement, an open-ended period) → ASSEMBLY_BAN_CURFEW"
+      - "IF the ban targets one specific protest → protest domain records it as that event's state_response"
+      - "Record duration/scope in scope_notes; set state_response: ban or curfew accordingly"
+    confidence_threshold: 0.70
+    codebook_equivalents:
+      scad: "Pro-government repression (restriction form)"
+      protest_codebook: "state_response: ban / curfew (event-level mirror)"
+
+  pro_government_violence:
+    name: "Pro-Government Violence Against Civic Actors"
+    definition: |
+      Violence by state security forces or pro-government militias/party
+      structures against civic actors OUTSIDE the context of a specific coded
+      protest: beatings of activists at their homes, attacks on opposition
+      offices, militia raids on union meetings, enforced disappearances of
+      critics. SCAD's pro-government violence (repression) category.
+    positive_examples:
+      - "Ruling-party youth militia attacks the offices of a civic coalition, injuring five staff"
+      - "Prominent government critic abducted by armed men in an unmarked vehicle; family blames the intelligence service"
+      - "Soldiers raid a union meeting and beat participants"
+    negative_examples:
+      - "Police fire live rounds at a demonstration (→ protest domain, state_response: live_ammunition)"
+      - "Two party youth wings clash during a campaign (→ election_events: electoral_clash)"
+      - "Armed group attacks civilians in a conflict zone (→ conflict/VE datasets)"
+    decision_rules:
+      - "IF state/pro-state actors use violence against civic actors outside a specific protest → PRO_GOVERNMENT_VIOLENCE"
+      - "IF the violence answers a specific ongoing protest → protest domain state_response"
+      - "Enforced disappearance with credible state attribution → this type, outcome: detained or unknown, note the attribution dispute"
+    confidence_threshold: 0.75
+    codebook_equivalents:
+      scad: "Pro-government violence (repression)"
+      acled: "Violence against civilians: Attack (state/pro-state perpetrator)"
+
+# =============================================================================
+# NON-EVENTS
+# =============================================================================
+
+non_events:
+  - category: "Repression embedded in a specific protest event"
+    examples:
+      - "Police teargas a march"
+      - "Arrests at a sit-in"
+      - "Live fire against demonstrators"
+    reason: |
+      Division of labour with the protest codebook: repression that answers one
+      specific protest is that protest event's state_response. Decision rule:
+      who is the subject of the lede — the crowd, or the state? Coding it in
+      both domains would double-count the same physical act.
+
+  - category: "Electoral repression in the ±6-month window"
+    examples:
+      - "Candidate detained before the vote"
+      - "Party agents arrested on election day"
+    reason: "Belongs to the election_events domain (political_target_arrest)"
+
+  - category: "Ordinary criminal justice"
+    examples:
+      - "Arrests for robbery, fraud, or violent crime with no civic-activity link"
+    reason: "Not civic-space repression"
+
+  - category: "Armed conflict and counterinsurgency"
+    examples:
+      - "Military raid on an insurgent camp"
+      - "Counterterrorism arrests of armed cell members"
+    reason: "Conflict datasets; qualifies here only when civic actors are targeted under CT pretexts (then code with legal_instrument noted)"
+
+  - category: "Non-state repression"
+    examples:
+      - "Jihadist group punishes residents for using the internet"
+      - "Separatists enforce a media blackout"
+    reason: "Perpetrator is not the state (see protest codebook's coerced-lockdown non-event)"
+
+  - category: "Legislative debate without enacted action"
+    examples:
+      - "Parliament debates a restrictive NGO bill"
+      - "Minister threatens to regulate social media"
+    reason: "No concrete action yet — threats and drafts are not events"
+
+  - category: "Technical outages"
+    examples:
+      - "Subsea cable cut disconnects several countries"
+      - "Power failure downs mobile networks"
+    reason: "No state order — not a shutdown event"
+
+# =============================================================================
+# EDGE CASES
+# =============================================================================
+
+edge_cases:
+  protest_then_targeted_arrest:
+    description: "A protest occurs; days later its organiser is arrested at home"
+    rule: |
+      Two domains, two events, no double-coding: the protest (with its own
+      state_response) in the protest domain; the later targeted arrest here as
+      ACTIVIST_ARREST_PROSECUTION. The arrest is a separate state action, not
+      part of the original event.
+
+  shutdown_around_protests:
+    description: "Internet cut on the morning of planned demonstrations"
+    rule: |
+      Code the shutdown here (INTERNET_SHUTDOWN). If demonstrations then occur,
+      they are separate protest-domain events. The shutdown is a distinct state
+      action against connectivity, not a state_response embedded in one protest.
+
+  mass_arrest_sweeps:
+    description: "Security forces conduct overnight sweeps detaining dozens of activists city-wide"
+    rule: |
+      One coordinated sweep = ONE event with target_count recorded; separate
+      sweeps in different cities or on different nights = separate events.
+
+  state_media_announcement:
+    description: "The only source is state media announcing the state's own action"
+    rule: |
+      State sources are usually reliable for the FACT of their own repression
+      action (the ban/arrest/shutdown happened) → the action itself can be
+      high confidence; treat the JUSTIFICATION ('foreign agents', 'incitement')
+      as framing, recorded in outcome_notes, never as evidence of wrongdoing.
+
+  ct_pretext:
+    description: "Civic actors prosecuted under counterterrorism laws"
+    rule: |
+      Qualifies when the underlying conduct is civic/expressive activity —
+      record the CT statute in legal_instrument and set state_response:
+      anti_terrorism_designation or legal_criminalisation as appropriate.
+
+# =============================================================================
+# CONFIDENCE GUIDANCE
+# =============================================================================
+
+confidence_guidance:
+  high:
+    criteria:
+      - "Named target and named state body"
+      - "Action confirmed by the state itself, the target, or multiple sources"
+      - "Specific instrument (law, charge, order) identified"
+    example: "Regulator's published order suspending a named station for 30 days, confirmed by the station"
+  medium:
+    criteria:
+      - "Action reported but attribution partially disputed (e.g. operators imply an order the government denies)"
+      - "Target described generically ('several activists')"
+      - "Single independent source"
+    example: "Mobile internet down in a region; operators privately cite instructions, government blames 'technical issues'"
+  low:
+    criteria:
+      - "Attribution to the state is inferred, not stated"
+      - "Social-media-only reporting of arrests or disappearances"
+      - "Anticipatory or unconfirmed shutdown reports"
+    example: "Activists report colleagues 'taken by unknown men'; no official confirmation or independent corroboration"
+
+# =============================================================================
+# CODING RULES SUMMARY
+# =============================================================================
+
+general_rules:
+  1_primary_type: "Assign ONE primary event type per action (from the six valid keys)"
+  2_confidence: "Provide confidence score: high / medium / low — never 'unknown'"
+  3_text_only: "Use only information in provided text; do not infer or hallucinate"
+  4_state_is_subject: "Code only when the state action is the event — repression answering one specific protest belongs to that protest's state_response"
+  5_specific_type_wins: "Journalist targets → journalist_media_repression; electoral targets in the window → election_events domain; more specific classification wins"
+  6_state_response_always: "Always set state_response from the shared vocabulary — it drives the pipeline's turmoil derivation"
+  7_location_temporal: "All events must have identifiable country and approximate date"
+  8_separate_actions: "Each distinct action (different target, instrument, location, or date) is a separate event; one coordinated sweep is one event"
+  9_non_event_gate: "Apply minimum_criteria check FIRST — if any disqualifier applies, return []"
+  10_shutdown_announcement_rule: "Code internet shutdowns from the reported order/announcement (#KeepItOn practice), never from technical verification"

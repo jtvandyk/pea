@@ -1,0 +1,200 @@
+# =============================================================================
+# STATE REPRESSION CODEBOOK — FEW-SHOT EXTRACTION EXAMPLES (v1.0)
+# =============================================================================
+# Companion to state_repression_codebook.yaml.
+# Injected into every user prompt by _build_few_shot_examples() in extractor.py.
+#
+# FORMAT REQUIREMENT: top-level key must be 'examples:' (list).
+# Each entry: id, pinned, description, rationale, article_snippet,
+# extracted_events (list).
+# =============================================================================
+
+examples:
+
+  - id: "sr_ex_01"
+    pinned: true
+    description: "internet_shutdown — regional mobile internet cut ahead of protests, disputed attribution, medium confidence"
+    rationale: |
+      Shutdown anchor demonstrating #KeepItOn coding practice: the reported
+      government-directed disruption is the event, coded WITHOUT technical
+      verification. Attribution partially disputed (operators cite instructions,
+      government blames technical issues) → confidence: medium with the dispute
+      noted. scope_notes carries region/service scope. state_response:
+      internet_shutdown drives the pipeline's turmoil derivation. The PLANNED
+      protests are not extracted — they have not occurred.
+    article_snippet: |
+      Mobile internet services were cut across three regions on Wednesday evening,
+      hours before demonstrations called by opposition groups were due to begin.
+      Two telecommunications operators told customers the disruption followed
+      'instructions from the competent authorities'. The communications ministry
+      denied ordering a shutdown, attributing the outage to 'technical maintenance'.
+      Digital rights group Access Now said the pattern was consistent with an
+      ordered shutdown and called for services to be restored immediately.
+    extracted_events:
+      - event_date: null
+        country: null
+        city: null
+        region: "Three regions (unnamed)"
+        venue: null
+        location_notes: "Regional mobile-data shutdown"
+        event_type: "internet_shutdown"
+        perpetrator_name: "communications ministry (denied); 'competent authorities' per operators"
+        perpetrator_category: "regulator_ministry"
+        target_name: null
+        target_category: "general_public"
+        target_count: null
+        legal_instrument: null
+        scope_notes: "Mobile internet only, three regions, ordered on the eve of planned opposition demonstrations"
+        state_response: "internet_shutdown"
+        arrests: null
+        fatalities: null
+        injuries: null
+        outcome: "shutdown_active"
+        outcome_notes: "Operators cite instructions from authorities; ministry denies and claims technical maintenance — attribution disputed"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "medium"
+
+  - id: "sr_ex_02"
+    pinned: true
+    description: "Boundary example — teargassed march returns [] (protest-domain territory)"
+    rationale: |
+      THE core division-of-labour demonstration: repression that answers one
+      specific protest is that protest event's state_response — the crowd, not
+      the state, is the subject of the lede. This article is a protest-domain
+      event (demonstration_march, state_response: teargas, arrests recorded).
+      Coding it here would double-count the same physical act. The model must
+      return [] despite the dense repression vocabulary.
+    article_snippet: |
+      Police fired teargas and arrested at least 20 people on Saturday as hundreds
+      of demonstrators marched through downtown Nairobi against new tax measures.
+      Officers in riot gear blocked the procession near parliament and chased
+      protesters through side streets. A police spokesperson said the march was
+      unlawful because organisers had not notified authorities. Rights groups
+      condemned what they called excessive force against a peaceful assembly.
+    extracted_events: []
+
+  - id: "sr_ex_03"
+    pinned: true
+    description: "journalist_media_repression + activist_arrest_prosecution — two distinct targeted actions, one article"
+    rationale: |
+      Multi-event split across two types: (1) a regulator suspending a TV
+      station over its coverage = JOURNALIST_MEDIA_REPRESSION (regulatory
+      instrument, media target); (2) the days-later arrest of an activist AT
+      HIS HOME over social media posts = ACTIVIST_ARREST_PROSECUTION —
+      separately targeted, not an arrest at a protest. legal_instrument
+      captures the named charge; state_response maps to the shared vocabulary
+      (ban for the suspension, arrests + legal_criminalisation candidate for
+      the cybercrime charge — the arrest is primary here).
+    article_snippet: |
+      The national broadcasting authority on Monday suspended Horizon TV for
+      60 days, accusing the station of 'unbalanced coverage' of last week's
+      fuel-price unrest. Press freedom groups called the suspension retaliation
+      for the channel's footage of police shootings. Separately, police on
+      Thursday arrested civic activist Daniel Okello at his home in the capital,
+      charging him under the Computer Misuse Act over posts describing the same
+      crackdown. His lawyer said the charge criminalises documentation of abuses.
+    extracted_events:
+      - event_date: null
+        country: null
+        city: null
+        region: null
+        venue: null
+        location_notes: null
+        event_type: "journalist_media_repression"
+        perpetrator_name: "national broadcasting authority"
+        perpetrator_category: "regulator_ministry"
+        target_name: "Horizon TV"
+        target_category: "media_house"
+        target_count: "1"
+        legal_instrument: "broadcasting regulations ('unbalanced coverage')"
+        scope_notes: "60-day broadcast suspension"
+        state_response: "ban"
+        arrests: null
+        fatalities: null
+        injuries: null
+        outcome: "suspended"
+        outcome_notes: "Press freedom groups call it retaliation for footage of police shootings"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "high"
+      - event_date: null
+        country: null
+        city: null
+        region: null
+        venue: null
+        location_notes: "Arrested at his home in the capital"
+        event_type: "activist_arrest_prosecution"
+        perpetrator_name: "police"
+        perpetrator_category: "police"
+        target_name: "Daniel Okello"
+        target_category: "activist_hrd"
+        target_count: "1"
+        legal_instrument: "Computer Misuse Act"
+        scope_notes: null
+        state_response: "arrests"
+        arrests: "1"
+        fatalities: null
+        injuries: null
+        outcome: "charged"
+        outcome_notes: "Charged over social media posts documenting the crackdown; lawyer says the charge criminalises documentation of abuses"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "high"
+
+  - id: "sr_ex_04"
+    pinned: true
+    description: "civil_society_restriction — mass NGO deregistration by decree, state-source confidence rule"
+    rationale: |
+      Organisational-restriction anchor: mass deregistration is ONE coordinated
+      action (one event, target_count: 54) — not 54 events. Demonstrates the
+      state-media rule: the government gazette is authoritative for the FACT of
+      deregistration (confidence: high) while the stated justification
+      ('foreign interference') is framing recorded in outcome_notes, never
+      treated as evidence. state_response: organisational_dissolution feeds the
+      turmoil derivation's high tier.
+    article_snippet: |
+      The government has deregistered 54 non-governmental organisations with
+      immediate effect, according to a notice published in Friday's official
+      gazette, which accused the groups of 'operating as conduits for foreign
+      interference'. The list includes two of the country's oldest human rights
+      organisations and a network of election observers. The interior minister
+      said the organisations' assets would be frozen pending investigation.
+      Civil society coalitions described the move as the largest single
+      crackdown on the sector in a decade.
+    extracted_events:
+      - event_date: null
+        country: null
+        city: null
+        region: null
+        venue: null
+        location_notes: "Nationwide measure via official gazette"
+        event_type: "civil_society_restriction"
+        perpetrator_name: "interior ministry"
+        perpetrator_category: "regulator_ministry"
+        target_name: "54 NGOs incl. two human rights organisations and an election-observer network"
+        target_category: "ngo_cso"
+        target_count: "54"
+        legal_instrument: "deregistration notice in official gazette"
+        scope_notes: "Immediate deregistration; assets frozen pending investigation"
+        state_response: "organisational_dissolution"
+        arrests: null
+        fatalities: null
+        injuries: null
+        outcome: "dissolved"
+        outcome_notes: "Gazette cites 'foreign interference' — state framing, not evidence; described as largest sector crackdown in a decade"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "high"

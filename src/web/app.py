@@ -362,7 +362,7 @@ def load_events_from_adls() -> pd.DataFrame:
         df = pd.DataFrame(all_events)
         if "event_date" in df.columns:
             df["event_date"] = pd.to_datetime(df["event_date"], errors="coerce")
-        for col in ["participant_groups", "claims", "state_actors"]:
+        for col in ["participant_groups", "claims", "issue_tags", "state_actors"]:
             if col in df.columns:
                 df[col] = df[col].apply(
                     lambda x: "; ".join(x) if isinstance(x, list) else (x or "")
@@ -767,6 +767,7 @@ with tab_events:
                 "confidence",
                 "organizer",
                 "claims",
+                "issue_tags",
                 "state_response",
                 "arrests",
                 "fatalities",

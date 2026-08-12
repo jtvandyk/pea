@@ -44,6 +44,7 @@ examples:
         organizer: "South Gauteng Community Forum"
         participant_groups: ["residents", "hostel community"]
         claims: ["running water restoration", "electricity restoration"]
+        issue_tags: ["service_delivery"]
         crowd_size: null
         duration: "4 hours"
         state_response: "none"
@@ -106,6 +107,7 @@ examples:
         organizer: "Academic Staff Union of Universities (ASUU)"
         participant_groups: ["academic staff", "university lecturers"]
         claims: ["release of withheld salary funds"]
+        issue_tags: ["labor_wages"]
         crowd_size: null
         duration: "ongoing (indefinite)"
         state_response: "none"
@@ -132,6 +134,7 @@ examples:
         organizer: null
         participant_groups: ["students"]
         claims: ["resumption of lectures", "resolution of salary dispute"]
+        issue_tags: ["labor_wages", "education"]
         crowd_size: "300"
         duration: null
         state_response: "monitoring"
@@ -176,6 +179,7 @@ examples:
         organizer: "Take It Back Movement"
         participant_groups: ["civil society groups", "protesters"]
         claims: ["reversal of fuel subsidy removal", "reduction in cost of food and basic goods"]
+        issue_tags: ["food_water_subsistence"]
         crowd_size: "hundreds"
         duration: null
         state_response: "teargas"
@@ -224,6 +228,7 @@ examples:
         organizer: "National Union of Ugandan Students"
         participant_groups: ["students", "Makerere University students", "Kyambogo University students"]
         claims: ["rollback of 40% tuition fee increase"]
+        issue_tags: ["education"]
         crowd_size: "800"
         duration: null
         state_response: "monitoring"
@@ -272,6 +277,7 @@ examples:
         organizer: null
         participant_groups: ["Hirak movement detainees", "pre-trial detainees"]
         claims: ["immediate release of detainees", "dropping of politically motivated charges"]
+        issue_tags: ["human_rights_civic_space"]
         crowd_size: "23"
         duration: "ongoing (open-ended)"
         state_response: "none"
@@ -321,6 +327,7 @@ examples:
         organizer: null
         participant_groups: ["mourners", "community members", "Madikizela family"]
         claims: ["prosecution of officers involved in custody death", "independent IPID inquiry"]
+        issue_tags: ["human_rights_civic_space"]
         crowd_size: "250"
         duration: "1 hour"
         state_response: "none"
@@ -367,6 +374,7 @@ examples:
         organizer: null
         participant_groups: ["opposition supporters", "youths"]
         claims: ["rejection of election results"]
+        issue_tags: ["elections"]
         crowd_size: null
         duration: null
         state_response: "rubber_bullets"
@@ -382,3 +390,188 @@ examples:
         source_country: null
         source_language: "en"
         confidence: "high"
+
+  - id: "ex_09"
+    pinned: true
+    description: "Police attack a peaceful march — stays demonstration_march, Uganda, repressed-country confidence cap"
+    rationale: |
+      Followup #13 tier-2 example. The most common escalation misclassification in
+      reverse: when POLICE initiate the violence against a peaceful march, the event
+      remains DEMONSTRATION_MARCH (violence must be protester-initiated for RIOT).
+      state_response records the most severe response (live_ammunition > teargas >
+      arrests). Uganda is CIVICUS-repressed, so field-completeness that would yield
+      'high' is capped at 'medium' per civic_space_confidence_modifier.
+    article_snippet: |
+      Supporters of the National Unity Platform marched through Kampala's Kamwokya
+      neighbourhood on Wednesday demanding the release of detained party activists.
+      Witnesses said the march was peaceful, with participants singing and carrying
+      placards, until military police blocked the route and fired teargas and then
+      live rounds to disperse the crowd. One marcher was shot in the leg. At least
+      fourteen people were detained, including two journalists covering the march.
+      Party officials said they had notified police of the route in advance.
+    extracted_events:
+      - event_date: null
+        country: "Uganda"
+        city: "Kampala"
+        region: "Central Region"
+        venue: "Kamwokya"
+        location_notes: "March route through Kamwokya neighbourhood"
+        event_type: "demonstration_march"
+        organizer: "National Unity Platform"
+        participant_groups: ["opposition party supporters"]
+        claims: ["release of detained party activists"]
+        issue_tags: ["human_rights_civic_space"]
+        crowd_size: null
+        duration: null
+        state_response: "live_ammunition"
+        state_actors: ["military police"]
+        arrests: "14"
+        fatalities: null
+        injuries: "1"
+        outcome: "dispersed"
+        outcome_notes: "Two journalists among those detained; march remained peaceful before dispersal"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "en"
+        confidence: "medium"
+
+  - id: "ex_10"
+    pinned: true
+    description: "Negative example — cultural celebration with political attendance, Nigeria, returns []"
+    rationale: |
+      Followup #13 tier-2 example. Disqualifier-gate demonstration complementing
+      ex_02 (AU summit): a large public gathering with chanting crowds and heavy
+      police presence that is CELEBRATORY, not contentious. Political dignitaries
+      attending and 'demands' quoted from a speech do not convert a festival into
+      a protest — no collective action outside institutional channels occurred.
+    article_snippet: |
+      Tens of thousands of people filled the streets of Osogbo on Friday for the
+      annual Osun-Osogbo festival, with crowds chanting praise songs as the
+      procession moved to the sacred grove. The state governor, addressing the
+      festival, called on the federal government to release funds for cultural
+      tourism infrastructure. Police deployed more than 1,000 officers to manage
+      the crowds, and several roads were closed for the procession. Organisers
+      hailed a peaceful celebration attended by dignitaries from across the country.
+    extracted_events: []
+
+  - id: "ex_11"
+    pinned: true
+    description: "Lusophone Africa — Mozambique post-election shutdown and march, Portuguese-language source, elections tag"
+    rationale: |
+      Pan-Africa v3 example. Demonstrates: (1) Portuguese protest vocabulary
+      (paralisação = shutdown/stay-away, manifestação = demonstration) arriving via
+      translation; (2) a voluntary opposition-called shutdown passing the coercion
+      test → STRIKE_BOYCOTT, coded separately from the same day's march; (3) the
+      mandatory issue_tags: [elections] for results-rejection mobilisation;
+      (4) source_language preserved as 'pt'.
+    article_snippet: |
+      Maputo largely shut down on Monday as residents heeded an opposition call for
+      a national paralisação against the announced election results, which the
+      opposition says were falsified. Shops and minibus taxi ranks stayed closed
+      across the capital. In the afternoon, several thousand demonstrators marched
+      along Avenida 24 de Julho towards the electoral commission, where riot police
+      fired teargas to disperse them. Organisers said the stay-away and marches
+      would continue weekly until a recount is ordered. No enforcement actions by
+      protesters against those who opened for business were reported.
+    extracted_events:
+      - event_date: null
+        country: "Mozambique"
+        city: "Maputo"
+        region: "Maputo City"
+        venue: null
+        location_notes: "City-wide stay-away"
+        event_type: "strike_boycott"
+        organizer: "opposition"
+        participant_groups: ["residents", "shop owners", "taxi operators"]
+        claims: ["annulment of falsified election results", "vote recount"]
+        issue_tags: ["elections"]
+        crowd_size: null
+        duration: "1 day"
+        state_response: "none"
+        state_actors: []
+        arrests: null
+        fatalities: null
+        injuries: null
+        outcome: "ongoing"
+        outcome_notes: "Voluntary compliance; no protester enforcement reported — passes coercion test as strike_boycott"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "pt"
+        confidence: "medium"
+      - event_date: null
+        country: "Mozambique"
+        city: "Maputo"
+        region: "Maputo City"
+        venue: "Avenida 24 de Julho"
+        location_notes: "March towards the electoral commission"
+        event_type: "demonstration_march"
+        organizer: "opposition"
+        participant_groups: ["demonstrators"]
+        claims: ["annulment of falsified election results", "vote recount"]
+        issue_tags: ["elections"]
+        crowd_size: "thousands"
+        duration: null
+        state_response: "teargas"
+        state_actors: ["riot police"]
+        arrests: null
+        fatalities: null
+        injuries: null
+        outcome: "dispersed"
+        outcome_notes: "Organisers pledged weekly continuation until recount"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "pt"
+        confidence: "medium"
+
+  - id: "ex_12"
+    pinned: true
+    description: "Horn of Africa — Ethiopian market shutdown / stay-away, coercion test, repressed-country cap"
+    rationale: |
+      Pan-Africa v3 example. The ghost_town_stay_away edge case applied in the Horn:
+      an opposition-called market shutdown with VOLUNTARY compliance reported →
+      STRIKE_BOYCOTT. The rationale hinges on the coercion test: the article reports
+      no enforcement violence, so this is protest, not an armed-group lockdown
+      (which would return []). Ethiopia is CIVICUS-repressed and the report is
+      single-sourced → confidence capped at medium even with good field coverage.
+    article_snippet: |
+      Shops and markets across several towns in the Oromia region stayed closed on
+      Tuesday in response to a stay-at-home call by opposition groups protesting the
+      continued detention of party leaders. Residents in Adama and Bishoftu told the
+      broadcaster that streets were quiet and public transport was scarce, though no
+      incidents of intimidation were reported. Regional officials described the
+      shutdown as 'externally instigated' and said security forces were monitoring
+      the situation. The opposition said the action would be repeated unless
+      detainees were released.
+    extracted_events:
+      - event_date: null
+        country: "Ethiopia"
+        city: null
+        region: "Oromia"
+        venue: null
+        location_notes: "Multiple towns including Adama and Bishoftu"
+        event_type: "strike_boycott"
+        organizer: "opposition groups"
+        participant_groups: ["traders", "residents", "transport operators"]
+        claims: ["release of detained opposition leaders"]
+        issue_tags: ["human_rights_civic_space"]
+        crowd_size: null
+        duration: "1 day"
+        state_response: "monitoring"
+        state_actors: ["security forces"]
+        arrests: null
+        fatalities: null
+        injuries: null
+        outcome: "ongoing"
+        outcome_notes: "No intimidation reported — passes coercion test; opposition pledged repeat action"
+        article_title: null
+        article_url: null
+        article_date: null
+        source_country: null
+        source_language: "am"
+        confidence: "medium"

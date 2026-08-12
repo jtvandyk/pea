@@ -22,7 +22,7 @@ jobs:
       - name: Install lint + test deps
         run: |
           pip install black==25.11.0 flake8 pytest
-          pip install numpy pyyaml pandas python-dotenv
+          pip install numpy pyyaml pandas python-dotenv requests
       - name: black
         run: black --check src/ tests/
       - name: flake8

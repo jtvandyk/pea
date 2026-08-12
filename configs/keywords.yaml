@@ -180,6 +180,46 @@ protest_signals:
   - nkwupụta           # IG: protest declaration / statement of demands — BBC Igbo
   - ọchịchọ            # IG: demand / uprising (context-dependent) — BBC Igbo
 
+  # ── Portuguese (MZ, AO, GW, CV, ST) ────────────────────────────────────────
+  # Verified against O País (MZ), Jornal de Angola, VOA Português headline usage.
+  - manifestação       # PT: demonstration (MZ, AO) — O País, Jornal de Angola
+  - manifestações      # PT: demonstrations (plural)
+  - manifestantes      # PT: demonstrators — VOA Português, Lusa
+  - greve              # PT: strike (identical to FR spelling; shared entry serves both)
+  - grevistas          # PT: strikers — Jornal de Angola labour coverage
+  - paralisação        # PT: work stoppage / shutdown — dominant in MZ 2024-25 protest wave
+  - protesto           # PT: protest — O País, DW Português
+  - protestos          # PT: protests (plural)
+  - vigília            # PT: vigil — Lusa, VOA Português
+  - tumultos           # PT: riots / turmoil — Jornal de Angola
+  - confrontos         # PT: clashes (protesters vs police) — Lusa, O País
+  - boicote            # PT: boycott — VOA Português
+
+  # ── Amharic (ET) ───────────────────────────────────────────────────────────
+  # Verified against BBC Amharic and DW Amharic headline vocabulary.
+  - ተቃውሞ              # AM: protest / opposition (ET) — BBC Amharic, DW Amharic
+  - ሰልፍ                # AM: demonstration / march / rally — BBC Amharic
+  - ሰልፈኞች             # AM: demonstrators / marchers — DW Amharic
+  - አድማ                # AM: strike / stay-away (incl. market shutdowns) — BBC Amharic
+  - ረብሻ                # AM: unrest / riot — BBC Amharic
+
+  # ── Hausa (NG-North, NE) ───────────────────────────────────────────────────
+  # Verified against BBC Hausa (bbc.com/hausa) headline vocabulary.
+  - zanga-zanga        # HA: protest / demonstration — primary BBC Hausa term
+  - zanga-zangar       # HA: protest (linked form, very common in headlines)
+  - masu zanga-zanga   # HA: protesters — BBC Hausa
+  - yajin aiki         # HA: strike (work refusal) — BBC Hausa labour coverage
+  - tarzoma            # HA: riot / unrest — BBC Hausa
+  - ƙauracewa          # HA: boycott — BBC Hausa (hooked ƙ; GDELT stores full Unicode)
+
+  # ── Somali (SO) ────────────────────────────────────────────────────────────
+  # Verified against BBC Somali and VOA Somali headline vocabulary.
+  - banaanbax          # SO: demonstration / public protest — BBC Somali
+  - bannaanbax         # SO: demonstration (doubled-n variant spelling; both circulate)
+  - mudaaharaad        # SO: demonstration (Arabic loan) — VOA Somali, Goobjoog
+  - shaqo joojin       # SO: strike / work stoppage — BBC Somali
+  - rabshado           # SO: riots / violent unrest — BBC Somali
+
   # ── Indonesian / Malay (ID, MY) ─────────────────────────────────────────────
   - aksi               # ID/MY: action / protest action — retained from v1
   - demonstrasi        # ID/MY: demonstration — retained from v1
@@ -249,6 +289,10 @@ drone_signals:
   # ── Swahili (UG, TZ, KE, SO) ───────────────────────────────────────────────
   - shambulio la drone     # SW: drone attack — Nation Africa, BBC Swahili
   - ndege ya kivita        # SW: military aircraft / combat drone — Mwananchi
+  # ── Hausa (NG-North, NE — Lake Chad drone theatre) ─────────────────────────
+  - jirgi mara matuki      # HA: unmanned aircraft / drone — BBC Hausa
+  - jirage marasa matuka   # HA: unmanned aircraft (plural) — BBC Hausa
+  - harin jirgi mara matuki  # HA: drone attack — BBC Hausa security coverage
 
 drone_url_signals:
   - drone
@@ -393,3 +437,130 @@ violent_extremism_url_signals:
   - aqmi
   - jnim
   - islamist
+
+# =============================================================================
+# ELECTION EVENTS DOMAIN KEYWORDS
+# Used by RelevanceFilter when domain='election_events'
+# Targets coercion/contestation vocabulary, NOT routine election coverage —
+# 'election results' or 'campaign rally' alone would flood the filter with
+# administration news the codebook disqualifies anyway.
+# =============================================================================
+
+election_signals:
+  # ── English ──────────────────────────────────────────────────────────────
+  - election violence
+  - electoral violence
+  - voter intimidation
+  - ballot box snatching
+  - ballot boxes snatched
+  - polling station attacked
+  - polling unit attacked
+  - candidate arrested
+  - candidate detained
+  - opposition leader arrested
+  - opposition leader detained
+  - election boycott
+  - boycott the election
+  - withdraw from the election
+  - election rigging
+  - vote buying
+  - electoral clash
+  - collation centre
+  - election observers attacked
+  - election postponed after violence
+  # ── French (SN, CI, CM, DRC, GN, TD) ─────────────────────────────────────
+  - violences électorales      # FR: electoral violence — RFI, Jeune Afrique
+  - fraude électorale          # FR: electoral fraud — RFI Afrique
+  - boycott des élections      # FR: election boycott — Jeune Afrique
+  - candidat arrêté            # FR: candidate arrested — RFI
+  - bureau de vote attaqué     # FR: polling station attacked
+  - urnes                      # FR: ballot boxes (saisie/destruction d'urnes) — RFI
+  - achat de voix              # FR: vote buying — Jeune Afrique
+  # ── Portuguese (MZ, AO, GW) ──────────────────────────────────────────────
+  - violência eleitoral        # PT: electoral violence — VOA Português, Lusa
+  - fraude eleitoral           # PT: electoral fraud — O País
+  - boicote eleitoral          # PT: election boycott — Lusa
+  - urnas                      # PT: ballot boxes — O País, Jornal de Angola
+  # ── Arabic (DZ, SD, EG, MR) ──────────────────────────────────────────────
+  - عنف انتخابي                # AR: electoral violence — Al Jazeera
+  - تزوير الانتخابات           # AR: election rigging — Al Jazeera, Ennahar
+  - مقاطعة الانتخابات          # AR: election boycott — common in DZ press
+  # ── Swahili (KE, TZ, UG) ─────────────────────────────────────────────────
+  - vurugu za uchaguzi         # SW: election violence — BBC Swahili, Mwananchi
+  - wizi wa kura               # SW: vote theft/rigging — Daily Nation Swahili
+  - kususia uchaguzi           # SW: to boycott the election — BBC Swahili
+  # ── Hausa (NG-North, NE) ─────────────────────────────────────────────────
+  - tashin hankalin zabe       # HA: election violence — BBC Hausa
+  - magudin zabe               # HA: election rigging — BBC Hausa
+  - kauracewa zabe             # HA: election boycott — BBC Hausa
+
+# =============================================================================
+# STATE REPRESSION DOMAIN KEYWORDS
+# Used by RelevanceFilter when domain='state_repression'
+# Targets state-action-on-civic-actor vocabulary. Deliberately avoids bare
+# "arrested"/"detained" (protest_signals territory, huge false-positive rate) —
+# repression phrases pair the action with a civic target or instrument.
+# =============================================================================
+
+repression_signals:
+  # ── English ──────────────────────────────────────────────────────────────
+  - journalist arrested
+  - journalist detained
+  - journalists detained
+  - reporter arrested
+  - activist arrested
+  - activist detained
+  - activists arrested
+  - human rights defender
+  - opposition leader detained
+  - ngo deregistered
+  - ngos deregistered
+  - ngo banned
+  - civil society crackdown
+  - crackdown on dissent
+  - internet shutdown
+  - internet cut
+  - social media blocked
+  - social media ban
+  - network disruption
+  - station suspended
+  - newspaper shut down
+  - media house raided
+  - licence revoked
+  - assembly ban
+  - protests banned
+  - curfew imposed
+  - enforced disappearance
+  - incommunicado detention
+  - treason charges
+  - sedition charges
+  - cybercrime charges
+  # ── French (CM, DRC, TD, GN, DZ, SN) ─────────────────────────────────────
+  - journaliste arrêté          # FR: journalist arrested — RFI, CPJ Afrique
+  - journaliste détenu          # FR: journalist detained
+  - militant arrêté             # FR: activist arrested — RFI Afrique
+  - défenseur des droits        # FR: (human) rights defender — Amnesty/FIDH usage
+  - coupure d'internet          # FR: internet cut/shutdown — RFI, Jeune Afrique
+  - réseaux sociaux bloqués     # FR: social media blocked
+  - interdiction de manifester  # FR: ban on demonstrations — RFI
+  - couvre-feu                  # FR: curfew — RFI Afrique
+  - dissolution                 # FR: dissolution (of association/movement) — official decrees
+  - disparition forcée          # FR: enforced disappearance — FIDH, RFI
+  # ── Portuguese (MZ, AO, GW) ──────────────────────────────────────────────
+  - jornalista detido           # PT: journalist detained — VOA Português, Lusa
+  - activista detido            # PT: activist detained — DW Português (also 'ativista')
+  - ativista detido             # PT: activist detained (Brazilian-influenced spelling)
+  - corte de internet           # PT: internet cut — VOA Português
+  - recolher obrigatório        # PT: curfew — Lusa, O País
+  # ── Arabic (DZ, SD, EG, MR) ──────────────────────────────────────────────
+  - اعتقال صحفي                 # AR: arrest of a journalist — Al Jazeera, CPJ Arabic
+  - اعتقال ناشط                 # AR: arrest of an activist — Al Jazeera
+  - قطع الإنترنت                # AR: internet cut/shutdown — Al Jazeera, AccessNow Arabic
+  - حجب مواقع التواصل           # AR: blocking of social media sites
+  - حظر التجول                  # AR: curfew — Al Jazeera
+  - حل الجمعية                  # AR: dissolution of an association — official/legal usage
+  # ── Swahili (KE, TZ, UG) ─────────────────────────────────────────────────
+  - mwandishi wa habari kukamatwa   # SW: journalist arrested — BBC Swahili
+  - mwanaharakati kukamatwa         # SW: activist arrested — BBC Swahili
+  - kufungiwa kwa chombo cha habari # SW: media outlet suspension — Mwananchi/TCRA coverage
+  - amri ya kutotoka nje            # SW: curfew (order not to go out) — BBC Swahili
