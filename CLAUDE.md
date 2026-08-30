@@ -4,7 +4,7 @@
 
 Protest Event Analysis (PEA) pipeline. Discovers news articles via GDELT DOC 2.0 API and BBC Monitoring, scrapes + translates, filters for relevance, extracts structured events via an LLM backend, and stores results as JSONL/CSV.
 
-**Protest codebook version:** 3.0 (Halterman & Keith 2025, Type III; pan-Africa revision)
+**Protest codebook version:** 3.1 (Halterman & Keith 2025, Type III; pan-Africa revision + per-field confidence)
 **Registered domains:** protest (production) · drone, violent_extremism, election_events, state_repression (research opt-in — see § Domain registry & rollout gates)
 **LLM backend:** Azure AI Foundry only (`AZURE_FOUNDRY_API_KEY` + `AZURE_OPENAI_ENDPOINT`)
 **Target geography:** pan-Africa codebook coverage; production cron crawls NG, ZA, UG, DZ (33 African targets registered in `configs/countries.yaml`)
@@ -21,8 +21,12 @@ Protest Event Analysis (PEA) pipeline. Discovers news articles via GDELT DOC 2.0
 | `configs/extraction_examples.yaml` | 12 pinned few-shot examples (en/fr/pt/am sources; NG/ZA/UG/DZ/MZ/ET) injected into every user prompt |
 | `configs/drone_events_codebook.yaml` + `drone_extraction_examples.yaml` | Drone domain v1.0 — 8 event types, own extraction_prompt, 4 pinned Africa anchors (ET/ML/NG) |
 | `configs/violent_extremism_codebook.yaml` + `violent_extremism_extraction_examples.yaml` | VE domain v1.1 (GTD-based, 9 attack types, `event_types` schema fixed) — registered research opt-in |
-| `configs/election_events_codebook.yaml` + `election_extraction_examples.yaml` | Election events v1.0 (ECAV-based, 6 types) — no double-coding with protest domain |
-| `configs/state_repression_codebook.yaml` + `state_repression_extraction_examples.yaml` | State repression v1.0 (#KeepItOn/SCAD-based, 6 types incl. internet_shutdown) |
+| `configs/election_events_codebook.yaml` + `election_extraction_examples.yaml` | Election events **v2.0 — RESIDUAL extractor** (second-pass architecture): only election-only events with no primary-domain home; primary-domain events get their electoral connection from the nexus pass |
+| `configs/state_repression_codebook.yaml` + `state_repression_extraction_examples.yaml` | State repression v1.3 (#KeepItOn/SCAD-based, 6 types incl. internet_shutdown; ITT [A]/[B] rule grades; codes state action vs electoral actors, nexus-tagged) |
+| `configs/election_calendar.yaml` | Election-date lookup for the nexus pass (±6-month windows per round). Ships empty — populate from NELDA; empty calendar just disables the calendar basis |
+| `src/acquisition/electoral_nexus.py` | Stage 4.75 — tags primary-domain events `electoral_nexus` on calendar_window / issue_tags / keywords bases (plan §4.1, DECO method) |
+| `src/acquisition/dissent_repression.py` | Stage 4.8 — NAVCO dual representation: derives linked repression twins from repressive protest `state_response` + links extracted repression events to answered protests via `dissent_repression_pair_id` |
+| `src/acquisition/excluded_store.py` | Excluded-cases JSONL store (RTV pattern): relevance-passed, extraction-empty articles — audit trail + fine-tuning hard negatives |
 | `configs/keywords.yaml` | GDELT GKG themes; per-domain signal keywords (protest: en/fr/es/ar/sw/yo/ig/pt/am/ha/so; drone, violent_extremism, election, repression sections); URL signals — edit here not in source |
 | `src/acquisition/pipeline.py` | Entry point — 6-stage pipeline (discover → scrape → translate → **relevance filter** → extract → store) |
 | `src/acquisition/extractor.py` | LLM extraction — per-domain base prompt rendered from the codebook's `extraction_prompt` section (+ event-type definitions injected), few-shot examples in USER_PROMPT, prompt caching logging |
@@ -116,7 +120,9 @@ For `--provider azure`, `--model` is the **deployment name** in your Azure AI Fo
 | 3. Translation | `langdetect` + Google Translate; native Claude languages (en/fr/ar/sw/etc.) skip translation |
 | 4. LLM extraction | Per-domain codebook in SYSTEM_PROMPT (protest v3.0 ≈6.5k tokens est.); pinned few-shot examples in USER_PROMPT; prompt caching saves ~36% on cached prefix |
 | 4.5. Geocoding | Nominatim OSM; venue → city → region → country fallback; `--no-geocode` to skip |
-| 5. Storage | JSONL + CSV + summary + dead-letter file; `--upload-to` for cloud |
+| 4.75. Electoral nexus | Mechanical pass (no LLM): tags every non-election-domain event `electoral_nexus` true/false with basis (`calendar_window`/`issue_tags`/`keywords`) and election name |
+| 4.8. Dissent–repression linking | Multi-domain runs with protest + state_repression: derives repression twins from repressive `state_response` (flagged `derived_from_protest`) and links extracted repression events to answered protests (same country, ±3 days, compatible city) |
+| 5. Storage | JSONL + CSV + summary + dead-letter + excluded-cases files; stamps `validation_status: candidate`; `--upload-to` for cloud. In multi-domain runs storage runs AFTER stage 4.8 |
 
 ---
 
@@ -171,7 +177,7 @@ Five codebook artifacts are registered in `DOMAIN_CONFIGS` (`src/acquisition/pip
 |---|---|---|
 | `protest` | **Production** (v3.0) | pea-validate (CEHA + CASE 2021) non-regression vs pre-v3 baseline → canary → deploy |
 | `drone` | Research opt-in | ≥60% recall vs a 25–50-event reference set built from ACLED air/drone-strike rows + clean token audit + two consecutive clean canaries (`--countries ML,BF,NE,NG,ET`) |
-| `election_events` | Research opt-in | ≥60% recall on a hand-labeled 25–50-event gold set from an active electoral window (`--countries TZ,CI,UG`) |
+| `election_events` | Research opt-in (**v2.0 residual** — see Cross-domain architecture) | ≥60% recall on a hand-labeled 25–50-event gold set from an active electoral window (`--countries TZ,CI,UG`). Under v2.0, score the UNION of residual events + nexus-tagged primary-domain events against the gold set, running protest+VE+repression alongside |
 | `state_repression` | Research opt-in | ≥60% recall on a mini gold set (CPJ/RSF + #KeepItOn incidents; `--countries ET,UG,SN,TZ`) |
 | `violent_extremism` | Research opt-in | ≥60% recall on an ACLED-referenced mini gold set AND explicit domain-owner sign-off |
 
@@ -179,10 +185,11 @@ Five codebook artifacts are registered in `DOMAIN_CONFIGS` (`src/acquisition/pip
 
 **Wiring a new domain** (see `pea-domain-add` skill): codebook YAML (top-level `event_types` — NOT any other name — plus `metadata, general_rules, minimum_criteria, non_events, confidence_guidance, extraction_prompt`), examples YAML (≥1 `pinned`), three registration points (`DOMAIN_CONFIGS`, `_REQUIRED_CONFIGS`, `relevance_filter._DOMAIN_CONFIG` + a `<domain>_signals` keywords section). `tests/test_domain_configs.py` enforces all of this structurally.
 
-**Cross-domain division of labour (no double-coding):**
-- Citizen protest about elections → protest domain, `issue_tags: [elections]`. Electoral coercion (intimidation, candidate arrests, ballot-box snatching, partisan clashes, party boycotts) → `election_events`.
-- Repression answering one specific protest → that protest event's `state_response`. State action as the story (journalist/activist arrests outside a protest, NGO bans, shutdown orders, blanket assembly bans) → `state_repression`. Decision rule: who is the subject of the lede — the crowd, or the state?
-- Protest vs VE vs communal violence: protester-initiated violence with a political demand = protest `riot`; sub-national actor violence meeting GTD criteria = `violent_extremism`; communal/farmer-herder/vigilante violence = non-event in both.
+**Cross-domain architecture (adopted Aug 2026 — plan §4 decisions; changes the pre-v2.0 division of labour):**
+- **Election = second-pass residual (DECO method).** Citizen protest about elections → protest domain (`issue_tags: [elections]`); GTD-qualifying electoral violence → `violent_extremism`; STATE arrests/violence against electoral actors → `state_repression`. Stage 4.75 then tags all of them `electoral_nexus`. The `election_events` extractor keeps ONLY residual election-only events (voter intimidation, partisan clashes, non-state detention of electoral actors, sub-GTD partisan violence, vote-process disruption, party boycotts). ECAV-equivalent coverage = nexus-tagged primary events ∪ residual events; an election-only run has reduced coverage by design.
+- **Repression = linked pair with protest (NAVCO 3.0 dual representation).** Repression answering one specific protest is still that protest's `state_response` for EXTRACTION (who is the subject of the lede — the crowd, or the state?), but Stage 4.8 mechanically derives a linked repression twin (`derived_from_protest: true`, shared `dissent_repression_pair_id`) and links extracted repression events to the protests they answer. Filter `derived_from_protest` to recover the extraction-only dataset.
+- Protest vs VE vs communal violence (unchanged): protester-initiated violence with a political demand = protest `riot`; sub-national actor violence meeting GTD criteria = `violent_extremism`; communal/farmer-herder/vigilante violence = non-event in both.
+- **Confidence schema:** every domain emits per-field `field_confidence` (event_type/actors/location/date/casualties) alongside event-level `confidence`, with domain priors (military-register discount for VE/drone, concealment prior for repression, partisan-source cap for election). Every event carries `validation_status` (candidate → reviewed/rejected via the annotation import).
 
 ---
 
@@ -350,6 +357,7 @@ The JSON report includes a `match_records` array (one entry per gold event) for 
 | 2026-07-08 | VE codebook schema remediation (`attack_types` → `event_types`) + registration as research opt-in; drone extraction_prompt + Sahel/Lake Chad examples |
 | 2026-07-08 | Two new domains: `election_events` (ECAV) and `state_repression` (#KeepItOn/SCAD, incl. `internet_shutdown` turmoil value); `tests/test_domain_configs.py` structural gate |
 | 2026-08-30 | Implementation-plan low-risk tranche: drone v1.1 (UNOCT/CAR `acquisition_type`, planned-attack + drone-as-protest boundary cases, CASE 2021/ACLED crosswalk + composite validation metadata); VE v1.2 (RTV/ECDB ideology attribution_rules, GTD access caution); election v1.1 (ECAV ±6-month window operationalised); repression v1.1 (ITT [A]/[B] certainty-graded decision rules, NGO-report-first source-genre note); ≥3 codebook negatives per type in all research domains + 6 worked `[]` examples in rotation pools; excluded-cases store (`excluded_store.py`, wired into extractor + both pipeline paths). Deferred from plan: UNOCT Tables 7/9/10 PULL items, GRID validator, NELDA, all §4 architecture decisions |
+| 2026-08-30 | **All three §4 architecture decisions adopted and implemented.** (1) Per-field confidence: `field_confidence` in all 5 output schemas with domain priors; `fc_*` CSV columns + `field_confidence_distribution` in summaries (protest 3.1, drone 1.2, VE 1.3). (2) Candidate tier: `validation_status` candidate→reviewed/rejected lifecycle via storage stamp + annotation import. (3) Routing: election restructured as second-pass residual (election v2.0, `electoral_nexus.py` Stage 4.75, `election_calendar.yaml`, repression v1.3 routing flip) + dissent–repression linked pairs (`dissent_repression.py` Stage 4.8, NAVCO dual representation; multi-domain storage moved after linking). Pruned from plan as obsolete: ConfliBERT relevance experiment (Stage 2.5 already a CPU classifier gate), mordecai3 (overlaps `geocoder.py`), ACLED-validator caveat rows (validator still blocked on token) |
 
 ---
 
