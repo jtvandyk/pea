@@ -130,6 +130,7 @@ All written to `data/raw/`:
 | `events_{run_id}.csv` | Same events, flattened for spreadsheet |
 | `summary_{run_id}.json` | Run metadata: counts by country, type, turmoil level |
 | `failures_{run_id}.jsonl` | Articles that failed extraction after all retries |
+| `excluded_{run_id}.jsonl` | Excluded cases: articles that passed relevance but the LLM returned `[]` for (RTV pattern) — audit trail + hard negatives for fine-tuning; includes `_article_text`; written per domain dir in multi-domain runs |
 | `all_events.jsonl` | Cumulative append across all runs |
 | `checkpoint.txt` | URLs processed — used by `--resume` |
 
@@ -348,6 +349,7 @@ The JSON report includes a `match_records` array (one entry per gold event) for 
 | 2026-07-08 | Keywords: Portuguese/Amharic/Hausa/Somali protest signals; election + repression signal sections; 4 new pinned few-shot examples (UG/NG/MZ/ET) |
 | 2026-07-08 | VE codebook schema remediation (`attack_types` → `event_types`) + registration as research opt-in; drone extraction_prompt + Sahel/Lake Chad examples |
 | 2026-07-08 | Two new domains: `election_events` (ECAV) and `state_repression` (#KeepItOn/SCAD, incl. `internet_shutdown` turmoil value); `tests/test_domain_configs.py` structural gate |
+| 2026-08-30 | Implementation-plan low-risk tranche: drone v1.1 (UNOCT/CAR `acquisition_type`, planned-attack + drone-as-protest boundary cases, CASE 2021/ACLED crosswalk + composite validation metadata); VE v1.2 (RTV/ECDB ideology attribution_rules, GTD access caution); election v1.1 (ECAV ±6-month window operationalised); repression v1.1 (ITT [A]/[B] certainty-graded decision rules, NGO-report-first source-genre note); ≥3 codebook negatives per type in all research domains + 6 worked `[]` examples in rotation pools; excluded-cases store (`excluded_store.py`, wired into extractor + both pipeline paths). Deferred from plan: UNOCT Tables 7/9/10 PULL items, GRID validator, NELDA, all §4 architecture decisions |
 
 ---
 

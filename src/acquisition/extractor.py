@@ -41,6 +41,7 @@ from typing import Optional
 import yaml
 
 from src.acquisition._rate_limit import SlidingWindowLimiter
+from src.acquisition.excluded_store import record_excluded_case
 from src.acquisition.storage import upload_checkpoint
 from src.constants import CONFIGS_DIR
 
@@ -590,6 +591,9 @@ def extract_events(
     rpm_limit: int = 450,
     examples_sample_n: int = 5,
     examples_seed: Optional[int] = None,
+    excluded_path: Optional[str] = None,
+    domain: str = "protest",
+    run_id: Optional[str] = None,
 ) -> tuple:
     """
     Run LLM extraction across all scraped articles via Azure AI Foundry.
@@ -609,6 +613,11 @@ def extract_events(
                  limiter so retry storms cannot burst past the RPM ceiling.
         rpm_limit: Azure OpenAI RPM ceiling for the rate limiter (default 450 = 10%
                    headroom under a typical 500 RPM Azure deployment limit).
+        excluded_path: when set, articles that reached the LLM but yielded zero
+                   events are appended to this JSONL as excluded cases (audit
+                   trail + hard negatives; see excluded_store.py). Articles
+                   skipped for insufficient text are NOT recorded.
+        domain / run_id: metadata stamped onto excluded-case records.
 
     Returns:
         (events, failures) -- flat list of extracted event dicts, and list of
@@ -676,6 +685,21 @@ def extract_events(
             with open(checkpoint_path, "a") as f:
                 f.write(url + "\n")
 
+    n_excluded = 0
+
+    def _record_excluded(article: dict) -> None:
+        # Articles skipped for insufficient text also return [] from
+        # extract_from_article — those are scrape-quality skips, not
+        # codebook exclusions, so apply the same length gate here.
+        nonlocal n_excluded
+        if not excluded_path:
+            return
+        text = article.get("text_en") or article.get("text") or ""
+        if len(text) < 100:
+            return
+        record_excluded_case(excluded_path, article, domain=domain, run_id=run_id)
+        n_excluded += 1
+
     def _process_one(
         article: dict,
         limiter: Optional[SlidingWindowLimiter] = None,
@@ -721,6 +745,9 @@ def extract_events(
                         "lang": article.get("text_lang", "unknown"),
                     }
                 )
+            else:
+                article = next((a for a in todo_articles if a.get("url") == url), {})
+                _record_excluded(article)
     else:
         for i, article in enumerate(todo_articles):
             url = article.get("url", "")
@@ -734,6 +761,7 @@ def extract_events(
                 all_events.extend(events)
             elif events is not None and len(events) == 0:
                 log.info("  [--] No events found")
+                _record_excluded(article)
             else:
                 log.warning(f"  [FAIL] Extraction failed: {url_display}")
                 failures.append(
@@ -754,6 +782,7 @@ def extract_events(
     n_succeeded = len(todo_articles) - len(failures)
     log.info(
         f"Extraction complete: {len(all_events)} events from "
-        f"{n_succeeded} articles ({len(failures)} failures)"
+        f"{n_succeeded} articles ({len(failures)} failures, "
+        f"{n_excluded} excluded cases recorded)"
     )
     return all_events, failures

@@ -436,6 +436,9 @@ def run_pipeline(
             workers=workers,
             rpm_limit=rpm_limit,
             examples_sample_n=examples_sample_n,
+            excluded_path=str(effective_output_dir / f"excluded_{run_id}.jsonl"),
+            domain=domain,
+            run_id=run_id,
         )
         log.info(
             f"Extracted {len(events)} events ({len(failures)} extraction failures)"
@@ -607,6 +610,9 @@ def run_pipeline_multi_codebook(
                 workers=workers,
                 rpm_limit=rpm_limit,
                 examples_sample_n=examples_sample_n,
+                excluded_path=str(effective_output_dir / f"excluded_{run_id}.jsonl"),
+                domain=domain,
+                run_id=run_id,
             )
             log.info(f"  Extracted {len(events)} events ({len(failures)} failures)")
 

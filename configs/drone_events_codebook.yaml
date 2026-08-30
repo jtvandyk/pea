@@ -8,13 +8,13 @@
 # Geographic scope: Global, with explicit non-state actor / Global South nuance
 # Unit of analysis: Individual drone event (one drone event = one platform-mission
 #                   at one target location at one time)
-# Version: 1.0 — Inaugural drone event codebook, literature-informed
+# Version: 1.1 — UNOCT/CAR acquisition typology, crosswalk anchors, edge cases
 # =============================================================================
 
 metadata:
   title: "Comprehensive Drone Event Codebook for LLM Classification"
-  version: "1.0"
-  last_updated: "April 2026"
+  version: "1.1"
+  last_updated: "August 2026"
   llm_backend: "Azure AI Foundry (gpt-5.4)"
   description: >
     Type III stipulative definitions for zero-shot LLM event classification
@@ -47,6 +47,40 @@ metadata:
     - "Drone propaganda as distinct event type (Oakley & Rogg 2024)"
     - "Autonomy level field for loitering munitions (Bode & Watts 2023)"
     - "Civilian_harm coding aligned to Airwars five-tier grading"
+  changelog_v11:
+    - "acquisition_type vocabulary (7 values, UNOCT/CAR Global Report 2024 Table 5)"
+    - "Edge cases: planned-attack boundary (Aum Shinrikyo 1993), drone-as-protest-instrument routing (Japan PM office 2015)"
+    - "Non-event: criminal hoax / economic sabotage without political context (China contaminated-pork drone drops 2019)"
+    - "External crosswalk anchors (CASE 2021 Task 2; ACLED hierarchy caveat) and composite validation strategy in metadata"
+  first_of_kind_status: >
+    No public drone-event extraction schema existed prior to this codebook
+    (triangulated Aug 2026 across publications, GitHub repositories, and grey
+    literature). Treat this codebook as first-of-kind: there is no external
+    schema to inherit conventions from, and no full-coverage external
+    validation referent.
+  validation_strategy: >
+    Composite, by event-type family. Kinetic types (drone_strike_attack,
+    loitering_munition_attack, swarm_attack) validate against ACLED
+    air/drone-strike rows (see acled_crosswalk_caveats) and the Haugstvedt
+    VNSA UAV dataset (1,122 incidents 2006-23, 91.3% MENA; VNSA-only —
+    excludes state actors). Non-kinetic types (ISR, propaganda, C2,
+    logistics) have NO external referent; synthetic evaluation data is the
+    only available option for them. Any recall number reported for this
+    domain must state which family it covers.
+  external_crosswalks:
+    case_2021_task2: >
+      Kinetic anchor: CASE 2021 Task 2 (emerging-welfare shared task,
+      ACLED-derived taxonomy) labels AIR_STRIKE and ARMED_CLASH map onto
+      drone_strike_attack / loitering_munition_attack / swarm_attack when the
+      source confirms a UAV platform. Use these labels as the second
+      crosswalk anchor alongside ACLED sub-event types.
+    acled_crosswalk_caveats: >
+      ACLED hierarchy rules structurally undercount drone events in any
+      comparison: simultaneous shelling + airstrike is coded as the single
+      air/drone-strike sub-event, and air/drone strikes occurring during an
+      ongoing battle are merged into the Battles event type (ACLED Codebook
+      2024). Model this undercount when comparing against ACLED — do not
+      treat ACLED counts as ground truth for recall.
 
 # =============================================================================
 # EXTRACTION PROMPT — domain-specific base system prompt scaffolding
@@ -143,6 +177,7 @@ extraction_prompt:
       "named_unit": "specific unit named, or null",
       "platform_class": "platform classification key, or unknown_platform",
       "platform_model": "specific model if named (e.g. 'TB2', 'Shahed-136'), or null",
+      "acquisition_type": "acquisition taxonomy key (see codebook acquisition_type) ONLY when the text states how the platform was acquired; otherwise null",
       "platform_identification_confidence": "tier_1_sensor_confirmed | tier_2_fragment_forensic | tier_3_multi_source_attributed | tier_4_single_source | tier_5_unknown",
       "autonomy_level": "human_controlled | human_supervised | autonomous_terminal | unknown | null",
       "target_category": "target typology key",
@@ -659,6 +694,7 @@ event_types:
     negative_examples:
       - "Drone conducted attack directly (→ DRONE_STRIKE_ATTACK or LOITERING_MUNITION)"
       - "Drone only conducted ISR without feeding another system (→ DRONE_SURVEILLANCE_ISR)"
+      - "Ground-based forward observer or radar directed the artillery fire — no drone in the targeting loop (→ not a drone event)"
 
     decision_rules:
       - "IF drone feeds targeting data to another weapon system → DRONE_C2_FACILITATION"
@@ -740,6 +776,7 @@ event_types:
     negative_examples:
       - "Drone carried explosives to target (→ DRONE_STRIKE_ATTACK)"
       - "Commercial delivery drone making routine package drop (no political context)"
+      - "Government ANNOUNCES a future drone-delivery programme or procurement plan — no delivery flight occurred (→ policy announcement, non-event)"
 
     decision_rules:
       - "IF drone delivers non-munition cargo to political/military actor → DRONE_SUPPLY_LOGISTICS"
@@ -910,6 +947,46 @@ purpose_taxonomy:
     unknown:
       label: "Purpose Unknown"
       description: "Drone confirmed but operational purpose not ascertainable from text"
+
+# =============================================================================
+# SECTION 4B: ACQUISITION TYPOLOGY (UNOCT/CAR Global Report 2024, Table 5)
+# =============================================================================
+
+acquisition_type:
+  description: >
+    OPTIONAL field: how the operating actor acquired the platform or its
+    components. Populate ONLY when the source text explicitly supports an
+    acquisition pathway — most strike reporting will not, and null is the
+    expected default. Vocabulary follows UNOCT/CAR Global Report on the
+    Acquisition, Weaponization and Deployment of UAS by Non-State Armed
+    Groups (2024), Table 5, which also provides a 21-state quantified
+    breakdown of observed pathways.
+  source: "UNOCT/CAR Global Report 2024, Table 5 (p.15)"
+  values:
+    commercial_procurement: >
+      Lawful purchase of commercially available platforms or components
+      (retail, online marketplaces, front-company procurement of COTS parts).
+    custodian_diversion: >
+      Theft, loss, or diversion of platforms from a lawful custodian's
+      stockpile (state arsenal, manufacturer, distributor) without that
+      custodian's intent.
+    illicit_manufacture_modification: >
+      Clandestine manufacture of airframes/payloads or modification of
+      commercial platforms for hostile use (workshop-built fixed-wing,
+      release-mechanism retrofits, payload integration).
+    illicit_trafficking: >
+      Acquisition through smuggling networks or black-market transfer across
+      borders or perimeters.
+    battlefield_loss_capture: >
+      Capture and reuse of platforms lost, downed, or abandoned by another
+      party on the battlefield.
+    state_sponsored_diversion: >
+      Deliberate transfer of platforms, components, or manufacturing
+      capability by a sponsoring state to a non-state actor.
+    other: >
+      Acquisition pathway is stated in the source but fits none of the above
+      categories. Do NOT use as a substitute for null when the pathway is
+      simply unstated.
 
 # =============================================================================
 # SECTION 5: ACTOR TYPOLOGY AND MATURITY LEVEL
@@ -1286,6 +1363,41 @@ edge_cases:
       drone_propaganda_documentation with no parent_event_id. These events
       are systematically underrepresented in ACLED and GTTAC.
 
+  planned_attack_boundary:
+    rule: >
+      A drone attack PLOT — planning, procurement, or testing without an
+      operational flight against the intended target — is NOT a codeable
+      event. Code only when a platform actually flew a hostile or politically
+      significant mission (including failed missions that launched). Foiled
+      plots discovered pre-launch, and test flights on the plotter's own
+      ground, fall under non_events (planning activity), however serious the
+      intended payload.
+    example: >
+      1993: Aum Shinrikyo tested a remote-controlled helicopter intended for
+      sarin dispersal; the platform crashed in testing and no attack flight
+      occurred (UNOCT/CAR 2024, Table 1) = NON-EVENT under this codebook
+      (planned-attack boundary case). The same incident WOULD be coded had
+      the platform flown a dispersal mission, even unsuccessfully.
+
+  drone_as_protest_instrument:
+    rule: >
+      When a drone is the instrument of a symbolic political protest act
+      (banner drop, symbolic payload delivery onto a government site,
+      protest-aligned overflight), the drone flight IS a drone event — code
+      drone_supply_logistics or drone_surveillance_isr per the mission
+      profile, with actor_category = lone_actor or the named group, and
+      event_legal_context = domestic_security. ROUTING with the protest
+      codebook: the protest domain codes the surrounding demonstration only
+      if a crowd assembly independently meets its minimum criteria; a
+      single-operator symbolic drone act with no assembly stays in the drone
+      domain alone. Never double-code the same flight in both domains.
+    example: >
+      April 2015: an activist protesting nuclear-restart policy landed a
+      small drone carrying trace-radioactive sand on the roof of the Japanese
+      Prime Minister's office (UNOCT/CAR 2024, Table 1) = ONE drone event
+      (drone_supply_logistics, lone_actor, domestic_security); no protest
+      event coded — there was no assembly.
+
   ambiguous_drone_vs_missile:
     rule: >
       When source text is unclear whether weapon was a drone or cruise missile:
@@ -1344,6 +1456,19 @@ non_events:
     description: "Drone used in robbery, drone voyeurism, drone harassment of individuals"
     reason: "Criminal event, not political drone event"
     exception: "Cartel-vs-cartel drone warfare IS coded (political violence context)"
+
+  - category: "Criminal hoax or economic sabotage without political context"
+    description: >
+      Drone used to spread scare material or contaminants for profit or
+      market manipulation, with no political demand or actor. Anchor case:
+      2019, China — criminal gangs used drones to drop pork products
+      presented as African-swine-fever-contaminated onto farms to depress
+      prices and force distressed sales (UNOCT/CAR 2024, Table 1).
+    reason: "Criminal-economic event; no political actor, demand, or target"
+
+  - category: "Drone attack plot without an operational flight"
+    description: "Planning, procurement, or own-ground testing discovered or abandoned before any hostile mission launched"
+    reason: "Planning activity, not an event — see edge_cases.planned_attack_boundary (Aum Shinrikyo 1993 anchor)"
 
 # =============================================================================
 # SECTION 13: CONFIDENCE GUIDANCE
