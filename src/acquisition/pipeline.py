@@ -39,6 +39,7 @@ import src.acquisition.file_discovery as _file_src
 from src.acquisition.scraper import scrape_articles
 from src.acquisition.geocoder import geocode_events
 from src.acquisition.translator import translate_articles
+from src.acquisition.electoral_nexus import tag_electoral_nexus
 from src.acquisition.extractor import extract_events
 from src.acquisition.relevance_filter import RelevanceFilter
 from src.acquisition.storage import (
@@ -454,6 +455,14 @@ def run_pipeline(
                 max_workers=geocode_workers,
             )
 
+    # Stage 4.75: Electoral-nexus second pass (mechanical, no LLM call).
+    # Primary-domain events get their electoral connection tagged here; the
+    # election domain itself is a residual extractor under the v2.0
+    # architecture and needs no tag.
+    if events and domain != "election_events":
+        with _stage("electoral_nexus"):
+            events = tag_electoral_nexus(events)
+
     # Stage 5: Storage
     with _stage("storage"):
         log.info("--- Stage 5: Saving Results ---")
@@ -625,6 +634,11 @@ def run_pipeline_multi_codebook(
                     cache_path=geocode_cache,
                     max_workers=geocode_workers,
                 )
+
+        # Stage 4.75: Electoral-nexus second pass (v2.0 architecture)
+        if events and domain != "election_events":
+            with _stage("electoral_nexus"):
+                events = tag_electoral_nexus(events)
 
         # Stage 5: Storage
         with _stage("storage"):
