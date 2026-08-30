@@ -249,8 +249,13 @@ python -m src.annotation.export_for_annotation \
 # In Label Studio: Import → upload JSON → annotate each task:
 #   1. Is this a genuine protest event?
 #   2. Correct the event type if wrong
+#   2b. Correct the issue_tags (closed taxonomy; 'no_tags_supported' = [])
 #   3. Correct confidence if wrong
-#   4. Flag extraction errors if any
+#   4. Flag per-field extraction errors — wrong_event_type/date/location/
+#      actors/casualties map 1:1 onto field_confidence keys and become
+#      _field_verdicts on import (the calibration signal for those ratings)
+# NOTE: paste the updated labeling_config.xml into the LS project after
+# pulling these changes — the new widgets don't apply themselves.
 # Export → JSON → save to data/annotation/label_studio_export.json
 
 # Import corrections back
@@ -328,8 +333,7 @@ The JSON report includes a `match_records` array (one entry per gold event) for 
 | Issue | File | Notes |
 |---|---|---|
 | ACLED validator not yet built | `src/validation/` | Blocked — ACLED token still pending |
-| Annotation pipeline built but never run | `src/annotation/` | `data/annotation/` has no git history — zero batches ever exported/imported. This is the only mechanism that can validate `issue_tags` correctness, fine 8-type accuracy, and the v3.0 boundary-case rules (no automated validator covers any of these) |
-| `labeling_config.xml` has no `issue_tags` correction widget | `src/annotation/labeling_config.xml` | Only `corrected_event_type` is annotatable today; annotation can't validate the v3.0 field until this widget is added |
+| Annotation pipeline built but never run | `src/annotation/` | `data/annotation/` has no git history — zero batches ever exported/imported. This is the only mechanism that can validate `issue_tags` correctness, fine 8-type accuracy, `field_confidence` calibration, and the v3.x boundary-case rules (no automated validator covers any of these). The labeling interface now carries widgets for all of them (`corrected_issue_tags`, per-field `extraction_errors` → `_field_verdicts`) — running batch 1 is the remaining gap |
 | BBC token has no refresh on 401 | `src/acquisition/bbc_discovery.py` | Long backfills may expire mid-run |
 | Checkpoint append is thread-safe but not crash-atomic | `src/acquisition/extractor.py:_write_checkpoint` | SIGKILL during write can leave a partial line that fails the resume-skip match |
 

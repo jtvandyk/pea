@@ -74,35 +74,122 @@ class TestCandidateTier:
         assert "candidate" in row
 
 
-class TestAnnotationPromotion:
-    def _task(self, verdict):
-        import json
+def _task(verdict, extra_results=None, source_event=None):
+    import json
 
-        return {
-            "id": 1,
-            "data": {"_source_event": json.dumps(_event())},
-            "annotations": [
-                {
-                    "was_cancelled": False,
-                    "skipped": False,
-                    "result": [
-                        {
-                            "from_name": "is_protest",
-                            "type": "choices",
-                            "value": {"choices": [verdict]},
-                        }
-                    ],
-                    "completed_by": {"id": 7},
-                }
-            ],
+    results = [
+        {
+            "from_name": "is_protest",
+            "type": "choices",
+            "value": {"choices": [verdict]},
         }
+    ]
+    for name, choices in (extra_results or {}).items():
+        results.append(
+            {"from_name": name, "type": "choices", "value": {"choices": choices}}
+        )
+    return {
+        "id": 1,
+        "data": {"_source_event": json.dumps(source_event or _event())},
+        "annotations": [
+            {
+                "was_cancelled": False,
+                "skipped": False,
+                "result": results,
+                "completed_by": {"id": 7},
+            }
+        ],
+    }
 
+
+class TestAnnotationPromotion:
     def test_confirmed_event_promoted_to_reviewed(self):
-        event = process_task(self._task("yes"))
+        event = process_task(_task("yes"))
         assert event["validation_status"] == "reviewed"
         assert event["_is_false_positive"] is False
 
     def test_rejected_event_demoted(self):
-        event = process_task(self._task("no"))
+        event = process_task(_task("no"))
         assert event["validation_status"] == "rejected"
         assert event["_is_false_positive"] is True
+
+
+class TestIssueTagsCorrection:
+    def test_corrected_tags_applied(self):
+        event = process_task(
+            _task(
+                "yes",
+                extra_results={"corrected_issue_tags": ["elections", "land"]},
+                source_event=_event(issue_tags=["economy_jobs"]),
+            )
+        )
+        assert event["issue_tags"] == ["elections", "land"]
+        assert event["_issue_tags_corrected"] is True
+
+    def test_no_tags_supported_means_empty_list(self):
+        event = process_task(
+            _task(
+                "yes",
+                extra_results={"corrected_issue_tags": ["no_tags_supported"]},
+                source_event=_event(issue_tags=["economy_jobs"]),
+            )
+        )
+        assert event["issue_tags"] == []
+        assert event["_issue_tags_corrected"] is True
+
+    def test_untouched_widget_keeps_llm_tags(self):
+        event = process_task(_task("yes", source_event=_event(issue_tags=["land"])))
+        assert event["issue_tags"] == ["land"]
+        assert "_issue_tags_corrected" not in event
+
+
+class TestFieldVerdicts:
+    def test_flagged_fields_marked_incorrect(self):
+        event = process_task(
+            _task(
+                "yes",
+                extra_results={"extraction_errors": ["wrong_date", "wrong_casualties"]},
+            )
+        )
+        verdicts = event["_field_verdicts"]
+        assert verdicts["date"] == "incorrect"
+        assert verdicts["casualties"] == "incorrect"
+        assert verdicts["event_type"] == "correct"
+
+    def test_wrong_organizer_maps_to_actors(self):
+        event = process_task(
+            _task("yes", extra_results={"extraction_errors": ["wrong_organizer"]})
+        )
+        assert event["_field_verdicts"]["actors"] == "incorrect"
+
+    def test_no_errors_all_correct(self):
+        event = process_task(_task("yes"))
+        assert set(event["_field_verdicts"].values()) == {"correct"}
+        assert set(event["_field_verdicts"]) == {
+            "event_type",
+            "actors",
+            "location",
+            "date",
+            "casualties",
+        }
+
+
+class TestAnnotationExportDisplay:
+    def test_new_display_fields_present(self):
+        from src.annotation.export_for_annotation import _build_task
+
+        task = _build_task(_event(issue_tags=["elections"], _article_text="text " * 50))
+        assert task["data"]["issue_tags_display"] == "elections"
+        assert task["data"]["field_confidence_display"] == (
+            "event_type: high, actors: medium, location: high, "
+            "date: low, casualties: low"
+        )
+
+    def test_display_defaults(self):
+        from src.annotation.export_for_annotation import _build_task
+
+        event = _event(issue_tags=None)
+        del event["field_confidence"]
+        task = _build_task(event)
+        assert task["data"]["issue_tags_display"] == "(none)"
+        assert task["data"]["field_confidence_display"] == "(not rated)"

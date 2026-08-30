@@ -84,6 +84,17 @@ def _build_task(event: dict, article_text: Optional[str] = None) -> dict:
     )
     location_display = ", ".join(location_parts) or "(unknown)"
 
+    issue_tags = event.get("issue_tags") or []
+    issue_tags_display = ", ".join(str(t) for t in issue_tags) or "(none)"
+
+    field_confidence = event.get("field_confidence") or {}
+    if isinstance(field_confidence, dict) and field_confidence:
+        field_confidence_display = ", ".join(
+            f"{field}: {rating}" for field, rating in field_confidence.items()
+        )
+    else:
+        field_confidence_display = "(not rated)"
+
     # Truncate article text for display — annotators need context, not full text
     text = article_text or event.get("_article_text", "")
     text_excerpt = text[:2000] + ("…" if len(text) > 2000 else "")
@@ -104,6 +115,8 @@ def _build_task(event: dict, article_text: Optional[str] = None) -> dict:
             "state_response": event.get("state_response") or "none",
             "outcome": event.get("outcome") or "",
             "claims_display": claims_display,
+            "issue_tags_display": issue_tags_display,
+            "field_confidence_display": field_confidence_display,
             # Hidden fields passed through for training data assembly
             "_source_event": json.dumps(event, ensure_ascii=False),
             "_priority_score": round(_priority_score(event), 3),
