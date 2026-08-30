@@ -58,6 +58,19 @@ metadata:
     call, per Conrad, Haglund & Moore 2013 "Coding Rules & Norms"); [B]-rule
     confidence cap wired into extraction_rules. Source-genre note: repression
     is documented NGO/human-rights-report-first, not newswire-first.
+  linked_pair_architecture: |
+    NAVCO 3.0 dual representation (adopted Aug 2026, plan §4 decision 2):
+    repression answering one specific protest stays EXCLUDED from LLM
+    extraction here (it remains that protest event's state_response), but
+    the pipeline's Stage 4.8 mechanically derives a linked repression
+    event from every repressive protest response — flagged
+    derived_from_protest: true and sharing a dissent_repression_pair_id
+    with the protest event (src/acquisition/dissent_repression.py).
+    Extracted repression events that plausibly answer a protest wave
+    (same country, ±3 days, compatible city) are linked to it the same
+    way. Filter derived_from_protest to recover the extraction-only
+    dataset; group by dissent_repression_pair_id for NAVCO-style
+    dissent-repression sequences.
   decision_rule_certainty: |
     ITT convention (Conrad, Haglund & Moore, ISP 2013): every decision rule
     carries a certainty grade on the RULE itself, not only on extractions.

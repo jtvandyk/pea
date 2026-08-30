@@ -39,6 +39,10 @@ import src.acquisition.file_discovery as _file_src
 from src.acquisition.scraper import scrape_articles
 from src.acquisition.geocoder import geocode_events
 from src.acquisition.translator import translate_articles
+from src.acquisition.dissent_repression import (
+    derive_linked_repression_events,
+    link_repression_to_protests,
+)
 from src.acquisition.electoral_nexus import tag_electoral_nexus
 from src.acquisition.extractor import extract_events
 from src.acquisition.relevance_filter import RelevanceFilter
@@ -567,8 +571,12 @@ def run_pipeline_multi_codebook(
                 a["text_en"] = a.get("text")
                 a["text_lang"] = "unknown"
 
-    # --- Stages 2.5 + 4 + 4.5 + 5: Per-domain in series (preserves prompt caching) ---
+    # --- Stages 2.5 + 4 + 4.5 + 4.75: Per-domain in series (preserves prompt
+    # caching). Storage runs AFTER the cross-domain linking pass below, so
+    # linked-pair annotations land in the saved output. ---
     results: dict = {}
+    domain_failures: dict = {}
+    domain_degraded_map: dict = {}
 
     for domain in domains:
         cfg = DOMAIN_CONFIGS.get(domain, {})
@@ -640,18 +648,37 @@ def run_pipeline_multi_codebook(
             with _stage("electoral_nexus"):
                 events = tag_electoral_nexus(events)
 
-        # Stage 5: Storage
+        results[domain] = events
+        domain_failures[domain] = failures
+        domain_degraded_map[domain] = domain_degraded
+
+    # --- Stage 4.8: Dissent–repression linked pairs (NAVCO dual
+    # representation) — only when both codebooks ran in this pass. ---
+    if "protest" in results and "state_repression" in results:
+        _set_domain("state_repression")
+        with _stage("dissent_repression_linking"):
+            log.info("--- Stage 4.8: Dissent-Repression Linked Pairs ---")
+            derived = derive_linked_repression_events(results["protest"])
+            results["state_repression"].extend(derived)
+            link_repression_to_protests(results["state_repression"], results["protest"])
+
+    # --- Stage 5: Storage (per domain, after cross-domain passes) ---
+    for domain in domains:
+        # Skip only domains that never reached extraction AND gained no
+        # derived events from the linking pass.
+        if domain not in domain_failures and not results.get(domain):
+            continue
+        _set_domain(domain)
         with _stage("storage"):
             save_results(
-                events,
+                results[domain],
                 output_dir=output_dir,
                 run_id=run_id,
-                failures=failures,
+                failures=domain_failures.get(domain, []),
                 upload_to=upload_to,
                 domain=domain,
-                degraded_modes=domain_degraded,
+                degraded_modes=domain_degraded_map.get(domain, []),
             )
-        results[domain] = events
 
     log.info(f"=== Multi-codebook pipeline complete: {list(results.keys())} ===")
     return results
