@@ -13,7 +13,9 @@
 
 metadata:
   title: "Comprehensive Drone Event Codebook for LLM Classification"
-  version: "1.1"
+  version: "1.2"
+  changelog_v12:
+    - "field_confidence block in output schema; military-register discount; actors mirrors attribution_confidence"
   last_updated: "August 2026"
   llm_backend: "Azure AI Foundry (gpt-5.4)"
   description: >
@@ -152,6 +154,7 @@ extraction_prompt:
          (tier_1_sensor_confirmed .. tier_5_unknown). Never use 'unknown' for
          event_confidence.
     - "For civilian harm, grade civilian_harm_grade per the Airwars-derived scale in this codebook and record the cause in civilian_harm_cause."
+    - "field_confidence: additionally rate event_type, actors, location, date, and casualties independently (high/medium/low). Military-register text (belligerent operational claims, unverifiable battle-damage assertions) rates affected fields one step lower unless independently corroborated. For actors, mirror attribution_confidence: forensically_confirmed/two_source → high, single_source → medium, contested/unknown → low."
 
   type_hints:
     drone_strike_attack: "armed UAV strikes and returns (reusable platform)"
@@ -194,6 +197,7 @@ extraction_prompt:
       "event_legal_context": "ihl_armed_conflict | outside_ihl | domestic_security | contested | unknown",
       "event_confidence": "high / medium / low",
       "attribution_confidence": "single_source_claimed | two_source_attributed | forensically_confirmed | contested | unknown",
+      "field_confidence": {"event_type": "high / medium / low", "actors": "high / medium / low", "location": "high / medium / low", "date": "high / medium / low", "casualties": "high / medium / low"},
       "civic_space_rating": "CIVICUS rating of the event country if known, or null",
       "parent_event_id": "event_id of the parent event in a paired operation, or null",
       "child_event_ids": ["event_ids of linked child events, or []"],

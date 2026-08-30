@@ -121,6 +121,23 @@ def test_codebook_structure(path):
         ).strip(), f"{path.name} event_types.{type_key}: empty definition"
 
 
+@pytest.mark.parametrize("path", _codebook_paths(), ids=lambda p: p.name)
+def test_codebook_schema_has_field_confidence(path):
+    """Per-field confidence (plan §4.2) is part of every domain's output schema."""
+    with open(path) as f:
+        cb = yaml.safe_load(f)
+    schema = cb.get("extraction_prompt", {}).get("output_schema", "")
+    assert "field_confidence" in schema, (
+        f"{path.name}: output_schema missing field_confidence block — "
+        "per-field confidence is a cross-domain schema requirement"
+    )
+    rules = cb.get("extraction_prompt", {}).get("extraction_rules", [])
+    assert any("field_confidence" in str(r) for r in rules), (
+        f"{path.name}: no extraction rule explains field_confidence — "
+        "the schema field needs an instruction to be populated"
+    )
+
+
 # ── Few-shot examples structure ──────────────────────────────────────────────
 
 

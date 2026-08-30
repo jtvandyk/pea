@@ -38,7 +38,10 @@ metadata:
   unit_of_analysis: "Individual election-related coercion/contestation incident"
   minimum_participants: 1
   llm_backend: "Azure AI Foundry (gpt-5.4)"
-  version: "1.1"
+  version: "1.2"
+  changelog_1_2: |
+    field_confidence block in output schema; partisan single-source cap
+    applied per-field (actors, casualties).
   last_updated: "2026-08-30"
   changelog_1_1: |
     Explicit temporal-window decision rule: adopted ECAV's ±6-month window
@@ -96,6 +99,7 @@ extraction_prompt:
     - "Record the named election in election_name (e.g. '2025 Tanzanian general election'); if the article only implies it, construct 'YYYY <country> <level> election' from context."
     - "For state_response, reuse the protest vocabulary where applicable: none, monitoring, dispersal, teargas, water_cannon, rubber_bullets, live_ammunition, arrests, ban, curfew, unknown."
     - 'confidence: "high" / "medium" / "low". Never "unknown". Single-source partisan claims (one party accusing another) cap at medium.'
+    - "field_confidence: additionally rate event_type, actors, location, date, and casualties independently (high/medium/low). Partisan single-source claims cap the actors and casualties fields at medium even when the event itself is well attested. Keep the event-level confidence as the overall judgement."
 
   type_hints:
     voter_intimidation_coercion: "threats, vote-buying under duress, coercive pressure on voters"
@@ -134,7 +138,8 @@ extraction_prompt:
       "article_date": "publication date of article",
       "source_country": "country of news source",
       "source_language": "language of original article",
-      "confidence": "high / medium / low"
+      "confidence": "high / medium / low",
+      "field_confidence": {"event_type": "high / medium / low", "actors": "high / medium / low", "location": "high / medium / low", "date": "high / medium / low", "casualties": "high / medium / low"}
     }
 
 # =============================================================================

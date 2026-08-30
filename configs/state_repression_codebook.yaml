@@ -43,7 +43,10 @@ metadata:
   unit_of_analysis: "Individual state/pro-state repression action"
   minimum_participants: 1
   llm_backend: "Azure AI Foundry (gpt-5.4)"
-  version: "1.1"
+  version: "1.2"
+  changelog_1_2: |
+    field_confidence block in output schema with concealment prior on
+    casualty/actor fields (state-sourced) and NGO-documentation exception.
   last_updated: "2026-08-30"
   changelog_1_1: |
     ITT-style certainty grading on decision rules ([A] firm / [B] judgment
@@ -132,6 +135,7 @@ extraction_prompt:
     - "For outcome, choose from: detained, charged, convicted, released, banned, dissolved, suspended, shutdown_active, shutdown_lifted, exiled, ongoing, unknown."
     - 'confidence: "high" / "medium" / "low". Never "unknown". Single-source reports from state media about their own actions are usually reliable for the FACT of the action (high) but not for its justification.'
     - "Decision rules in this codebook carry certainty grades (ITT convention): [A] = firm rule, apply mechanically; [B] = judgment call. When a [B] rule is decisive for including or typing an event, cap that event's confidence at medium."
+    - "field_confidence: additionally rate event_type, actors, location, date, and casualties independently (high/medium/low). Concealment prior: casualty and actor fields sourced only from state statements rate one step lower (states obscure repression); NGO/human-rights documentation naming target, instrument, and state body can rate high despite being single-source. Keep the event-level confidence as the overall judgement."
 
   type_hints:
     activist_arrest_prosecution: "arrest/prosecution of activists, HRDs, opposition figures, lawyers, unionists"
@@ -170,7 +174,8 @@ extraction_prompt:
       "article_date": "publication date of article",
       "source_country": "country of news source",
       "source_language": "language of original article",
-      "confidence": "high / medium / low"
+      "confidence": "high / medium / low",
+      "field_confidence": {"event_type": "high / medium / low", "actors": "high / medium / low", "location": "high / medium / low", "date": "high / medium / low", "casualties": "high / medium / low"}
     }
 
 # =============================================================================

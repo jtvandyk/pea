@@ -105,6 +105,8 @@ def process_task(task: dict) -> dict | None:
         event["_annotation_verdict"] = verdict
         event["_is_false_positive"] = True
         event["_annotation_notes"] = _get_text(annotation, "annotation_notes")
+        # Candidate-tier demotion: human reviewed and rejected.
+        event["validation_status"] = "rejected"
         return event  # include in reviewed_events but exclude from training_data
 
     # Apply corrections
@@ -129,6 +131,9 @@ def process_task(task: dict) -> dict | None:
     event["_is_false_positive"] = False
     event["_reviewed_at"] = datetime.utcnow().isoformat()
     event["_annotator_id"] = annotation.get("completed_by", {}).get("id")
+    # Candidate-tier promotion (UCDP model): human-confirmed events graduate
+    # from "candidate" to "reviewed".
+    event["validation_status"] = "reviewed"
 
     return event
 

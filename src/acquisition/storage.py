@@ -55,6 +55,12 @@ CSV_COLUMNS = [
     "outcome",
     "outcome_notes",
     "confidence",
+    "fc_event_type",
+    "fc_actors",
+    "fc_location",
+    "fc_date",
+    "fc_casualties",
+    "validation_status",
     "article_title",
     "article_url",
     "article_date",
@@ -127,9 +133,16 @@ def _derive_turmoil_level(event: dict) -> str:
 
 
 def flatten_for_csv(event: dict) -> dict:
-    """Convert list fields to semicolon-delimited strings for CSV compatibility."""
+    """Convert list fields to semicolon-delimited strings for CSV compatibility.
+
+    The nested field_confidence dict is flattened to fc_<field> columns.
+    """
+    field_confidence = event.get("field_confidence") or {}
     row = {}
     for col in CSV_COLUMNS:
+        if col.startswith("fc_"):
+            row[col] = str(field_confidence.get(col[3:], "") or "")
+            continue
         val = event.get(col)
         if isinstance(val, list):
             row[col] = "; ".join(str(v) for v in val)
@@ -138,6 +151,25 @@ def flatten_for_csv(event: dict) -> dict:
         else:
             row[col] = str(val)
     return row
+
+
+def field_confidence_distribution(events: list) -> dict:
+    """Aggregate field_confidence ratings across events: {field: {rating: n}}.
+
+    Surfaces the per-field error structure (UCDP automation finding: one
+    event-level number hides F1 spreads of 30-99% across coding tasks).
+    """
+    dist: dict = {}
+    for event in events:
+        fc = event.get("field_confidence") or {}
+        if not isinstance(fc, dict):
+            continue
+        for field, rating in fc.items():
+            if isinstance(rating, str) and rating.strip():
+                by_rating = dist.setdefault(field, {})
+                key = rating.strip().lower()
+                by_rating[key] = by_rating.get(key, 0) + 1
+    return dist
 
 
 def _az_client(conn_str: Optional[str] = None) -> "DataLakeServiceClient":
@@ -297,9 +329,12 @@ def save_results(
     output_dir = output_dir / domain
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Derive turmoil_level for every event (in-place)
+    # Derive turmoil_level and stamp candidate status for every event (in-place).
+    # UCDP candidate-tier model: machine extractions publish as provisional
+    # "candidate"; the annotation import path promotes them to "reviewed".
     for event in events:
         event["turmoil_level"] = _derive_turmoil_level(event)
+        event.setdefault("validation_status", "candidate")
 
     # 1. JSONL — one event per line, append-friendly
     jsonl_path = output_dir / f"events_{run_id}.jsonl"
@@ -347,6 +382,8 @@ def save_results(
         "events_by_state_response": count_by(events, "state_response"),
         "events_by_turmoil_level": count_by(events, "turmoil_level"),
         "events_by_confidence": count_by(events, "confidence"),
+        "events_by_validation_status": count_by(events, "validation_status"),
+        "field_confidence_distribution": field_confidence_distribution(events),
         "output_files": {
             "jsonl": str(jsonl_path),
             "csv": str(csv_path),
