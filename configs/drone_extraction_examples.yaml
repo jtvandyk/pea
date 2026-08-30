@@ -16,6 +16,9 @@
 #   ex_06 — drone_strike_attack (civilian harm, contested attribution, Ethiopia) [pinned]
 #   ex_07 — drone_strike_attack (Mali/Sahel, contested civilian harm, single-source) [pinned]
 #   ex_08 — loitering_munition_attack (ISWAP non-state drone, Lake Chad) [pinned]
+#   ex_09 — drone_supply_logistics (symbolic protest payload, lone actor, Japan 2015)
+#   ex_10 — NEGATIVE: criminal hoax / economic sabotage, no political context → []
+#   ex_11 — NEGATIVE: attack plot without operational flight → []
 # =============================================================================
 
 examples:
@@ -458,3 +461,90 @@ examples:
         parent_event_id: null
         child_event_ids: []
         date: null
+
+  # ---------------------------------------------------------------------------
+  - id: "ex_09"
+    description: "drone_supply_logistics — symbolic protest payload on PM office roof, lone actor, Japan 2015 (drone–protest routing)"
+    rationale: |
+      Drone-as-protest-instrument boundary case (UNOCT/CAR 2024, Table 1; see
+      edge_cases.drone_as_protest_instrument). A single operator delivering a
+      symbolic payload onto a government site IS a drone event: the mission
+      profile is delivery → drone_supply_logistics, actor_category = lone_actor,
+      event_legal_context = domestic_security. ROUTING: no protest event is
+      coded because there was no crowd assembly — the flight belongs to the
+      drone domain alone; never double-code the same flight in both domains.
+      Attribution 'confirmed' because the operator surrendered and claimed the
+      act. Trace-radioactive payload is symbolic, not a CBRN attack — target
+      undamaged, no casualties.
+    article_snippet: |
+      A small drone carrying a plastic bottle of sand marked with the radioactive
+      symbol was found on the roof of the Japanese Prime Minister's office in Tokyo.
+      A 40-year-old man later surrendered to police, saying he had flown the drone
+      onto the roof to protest the government's plan to restart nuclear reactors.
+      The sand contained trace amounts of radioactive cesium, too low to harm health.
+      No one was injured and no damage was reported.
+    extracted_events:
+      - event_type: "drone_supply_logistics"
+        primary_purpose: "logistics_smuggling"
+        secondary_purposes: ["propaganda_value"]
+        attributed_actor: "lone activist (anti-nuclear-restart protest)"
+        actor_category: "lone_actor"
+        actor_maturity_level: null
+        named_unit: null
+        platform_class: "commercial_multirotor"
+        platform_model: null
+        platform_identification_confidence: "tier_5_unknown"
+        autonomy_level: null
+        cargo_category: "symbolic_payload"
+        destination_location:
+          country: "Japan"
+          admin_region: "Tokyo"
+          specific: "Prime Minister's office roof"
+        casualties: null
+        civilian_harm_grade: "none"
+        civilian_harm_cause: null
+        state_response: "legal_prosecution_operator"
+        outcome: "target_missed"
+        event_legal_context: "domestic_security"
+        event_confidence: "high"
+        attribution_confidence: "confirmed"
+        civic_space_rating: null
+        parent_event_id: null
+        child_event_ids: []
+        date: null
+
+  # ---------------------------------------------------------------------------
+  - id: "ex_10"
+    description: "NEGATIVE — criminal hoax / economic sabotage without political context → []"
+    rationale: |
+      Non-event anchor (UNOCT/CAR 2024, Table 1; see non_events). Drones are the
+      delivery mechanism, but the act is criminal-economic: no political actor,
+      demand, or target — the goal is market manipulation for profit. Matches
+      the 'criminal hoax or economic sabotage without political context'
+      exclusion. Return [] even though drones, contamination fears, and
+      organised groups all appear in the text.
+    article_snippet: |
+      Chinese authorities said criminal gangs had been using drones to drop pork
+      products onto pig farms, spreading fears the items were contaminated with
+      African swine fever. Investigators said the gangs sought to panic farmers
+      into selling healthy herds at depressed prices, which the gangs then resold
+      at a profit in other provinces. Several arrests were reported.
+    extracted_events: []
+
+  # ---------------------------------------------------------------------------
+  - id: "ex_11"
+    description: "NEGATIVE — attack plot without an operational flight → []"
+    rationale: |
+      Planned-attack boundary anchor (see edge_cases.planned_attack_boundary,
+      Aum Shinrikyo 1993). Retrospective reporting on a plot in which the
+      platform never flew a hostile mission — it crashed during the plotters'
+      own testing — is NOT a codeable drone event, however serious the intended
+      payload (sarin). Only an operational flight against the intended target,
+      including a failed one that launched, is coded. Return [].
+    article_snippet: |
+      A new report on chemical terrorism revisits the case of the Japanese cult
+      Aum Shinrikyo, which in 1993 acquired a remote-controlled helicopter and
+      planned to use it to spray sarin nerve agent over Tokyo. The aircraft
+      crashed during a test flight at the group's compound and the aerial attack
+      plan was abandoned before any dispersal mission was flown.
+    extracted_events: []
