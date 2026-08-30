@@ -195,3 +195,38 @@ examples:
         source_country: null
         source_language: "fr"
         confidence: "high"
+
+  # ---------------------------------------------------------------------------
+  - id: "el_ex_05"
+    description: "NEGATIVE — routine campaign rally and results announcement without coercion → []"
+    rationale: |
+      Routine electoral process is a non-event: rallies, speeches, manifesto
+      promises, turnout figures, and the results announcement itself involve
+      no coercion, contestation, or violence. The crowd size, charged
+      rhetoric, and high stakes do not change that — there must be an act of
+      coercion or contestation, not campaigning. Return [].
+    article_snippet: |
+      Tens of thousands of supporters filled the national stadium on Saturday
+      as the ruling party closed its campaign ahead of Tuesday's presidential
+      election. The candidate promised free secondary education and warned
+      that the opposition would 'take the country backwards'. The electoral
+      commission said results would be announced within five days of the poll.
+    extracted_events: []
+
+  # ---------------------------------------------------------------------------
+  - id: "el_ex_06"
+    description: "NEGATIVE — coup / military takeover after disputed election → []"
+    rationale: |
+      Coups and military takeovers are explicitly disqualified (a separate
+      phenomenon, not electoral contention), even when triggered by a
+      disputed election. The election context does not convert regime
+      seizure into an election event; nor is the soldiers' detention of the
+      president a political_target_arrest — that type covers coercion within
+      an electoral process, not its abolition. Return [].
+    article_snippet: |
+      Soldiers seized the presidential palace and state broadcaster early on
+      Wednesday, days after the disputed announcement of election results,
+      and declared the constitution suspended. The coup leader said the
+      military had acted to 'prevent chaos' following weeks of tension over
+      the count. The president is reportedly being held at a military base.
+    extracted_events: []

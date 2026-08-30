@@ -694,6 +694,7 @@ event_types:
     negative_examples:
       - "Drone conducted attack directly (→ DRONE_STRIKE_ATTACK or LOITERING_MUNITION)"
       - "Drone only conducted ISR without feeding another system (→ DRONE_SURVEILLANCE_ISR)"
+      - "Ground-based forward observer or radar directed the artillery fire — no drone in the targeting loop (→ not a drone event)"
 
     decision_rules:
       - "IF drone feeds targeting data to another weapon system → DRONE_C2_FACILITATION"
@@ -775,6 +776,7 @@ event_types:
     negative_examples:
       - "Drone carried explosives to target (→ DRONE_STRIKE_ATTACK)"
       - "Commercial delivery drone making routine package drop (no political context)"
+      - "Government ANNOUNCES a future drone-delivery programme or procurement plan — no delivery flight occurred (→ policy announcement, non-event)"
 
     decision_rules:
       - "IF drone delivers non-munition cargo to political/military actor → DRONE_SUPPLY_LOGISTICS"

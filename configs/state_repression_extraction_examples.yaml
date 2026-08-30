@@ -198,3 +198,40 @@ examples:
         source_country: null
         source_language: "en"
         confidence: "high"
+
+  # ---------------------------------------------------------------------------
+  - id: "sr_ex_05"
+    description: "NEGATIVE — non-political criminal prosecution of a public figure → []"
+    rationale: |
+      Ordinary criminal justice is a non-event even when the defendant is
+      politically prominent: an embezzlement prosecution with no stated
+      civic-activity trigger and no civic-space dimension fails
+      minimum_criteria 2 and 4. Do not infer persecution from prominence
+      alone — code repression only when the text links the action to civic
+      or expressive activity. Return [].
+    article_snippet: |
+      A former minister and prominent businessman was arraigned on Thursday
+      on charges of embezzling public funds from a rural roads programme.
+      Prosecutors told the court that audits traced contracts to shell
+      companies he controlled. His lawyers said he would contest the
+      charges. He was granted bail pending trial.
+    extracted_events: []
+
+  # ---------------------------------------------------------------------------
+  - id: "sr_ex_06"
+    description: "NEGATIVE — technical internet outage with no state order → []"
+    rationale: |
+      The #KeepItOn rule codes the ORDER, not the outage: a disruption
+      attributed by operators and the source to infrastructure failure, with
+      no reported government instruction, is a technical event → []. Contrast
+      sr_ex_01, where operators point to instructions the government denies
+      (coded, medium confidence). Anticipatory civil-society warnings about
+      possible future shutdowns are also not events.
+    article_snippet: |
+      Internet connectivity across the country's coastal region dropped to 20
+      percent of normal levels on Monday after a subsea cable was damaged,
+      the national telecoms operator said. Repairs are expected to take up to
+      two weeks, with traffic being rerouted through neighbouring countries.
+      A digital rights group urged the government not to use the disruption
+      as cover for restrictions during the upcoming election period.
+    extracted_events: []

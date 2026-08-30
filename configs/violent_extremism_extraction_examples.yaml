@@ -214,3 +214,41 @@ examples:
         source_country: null
         source_language: "en"
         confidence: "medium"
+
+  # ---------------------------------------------------------------------------
+  - id: "ve_ex_05"
+    description: "NEGATIVE — communal/farmer-herder violence without VE actor or political demand → []"
+    rationale: |
+      Cross-domain division-of-labour anchor: communal, farmer-herder, and
+      vigilante violence is a NON-EVENT in both the VE and protest domains,
+      however deadly. No named VE actor, no claim, no ideological target
+      selection — 'suspected herdsmen' and reprisal framing are communal
+      markers, and media shorthand alone never establishes ideology
+      (attribution_rules). Return [] even though the casualty count
+      resembles an armed_assault.
+    article_snippet: |
+      At least 23 people were killed when armed men raided three farming
+      villages in Plateau State overnight, in what residents described as the
+      latest reprisal in a long-running conflict between farming communities
+      and herders over grazing land. A local youth association vowed to
+      defend the villages, and police deployed additional patrols. No group
+      claimed responsibility.
+    extracted_events: []
+
+  # ---------------------------------------------------------------------------
+  - id: "ve_ex_06"
+    description: "NEGATIVE — foiled plot / arrests before any attack → []"
+    rationale: |
+      A disrupted plot with no executed attack is a non-event: the codebook
+      codes incidents, not intentions (mirrors GTD's exclusion of foiled
+      plots). Security-force action against a cell is ALSO excluded as a
+      state operation (non_events: law-enforcement operations). Return []
+      despite the named jihadist group, the explosives, and the named
+      intended target in the text.
+    article_snippet: |
+      Police announced the arrest of four suspected members of an Islamic
+      State-linked cell who were allegedly planning a bomb attack on a
+      shopping centre in the capital. Officers seized explosive materials
+      and detonators during raids on two residences. The suspects will face
+      terrorism charges, the prosecutor said.
+    extracted_events: []
