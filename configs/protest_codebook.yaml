@@ -50,7 +50,11 @@ metadata:
   unit_of_analysis: "Individual protest event"
   minimum_participants: 2
   llm_backend: "Azure AI Foundry (gpt-5.4)"
-  version: "3.0"
+  version: "3.1"
+  changelog_3_1: |
+    Per-field confidence adopted (plan §4.2): field_confidence block
+    (event_type/actors/location/date/casualties) added to the output schema
+    alongside the kept event-level confidence.
   last_updated: "2026-07-08"
   changelog_3_0: |
     Pan-Africa revision. Added: issue_taxonomy (SCAD-style driver tags,
@@ -151,6 +155,7 @@ extraction_prompt:
     - |-
       confidence: "high" (clear, unambiguous protest), "medium" (some ambiguity), "low" (borderline).
           Do NOT use "unknown" -- always choose high, medium, or low.
+    - "field_confidence: additionally rate event_type, actors, location, date, and casualties independently (high/medium/low) — fields often earn different ratings from one article (a clear riot with a vague casualty count is event_type: high, casualties: low). Keep the event-level confidence as the overall judgement."
 
   type_hints:
     demonstration_march: "peaceful public gathering, rally, march"
@@ -191,7 +196,8 @@ extraction_prompt:
       "article_date": "publication date of article",
       "source_country": "country of news source",
       "source_language": "language of original article",
-      "confidence": "high / medium / low"
+      "confidence": "high / medium / low",
+      "field_confidence": {"event_type": "high / medium / low", "actors": "high / medium / low", "location": "high / medium / low", "date": "high / medium / low", "casualties": "high / medium / low"}
     }
 
 # ============================================================================

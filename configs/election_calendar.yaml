@@ -1,0 +1,30 @@
+# =============================================================================
+# ELECTION CALENDAR — lookup table for the electoral-nexus second pass
+# =============================================================================
+#
+# Consumed by src/acquisition/electoral_nexus.py (calendar_window basis:
+# an event within ±6 months of a listed round is tagged electoral_nexus,
+# per the ECAV window operationalised in election_events_codebook.yaml).
+#
+# POPULATE FROM NELDA (Hyde & Marinov — nelda.co): NELDA is the intended
+# source for these rows, replicating ECAV's country fact-file practice.
+# Each ROUND is its own entry (a runoff opens its own ±6-month window).
+# This file ships EMPTY apart from the format example: rows are
+# operator-maintained data, not code. An empty or missing calendar simply
+# disables the calendar basis — the issue_tags and keyword bases still run.
+#
+# Format:
+#   elections:
+#     <country name, as extracted into events' country field>:
+#       - date: YYYY-MM-DD        # scheduled or actual round date
+#         name: "<year> <country> <level> election"   # free text
+#
+# Example (delete when adding real rows):
+#   elections:
+#     nigeria:
+#       - date: 2027-02-25
+#         name: "2027 Nigerian general election"
+#       - date: 2027-03-11
+#         name: "2027 Nigerian gubernatorial elections"
+
+elections: {}

@@ -105,6 +105,8 @@ def process_task(task: dict) -> dict | None:
         event["_annotation_verdict"] = verdict
         event["_is_false_positive"] = True
         event["_annotation_notes"] = _get_text(annotation, "annotation_notes")
+        # Candidate-tier demotion: human reviewed and rejected.
+        event["validation_status"] = "rejected"
         return event  # include in reviewed_events but exclude from training_data
 
     # Apply corrections
@@ -117,9 +119,34 @@ def process_task(task: dict) -> dict | None:
     if corrected_conf:
         event["confidence"] = corrected_conf[0]
 
+    # issue_tags correction (closed taxonomy). Untouched widget = accept the
+    # LLM's tags; 'no_tags_supported' = the correct value is an empty list.
+    corrected_tags = _get_choice(annotation, "corrected_issue_tags")
+    if corrected_tags:
+        event["issue_tags"] = [t for t in corrected_tags if t != "no_tags_supported"]
+        event["_issue_tags_corrected"] = True
+
     errors = _get_choice(annotation, "extraction_errors")
     if errors:
         event["_extraction_errors"] = errors
+
+    # Per-field verdicts for field_confidence calibration: join these against
+    # the event's field_confidence ratings to measure whether low-rated
+    # fields are actually the ones annotators flag. 'correct' means the
+    # annotator did not flag the field on a reviewed event — meaningful in
+    # aggregate, not as per-event ground truth (the errors widget is optional).
+    error_set = set(errors or [])
+    event["_field_verdicts"] = {
+        "event_type": ("incorrect" if "wrong_event_type" in error_set else "correct"),
+        "actors": (
+            "incorrect"
+            if error_set & {"wrong_actors", "wrong_organizer"}
+            else "correct"
+        ),
+        "location": "incorrect" if "wrong_location" in error_set else "correct",
+        "date": "incorrect" if "wrong_date" in error_set else "correct",
+        "casualties": ("incorrect" if "wrong_casualties" in error_set else "correct"),
+    }
 
     notes = _get_text(annotation, "annotation_notes")
     if notes:
@@ -129,6 +156,9 @@ def process_task(task: dict) -> dict | None:
     event["_is_false_positive"] = False
     event["_reviewed_at"] = datetime.utcnow().isoformat()
     event["_annotator_id"] = annotation.get("completed_by", {}).get("id")
+    # Candidate-tier promotion (UCDP model): human-confirmed events graduate
+    # from "candidate" to "reviewed".
+    event["validation_status"] = "reviewed"
 
     return event
 

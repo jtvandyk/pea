@@ -43,13 +43,34 @@ metadata:
   unit_of_analysis: "Individual state/pro-state repression action"
   minimum_participants: 1
   llm_backend: "Azure AI Foundry (gpt-5.4)"
-  version: "1.1"
+  version: "1.3"
+  changelog_1_3: |
+    Electoral routing flipped for the v2.0 second-pass architecture:
+    state arrests/violence against electoral actors are coded in THIS
+    domain and tagged by the electoral-nexus pass, no longer routed to
+    election_events (which is now a residual extractor).
+  changelog_1_2: |
+    field_confidence block in output schema with concealment prior on
+    casualty/actor fields (state-sourced) and NGO-documentation exception.
   last_updated: "2026-08-30"
   changelog_1_1: |
     ITT-style certainty grading on decision rules ([A] firm / [B] judgment
     call, per Conrad, Haglund & Moore 2013 "Coding Rules & Norms"); [B]-rule
     confidence cap wired into extraction_rules. Source-genre note: repression
     is documented NGO/human-rights-report-first, not newswire-first.
+  linked_pair_architecture: |
+    NAVCO 3.0 dual representation (adopted Aug 2026, plan §4 decision 2):
+    repression answering one specific protest stays EXCLUDED from LLM
+    extraction here (it remains that protest event's state_response), but
+    the pipeline's Stage 4.8 mechanically derives a linked repression
+    event from every repressive protest response — flagged
+    derived_from_protest: true and sharing a dissent_repression_pair_id
+    with the protest event (src/acquisition/dissent_repression.py).
+    Extracted repression events that plausibly answer a protest wave
+    (same country, ±3 days, compatible city) are linked to it the same
+    way. Filter derived_from_protest to recover the extraction-only
+    dataset; group by dissent_repression_pair_id for NAVCO-style
+    dissent-repression sequences.
   decision_rule_certainty: |
     ITT convention (Conrad, Haglund & Moore, ISP 2013): every decision rule
     carries a certainty grade on the RULE itself, not only on extractions.
@@ -132,6 +153,7 @@ extraction_prompt:
     - "For outcome, choose from: detained, charged, convicted, released, banned, dissolved, suspended, shutdown_active, shutdown_lifted, exiled, ongoing, unknown."
     - 'confidence: "high" / "medium" / "low". Never "unknown". Single-source reports from state media about their own actions are usually reliable for the FACT of the action (high) but not for its justification.'
     - "Decision rules in this codebook carry certainty grades (ITT convention): [A] = firm rule, apply mechanically; [B] = judgment call. When a [B] rule is decisive for including or typing an event, cap that event's confidence at medium."
+    - "field_confidence: additionally rate event_type, actors, location, date, and casualties independently (high/medium/low). Concealment prior: casualty and actor fields sourced only from state statements rate one step lower (states obscure repression); NGO/human-rights documentation naming target, instrument, and state body can rate high despite being single-source. Keep the event-level confidence as the overall judgement."
 
   type_hints:
     activist_arrest_prosecution: "arrest/prosecution of activists, HRDs, opposition figures, lawyers, unionists"
@@ -170,7 +192,8 @@ extraction_prompt:
       "article_date": "publication date of article",
       "source_country": "country of news source",
       "source_language": "language of original article",
-      "confidence": "high / medium / low"
+      "confidence": "high / medium / low",
+      "field_confidence": {"event_type": "high / medium / low", "actors": "high / medium / low", "location": "high / medium / low", "date": "high / medium / low", "casualties": "high / medium / low"}
     }
 
 # =============================================================================
@@ -220,12 +243,12 @@ event_types:
     negative_examples:
       - "Protesters arrested during a march (→ protest domain event, state_response: arrests)"
       - "Politician arrested for embezzlement with no civic-activity link (ordinary criminal justice)"
-      - "Opposition candidate arrested three weeks before an election (→ election_events domain: political_target_arrest)"
+      - "Politician arrested for embezzlement with no civic-activity link and no electoral timing (ordinary criminal justice)"
     decision_rules:
       - "[A] IF the target is a civic actor AND the trigger is civic/expressive activity → ACTIVIST_ARREST_PROSECUTION"
       - "[B] IF the arrest happens AT a protest the person joined → protest domain; IF separately targeted (at home, at the airport, days later) → this type (judging 'separately targeted' from timing/venue is interpretive)"
       - "[A] IF the target is a journalist arrested for journalism → JOURNALIST_MEDIA_REPRESSION (more specific type wins)"
-      - "[A] IF the target is an electoral actor in the ±6-month window → election_events domain (political_target_arrest)"
+      - "[A] IF the target is an electoral actor (candidate, party official, campaign staff) → STILL this type; the electoral-nexus second pass tags the event electoral (v2.0 architecture — state arrests are no longer routed to the election domain)"
     confidence_threshold: 0.75
     codebook_equivalents:
       scad: "Pro-government violence / repression (arrest form)"
@@ -376,8 +399,8 @@ non_events:
   - category: "Electoral repression in the ±6-month window"
     examples:
       - "Candidate detained before the vote"
-      - "Party agents arrested on election day"
-    reason: "Belongs to the election_events domain (political_target_arrest)"
+      - "Party agents detained by a party youth wing or militia (non-state perpetrator)"
+    reason: "Non-state perpetrator — belongs to the election_events residual domain (political_target_arrest); state arrests of electoral actors ARE coded here and nexus-tagged"
 
   - category: "Ordinary criminal justice"
     examples:
@@ -482,7 +505,7 @@ general_rules:
   2_confidence: "Provide confidence score: high / medium / low — never 'unknown'"
   3_text_only: "Use only information in provided text; do not infer or hallucinate"
   4_state_is_subject: "Code only when the state action is the event — repression answering one specific protest belongs to that protest's state_response"
-  5_specific_type_wins: "Journalist targets → journalist_media_repression; electoral targets in the window → election_events domain; more specific classification wins"
+  5_specific_type_wins: "Journalist targets → journalist_media_repression; state action against electoral actors is coded HERE and tagged by the electoral-nexus pass (only non-state partisan coercion goes to the election residual domain); more specific classification wins"
   6_state_response_always: "Always set state_response from the shared vocabulary — it drives the pipeline's turmoil derivation"
   7_location_temporal: "All events must have identifiable country and approximate date"
   8_separate_actions: "Each distinct action (different target, instrument, location, or date) is a separate event; one coordinated sweep is one event"

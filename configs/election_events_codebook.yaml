@@ -12,15 +12,21 @@
 #
 # Unit of analysis: a single election-related coercion or contestation INCIDENT.
 #
-# Relationship to the protest codebook (DIVISION OF LABOUR — no double-coding):
-#   Citizen protest forms about elections (results-rejection marches,
-#   anti-rigging demonstrations, election-delay protests) belong to the
-#   PROTEST domain, tagged issue_tags: [elections]. THIS codebook codes
-#   coercion and contestation acts that are NOT citizen protest forms:
-#   intimidation, clashes between party supporters, arrests of political
-#   targets, electoral killings, disruption of the vote process, and formal
-#   election boycotts by parties. ECAV-equivalent coverage of a country is
-#   the UNION of (protest events tagged elections) and (this domain's events).
+# ARCHITECTURE (v2.0 — second-pass residual, plan §4.1, DECO nexus method):
+#   This codebook is a RESIDUAL extractor, not a parallel domain. Events
+#   with a home in a primary domain are coded THERE and receive their
+#   electoral connection from the electoral-nexus second pass
+#   (src/acquisition/electoral_nexus.py — calendar/issue_tags/keyword bases):
+#     - citizen protest about elections        → protest domain (+ nexus tag)
+#     - GTD-qualifying electoral violence      → violent_extremism (+ nexus tag)
+#     - STATE arrests/violence vs electoral actors → state_repression (+ nexus tag)
+#   THIS codebook keeps only election-only events with no other domain home:
+#   voter intimidation, partisan clashes, NON-STATE detention of electoral
+#   actors, sub-GTD partisan violence, vote-process disruption, and party
+#   boycotts. ECAV-equivalent coverage of a country is the UNION of
+#   nexus-tagged primary-domain events and this domain's residual events.
+#   NOTE: an election-only run (--domains election_events) therefore has
+#   reduced coverage BY DESIGN — pair it with the primary domains.
 
 metadata:
   title: "Election Events Codebook for LLM Classification — Africa Focus"
@@ -38,7 +44,26 @@ metadata:
   unit_of_analysis: "Individual election-related coercion/contestation incident"
   minimum_participants: 1
   llm_backend: "Azure AI Foundry (gpt-5.4)"
-  version: "1.1"
+  version: "2.0"
+  architecture: |
+    Second-pass residual (adopted Aug 2026, plan §4.1). Primary domains
+    (protest, VE, repression) extract electorally-connected events and the
+    electoral-nexus pass tags them; this codebook extracts ONLY residual
+    election-only events with no other domain home. Rationale: 10 of
+    ECAV's 18 event types are protest/VE types with an electoral
+    qualifier — parallel extraction guaranteed double-coding (DECO,
+    Fjelde & Höglund 2022).
+  changelog_2_0: |
+    Restructured as second-pass residual extractor. State-perpetrator
+    events routed OUT (political_target_arrest narrowed to non-state
+    perpetrators; state arrests → state_repression + nexus tag;
+    GTD-qualifying killings → violent_extremism + nexus tag). New
+    disqualifier enforcing the residual boundary. Companion changes:
+    electoral_nexus.py, election_calendar.yaml, repression v1.3 routing
+    flip.
+  changelog_1_2: |
+    field_confidence block in output schema; partisan single-source cap
+    applied per-field (actors, casualties).
   last_updated: "2026-08-30"
   changelog_1_1: |
     Explicit temporal-window decision rule: adopted ECAV's ±6-month window
@@ -73,6 +98,7 @@ extraction_prompt:
     - "Ordinary crime or communal violence with no link to the electoral process"
     - "Armed-conflict events (insurgent attacks) that do not target the electoral process"
     - "Elections outside the ±6-month window with no named election context"
+    - "Events with a primary-domain home (v2.0 residual rule): STATE arrests of or violence against electoral actors (→ state_repression domain), and armed-group attacks on the electoral process meeting GTD criteria (→ violent_extremism domain) — the electoral-nexus pass tags them; extract here ONLY events with no other domain home"
 
   step2_intro: "An article ONLY qualifies if ALL of the following are true:"
   minimum_criteria_prompt:
@@ -96,6 +122,7 @@ extraction_prompt:
     - "Record the named election in election_name (e.g. '2025 Tanzanian general election'); if the article only implies it, construct 'YYYY <country> <level> election' from context."
     - "For state_response, reuse the protest vocabulary where applicable: none, monitoring, dispersal, teargas, water_cannon, rubber_bullets, live_ammunition, arrests, ban, curfew, unknown."
     - 'confidence: "high" / "medium" / "low". Never "unknown". Single-source partisan claims (one party accusing another) cap at medium.'
+    - "field_confidence: additionally rate event_type, actors, location, date, and casualties independently (high/medium/low). Partisan single-source claims cap the actors and casualties fields at medium even when the event itself is well attested. Keep the event-level confidence as the overall judgement."
 
   type_hints:
     voter_intimidation_coercion: "threats, vote-buying under duress, coercive pressure on voters"
@@ -134,7 +161,8 @@ extraction_prompt:
       "article_date": "publication date of article",
       "source_country": "country of news source",
       "source_language": "language of original article",
-      "confidence": "high / medium / low"
+      "confidence": "high / medium / low",
+      "field_confidence": {"event_type": "high / medium / low", "actors": "high / medium / low", "location": "high / medium / low", "date": "high / medium / low", "casualties": "high / medium / low"}
     }
 
 # =============================================================================
@@ -246,25 +274,28 @@ event_types:
     definition: |
       Arrest, detention, or criminal charging of candidates, party officials,
       campaign staff, or prominent supporters in connection with an election —
-      including disqualification-by-prosecution, house arrest of opposition
-      leaders around election day, and mass arrests of party agents. The
-      perpetrator is a state actor; the target is a partisan electoral actor.
+      including abductions of party agents and forced confinement of
+      campaign staff. RESIDUAL (v2.0): the perpetrator is a NON-STATE
+      partisan actor (party youth wing, militia, unidentified partisan
+      captors) — state-perpetrated arrests of electoral actors are coded in
+      the state_repression domain and tagged by the electoral-nexus pass.
     positive_examples:
-      - "Opposition presidential candidate detained at the airport two weeks before the vote"
-      - "Forty party polling agents arrested overnight before election day"
-      - "Opposition campaign manager charged with 'incitement' after announcing parallel vote tabulation plans"
+      - "Ruling-party youth wing abducts three opposition polling agents the night before the vote; they are released after the count"
+      - "Opposition ward organiser held for two days by unidentified men who warned him to withdraw his candidacy"
+      - "Party militia confines election observers to their hotel during the collation of results"
     negative_examples:
-      - "Journalist arrested for covering a protest (→ repression domain unless the journalist is an electoral actor)"
+      - "Opposition presidential candidate detained by police at the airport two weeks before the vote (STATE perpetrator → state_repression domain, nexus-tagged)"
+      - "Forty party polling agents arrested overnight before election day (STATE perpetrator → state_repression domain, nexus-tagged)"
       - "Protesters arrested at a results-rejection march (→ protest domain event with state_response: arrests)"
-      - "Candidate convicted of genuine unrelated fraud a year before the election window (routine justice unless timed to disqualify)"
     decision_rules:
-      - "IF the target is a candidate, party official, or campaign staff AND the context is electoral → POLITICAL_TARGET_ARREST"
-      - "IF the arrest occurs during a protest the person led → code the protest in the protest domain; ALSO code here only if the arrest is separately targeted (e.g. days later, at home)"
-      - "IF a court disqualifies a candidate without detention → not this type (institutional channel); note only if arrests accompany it"
+      - "IF the perpetrator is a STATE actor (police, military, court, regulator) → state_repression domain (activist_arrest_prosecution); the nexus pass tags it electoral — NOT this type (v2.0 residual rule)"
+      - "IF a non-state partisan actor detains, abducts, or confines an electoral actor → POLITICAL_TARGET_ARREST"
+      - "IF the detention occurs during a protest the person led → code the protest in the protest domain; ALSO code here only if the detention is separately targeted (e.g. days later, at home)"
+      - "IF a court disqualifies a candidate without detention → not this type (institutional channel)"
     confidence_threshold: 0.75
     codebook_equivalents:
-      ecav: "State repression of electoral actors"
-      acled: "Strategic developments: Arrests"
+      ecav: "Repression of electoral actors (non-state residual; state form lives in state_repression + nexus tag)"
+      acled: "Strategic developments: Arrests (non-state); Abduction/forced disappearance"
 
   electoral_killing_assault:
     name: "Electoral Killing or Assault"
@@ -273,7 +304,12 @@ event_types:
       officials, supporters, voters, election officials, journalists covering the
       election — in connection with the electoral process. One-sided violence
       against a specific electoral target (contrast with the mutual violence of
-      electoral_clash). DECO's core event.
+      electoral_clash). DECO's core event. RESIDUAL (v2.0): attacks meeting
+      GTD criteria (organised armed group, coercive political message) are
+      coded in violent_extremism and nexus-tagged; STATE violence against
+      electoral actors is coded in state_repression and nexus-tagged. This
+      type keeps partisan violence below both thresholds: party agents,
+      mobs, and unidentified partisan attackers.
     positive_examples:
       - "Local council candidate shot dead outside his home a week after winning the primary"
       - "Election observer beaten unconscious by unidentified men after reporting ballot stuffing"
@@ -283,9 +319,11 @@ event_types:
       - "Politician dies in a road accident during the campaign (no violence/intent)"
       - "Soldier killed in an insurgent ambush on an election-security convoy (armed conflict targeting security forces, not electoral actors — unless the attack targets the electoral process itself)"
     decision_rules:
-      - "IF a specific electoral actor is killed or assaulted one-sidedly → ELECTORAL_KILLING_ASSAULT"
+      - "IF the attack meets GTD criteria (organised sub-national armed actor, coercive political message) → violent_extremism domain; the nexus pass tags it electoral — NOT this type (v2.0 residual rule)"
+      - "IF the perpetrator is a STATE actor (security forces, pro-government militia) → state_repression domain (pro_government_violence), nexus-tagged — NOT this type"
+      - "IF a specific electoral actor is killed or assaulted one-sidedly by partisan or unidentified NON-STATE attackers below the GTD threshold → ELECTORAL_KILLING_ASSAULT"
       - "IF security forces kill protesters at an election protest → protest domain event (state_response: live_ammunition), NOT this type"
-      - "IF an insurgent group attacks a polling station → VOTE_PROCESS_DISRUPTION (the process is the target), with fatalities recorded"
+      - "IF an insurgent group attacks a polling station → VOTE_PROCESS_DISRUPTION only when below GTD criteria; GTD-qualifying attacks on the process → violent_extremism, nexus-tagged"
     confidence_threshold: 0.80
     codebook_equivalents:
       ecav: "Electoral violence against persons"

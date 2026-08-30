@@ -38,7 +38,10 @@ metadata:
   unit_of_analysis: "Individual violent extremism incident"
   minimum_participants: 1
   llm_backend: "Azure AI Foundry (gpt-5.4)"
-  version: "1.2"
+  version: "1.3"
+  changelog_1_3: |
+    field_confidence block in output schema with military-register
+    difficulty discount (CMNEE) on affected fields.
   last_updated: "2026-08-30"
   changelog_1_2: |
     Ideology-attribution inclusion criteria added to
@@ -113,6 +116,7 @@ extraction_prompt:
     - "For weapon_type, use the closed vocabulary (explosives, firearms, incendiary, melee, vehicle, chemical, biological, radiological_nuclear, sabotage_equipment, fake_weapons, other, unknown); record subtype detail in weapon_subtype."
     - "For perpetrator_ideology, use the closed vocabulary in this codebook; set is_individual_attacker true only for lone-actor incidents."
     - "Attribute a specific perpetrator_ideology ONLY on: an explicit claim/justification by the perpetrator, a documented affiliation stated in the text, or target selection the source links to the cause. Media labels alone ('jihadists', 'bandits') → unknown. Attribution by officials alone, or ideology inferred mainly from target selection, caps confidence at medium."
+    - "field_confidence: additionally rate event_type, actors, location, date, and casualties independently (high/medium/low). Military-register text (operational claims, unverifiable battlefield detail, single-belligerent casualty counts) rates the affected fields one step lower unless independently corroborated. Keep the event-level confidence as the overall judgement."
     - "For outcome (perpetrator fate), choose from: escaped, arrested, killed, suicide, unknown."
     - 'confidence: "high" / "medium" / "low" per this codebook''s confidence guidance. Never "unknown". Single-source military claims in active conflict zones cap at medium.'
 
@@ -159,7 +163,8 @@ extraction_prompt:
       "article_date": "publication date of article",
       "source_country": "country of news source",
       "source_language": "language of original article",
-      "confidence": "high / medium / low"
+      "confidence": "high / medium / low",
+      "field_confidence": {"event_type": "high / medium / low", "actors": "high / medium / low", "location": "high / medium / low", "date": "high / medium / low", "casualties": "high / medium / low"}
     }
 
 # ============================================================================

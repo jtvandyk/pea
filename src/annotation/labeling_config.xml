@@ -10,8 +10,11 @@
   Workflow:
     1. Is this a genuine protest event? (binary gate)
     2. If yes, correct the event_type classification
-    3. Flag confidence override if appropriate
-    4. Add free-text annotation notes
+    3. Correct the issue_tags driver tags (closed taxonomy, v3.x)
+    4. Flag confidence override if appropriate
+    5. Flag per-field extraction errors — these calibrate the
+       field_confidence ratings (event_type/actors/location/date/casualties)
+    6. Add free-text annotation notes
 
   These reviewed tasks become the training corpus for QLoRA fine-tuning.
 -->
@@ -53,6 +56,10 @@
     </View>
     <Text name="lbl_claims" value="Claims / demands:" style="font-weight:bold; margin-top:8px;"/>
     <Text name="ext_claims" value="$claims_display"/>
+    <Text name="lbl_tags"   value="Issue tags (drivers):" style="font-weight:bold; margin-top:8px;"/>
+    <Text name="ext_tags"   value="$issue_tags_display"/>
+    <Text name="lbl_fc"     value="Per-field confidence:" style="font-weight:bold; margin-top:8px;"/>
+    <Text name="ext_fc"     value="$field_confidence_display"/>
   </View>
 
   <!-- Annotation decisions -->
@@ -85,6 +92,26 @@
         <Choice value="riot"                 alias="riot"/>
       </Choices>
 
+      <!-- Gate 2b: Correct issue tags (closed taxonomy, protest v3.x) -->
+      <Header value="2b. Correct issue tags — what drove the mobilisation?" size="4" style="margin-top:12px;"/>
+      <Choices name="corrected_issue_tags" toName="article_text"
+               choice="multiple" showInline="false">
+        <Choice value="economy_jobs"                    alias="economy_jobs"/>
+        <Choice value="food_water_subsistence"          alias="food_water_subsistence"/>
+        <Choice value="elections"                       alias="elections"/>
+        <Choice value="ethnic_religious_discrimination" alias="ethnic_religious_discrimination"/>
+        <Choice value="land"                            alias="land"/>
+        <Choice value="service_delivery"                alias="service_delivery"/>
+        <Choice value="education"                       alias="education"/>
+        <Choice value="labor_wages"                     alias="labor_wages"/>
+        <Choice value="human_rights_civic_space"        alias="human_rights_civic_space"/>
+        <Choice value="environment_climate"             alias="environment_climate"/>
+        <Choice value="other"                           alias="other"/>
+        <Choice value="no_tags_supported"               alias="no_tags_supported"
+                hint="The article states no driver — the correct issue_tags value is an empty list"/>
+      </Choices>
+      <Text name="tags_hint" value="Select the tags the article actually supports. Leave untouched to accept the LLM's tags as shown above." style="color:#666; font-size:0.85em;"/>
+
       <!-- Gate 3: Confidence override -->
       <Header value="3. Confidence" size="4" style="margin-top:12px;"/>
       <Choices name="corrected_confidence" toName="article_text"
@@ -95,15 +122,24 @@
         <Choice value="low"    alias="low"    style="color:#c62828;"/>
       </Choices>
 
-      <!-- Extraction quality flags -->
+      <!-- Extraction quality flags. The first five map 1:1 onto the
+           field_confidence keys (event_type/date/location/actors/casualties)
+           and are what calibrates those ratings — flag them even when the
+           overall event is fine. -->
       <Header value="4. Flag any extraction errors (optional)" size="4" style="margin-top:12px;"/>
       <Choices name="extraction_errors" toName="article_text"
                choice="multiple" showInline="false">
         <Choice value="wrong_event_type"    alias="wrong_event_type"/>
         <Choice value="wrong_date"          alias="wrong_date"/>
         <Choice value="wrong_location"      alias="wrong_location"/>
+        <Choice value="wrong_actors"        alias="wrong_actors"
+                hint="Organizer, participant groups, or state actors wrong (field_confidence: actors)"/>
+        <Choice value="wrong_casualties"    alias="wrong_casualties"
+                hint="Fatalities/injuries/arrests wrong (field_confidence: casualties)"/>
         <Choice value="wrong_organizer"     alias="wrong_organizer"/>
         <Choice value="wrong_claims"        alias="wrong_claims"/>
+        <Choice value="wrong_issue_tags"    alias="wrong_issue_tags"
+                hint="Tags wrong — also set the corrected tags in 2b"/>
         <Choice value="wrong_state_response" alias="wrong_state_response"/>
         <Choice value="missing_event"       alias="missing_event"
                 hint="Article contains another event not extracted"/>
