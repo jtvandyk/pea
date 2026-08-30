@@ -43,8 +43,36 @@ metadata:
   unit_of_analysis: "Individual state/pro-state repression action"
   minimum_participants: 1
   llm_backend: "Azure AI Foundry (gpt-5.4)"
-  version: "1.0"
-  last_updated: "2026-07-08"
+  version: "1.1"
+  last_updated: "2026-08-30"
+  changelog_1_1: |
+    ITT-style certainty grading on decision rules ([A] firm / [B] judgment
+    call, per Conrad, Haglund & Moore 2013 "Coding Rules & Norms"); [B]-rule
+    confidence cap wired into extraction_rules. Source-genre note: repression
+    is documented NGO/human-rights-report-first, not newswire-first.
+  decision_rule_certainty: |
+    ITT convention (Conrad, Haglund & Moore, ISP 2013): every decision rule
+    carries a certainty grade on the RULE itself, not only on extractions.
+    [A] = firm rule — follows directly from definitions; apply mechanically.
+    [B] = judgment call ("Tricky Bits") — the rule's antecedent requires
+    interpreting motive, attribution, or aggregation from ambiguous text.
+    When a [B] rule is decisive for including or typing an event, cap that
+    event's confidence at medium.
+  source_genre_note: |
+    Repression is documented human-rights-report-first, not newswire-first:
+    CPJ/RSF alerts, Access Now #KeepItOn, NGO statements, and legal-aid
+    networks typically report incidents before (or instead of) wire services
+    — a discovery-layer difference from the other four domains. Implications:
+    (a) GDELT-only discovery structurally under-samples this domain; treat
+    recall numbers from newswire-sourced runs as a lower bound and prefer
+    adding NGO/HR report feeds to the source list; (b) confidence priors
+    differ by genre — an NGO report naming target, instrument, and state
+    body can merit high confidence despite being a single source, while
+    state-media confirmation of a state action is reliable for the FACT of
+    the action but not its justification. Concealment bias compounds this:
+    states hide repression, so absence of reporting is weaker evidence of
+    absence than in other domains (see arXiv:2507.16997 — partially
+    verified; read before citing in methods text).
 
 # =============================================================================
 # EXTRACTION PROMPT — domain-specific base system prompt scaffolding
@@ -103,6 +131,7 @@ extraction_prompt:
     - "Internet shutdowns: code the reported ORDER or observed government-directed disruption as stated by the source (#KeepItOn practice). Record scope (national/regional/platform-specific) in scope_notes. Do not attempt technical verification."
     - "For outcome, choose from: detained, charged, convicted, released, banned, dissolved, suspended, shutdown_active, shutdown_lifted, exiled, ongoing, unknown."
     - 'confidence: "high" / "medium" / "low". Never "unknown". Single-source reports from state media about their own actions are usually reliable for the FACT of the action (high) but not for its justification.'
+    - "Decision rules in this codebook carry certainty grades (ITT convention): [A] = firm rule, apply mechanically; [B] = judgment call. When a [B] rule is decisive for including or typing an event, cap that event's confidence at medium."
 
   type_hints:
     activist_arrest_prosecution: "arrest/prosecution of activists, HRDs, opposition figures, lawyers, unionists"
@@ -193,10 +222,10 @@ event_types:
       - "Politician arrested for embezzlement with no civic-activity link (ordinary criminal justice)"
       - "Opposition candidate arrested three weeks before an election (→ election_events domain: political_target_arrest)"
     decision_rules:
-      - "IF the target is a civic actor AND the trigger is civic/expressive activity → ACTIVIST_ARREST_PROSECUTION"
-      - "IF the arrest happens AT a protest the person joined → protest domain; IF separately targeted (at home, at the airport, days later) → this type"
-      - "IF the target is a journalist arrested for journalism → JOURNALIST_MEDIA_REPRESSION (more specific type wins)"
-      - "IF the target is an electoral actor in the ±6-month window → election_events domain (political_target_arrest)"
+      - "[A] IF the target is a civic actor AND the trigger is civic/expressive activity → ACTIVIST_ARREST_PROSECUTION"
+      - "[B] IF the arrest happens AT a protest the person joined → protest domain; IF separately targeted (at home, at the airport, days later) → this type (judging 'separately targeted' from timing/venue is interpretive)"
+      - "[A] IF the target is a journalist arrested for journalism → JOURNALIST_MEDIA_REPRESSION (more specific type wins)"
+      - "[A] IF the target is an electoral actor in the ±6-month window → election_events domain (political_target_arrest)"
     confidence_threshold: 0.75
     codebook_equivalents:
       scad: "Pro-government violence / repression (arrest form)"
@@ -219,9 +248,9 @@ event_types:
       - "Journalist attacked by a mob at a rally with no state involvement (→ not state repression; possibly electoral_clash context)"
       - "Newspaper closes for financial reasons"
     decision_rules:
-      - "IF the state acts against a journalist/media house because of reporting → JOURNALIST_MEDIA_REPRESSION"
-      - "IF a journalist is among those detained at a protest → protest domain records it; code here ONLY if journalists were specifically targeted for coverage"
-      - "IF the instrument is a licence/regulatory measure against a media house → this type, not civil_society_restriction"
+      - "[A] IF the state acts against a journalist/media house because of reporting → JOURNALIST_MEDIA_REPRESSION"
+      - "[B] IF a journalist is among those detained at a protest → protest domain records it; code here ONLY if journalists were specifically targeted for coverage (targeting motive is a judgment call)"
+      - "[A] IF the instrument is a licence/regulatory measure against a media house → this type, not civil_society_restriction"
     confidence_threshold: 0.75
     codebook_equivalents:
       scad: "Pro-government repression (media form)"
@@ -243,9 +272,9 @@ event_types:
       - "Genuine tax enforcement applied equally to all organisations (no civic-space dimension stated)"
       - "Draft NGO bill debated in parliament (no enacted action yet)"
     decision_rules:
-      - "IF an NGO/CSO/movement is deregistered, dissolved, suspended, or has assets frozen by state action → CIVIL_SOCIETY_RESTRICTION"
-      - "IF a protest movement is dissolved in response to its protests → this type here; the protest domain separately records organisational_dissolution as state_response on its own events"
-      - "IF the target is a media organisation → JOURNALIST_MEDIA_REPRESSION"
+      - "[A] IF an NGO/CSO/movement is deregistered, dissolved, suspended, or has assets frozen by state action → CIVIL_SOCIETY_RESTRICTION"
+      - "[B] IF a protest movement is dissolved in response to its protests → this type here; the protest domain separately records organisational_dissolution as state_response on its own events (linking dissolution to specific protests is interpretive)"
+      - "[A] IF the target is a media organisation → JOURNALIST_MEDIA_REPRESSION"
     confidence_threshold: 0.75
     codebook_equivalents:
       scad: "Pro-government repression (organisational form)"
@@ -269,9 +298,9 @@ event_types:
       - "Platform inaccessible due to the company's own withdrawal from the market"
       - "Civil society warns a shutdown may happen during elections (anticipatory, no order yet)"
     decision_rules:
-      - "IF a state order or government-directed disruption is reported → INTERNET_SHUTDOWN; record scope and duration in scope_notes"
-      - "IF sources conflict on attribution (government denies, operators point to instructions) → still code, confidence: medium, note the dispute"
-      - "A multi-month continuing shutdown is ONE event; code a NEW event only for a distinct new order (extension to new regions, new platform)"
+      - "[A] IF a state order or government-directed disruption is reported → INTERNET_SHUTDOWN; record scope and duration in scope_notes"
+      - "[B] IF sources conflict on attribution (government denies, operators point to instructions) → still code, confidence: medium, note the dispute"
+      - "[B] A multi-month continuing shutdown is ONE event; code a NEW event only for a distinct new order (extension to new regions, new platform) — distinguishing a new order from continuation is interpretive"
     confidence_threshold: 0.70
     codebook_equivalents:
       keepiton: "Internet shutdown incident (Access Now STOP methodology)"
@@ -295,9 +324,9 @@ event_types:
       - "Curfew imposed during an armed-conflict operation (conflict measure, not civic-space repression — unless framed against protests)"
       - "COVID-style public-health gathering limits applied without civic-space targeting"
     decision_rules:
-      - "IF the ban/curfew is blanket (all assemblies, a whole movement, an open-ended period) → ASSEMBLY_BAN_CURFEW"
-      - "IF the ban targets one specific protest → protest domain records it as that event's state_response"
-      - "Record duration/scope in scope_notes; set state_response: ban or curfew accordingly"
+      - "[A] IF the ban/curfew is blanket (all assemblies, a whole movement, an open-ended period) → ASSEMBLY_BAN_CURFEW"
+      - "[B] IF the ban targets one specific protest → protest domain records it as that event's state_response (blanket vs single-protest scope can be ambiguous at the margin)"
+      - "[A] Record duration/scope in scope_notes; set state_response: ban or curfew accordingly"
     confidence_threshold: 0.70
     codebook_equivalents:
       scad: "Pro-government repression (restriction form)"
@@ -320,9 +349,9 @@ event_types:
       - "Two party youth wings clash during a campaign (→ election_events: electoral_clash)"
       - "Armed group attacks civilians in a conflict zone (→ conflict/VE datasets)"
     decision_rules:
-      - "IF state/pro-state actors use violence against civic actors outside a specific protest → PRO_GOVERNMENT_VIOLENCE"
-      - "IF the violence answers a specific ongoing protest → protest domain state_response"
-      - "Enforced disappearance with credible state attribution → this type, outcome: detained or unknown, note the attribution dispute"
+      - "[A] IF state/pro-state actors use violence against civic actors outside a specific protest → PRO_GOVERNMENT_VIOLENCE"
+      - "[B] IF the violence answers a specific ongoing protest → protest domain state_response (reprisal-to-protest linkage is a judgment call)"
+      - "[B] Enforced disappearance with credible state attribution → this type, outcome: detained or unknown, note the attribution dispute ('credible attribution' is a judgment call)"
     confidence_threshold: 0.75
     codebook_equivalents:
       scad: "Pro-government violence (repression)"

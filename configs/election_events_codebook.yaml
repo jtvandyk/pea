@@ -38,8 +38,13 @@ metadata:
   unit_of_analysis: "Individual election-related coercion/contestation incident"
   minimum_participants: 1
   llm_backend: "Azure AI Foundry (gpt-5.4)"
-  version: "1.0"
-  last_updated: "2026-07-08"
+  version: "1.1"
+  last_updated: "2026-08-30"
+  changelog_1_1: |
+    Explicit temporal-window decision rule: adopted ECAV's ±6-month window
+    (ECAV codebook v1.1, ecavdata.org) with per-round anchoring and worked
+    boundary cases in minimum_criteria.ecav_window_rule. Previously the
+    window was named in three places but never operationalised.
 
 # =============================================================================
 # EXTRACTION PROMPT — domain-specific base system prompt scaffolding
@@ -138,7 +143,7 @@ extraction_prompt:
 
 minimum_criteria:
   1_named_election: "A specific election is named or clearly implied by context"
-  2_ecav_window: "Event occurs within ±6 months of the election (ECAV operationalisation)"
+  2_ecav_window: "Event occurs within ±6 months of the election (ECAV operationalisation — see ecav_window_rule)"
   3_electoral_intent: "The act is intended to affect the electoral process, participation, or outcome"
   4_real_action: "A physical act occurred — not a plan, forecast, or rhetorical threat alone"
   5_not_citizen_protest: "The act is not a citizen protest form (protest domain territory)"
@@ -150,6 +155,29 @@ minimum_criteria:
     - "Judicial election petitions and their rulings (institutional channel)"
     - "Post-election government formation politics (coalition talks, appointments)"
     - "Coups and military takeovers (separate phenomenon — not electoral contention)"
+
+  ecav_window_rule: |
+    ADOPTED: ECAV's ±6-month window (ECAV codebook v1.1, ecavdata.org),
+    anchored PER ELECTION ROUND — a runoff opens its own ±6-month window, so
+    a two-round election can carry overlapping windows and the event is
+    attached to the round it targets.
+
+    Operationalisation:
+    - The window is necessary but NOT sufficient: an event inside the window
+      still needs electoral intent (criterion 3). A riot 4 months after the
+      poll IS an election event ONLY if its claims target the electoral
+      process or outcome (results rejection routed per criterion 5,
+      disputed-count violence, reprisals against voters or officials);
+      a riot in month 4 over fuel prices is NOT, whatever the calendar says.
+    - Outside the window, code the event ONLY when the source text explicitly
+      ties it to a named election (e.g. long-delayed election-petition
+      violence); note the window breach in outcome_notes and cap
+      confidence at medium.
+    - For postponed or annulled elections, anchor on the most recently
+      scheduled date; an indefinitely postponed election keeps its last
+      scheduled date as anchor.
+    - If no election date can be established even approximately from the
+      text or election_name, treat criterion 2 as unmet.
 
 # =============================================================================
 # EVENT TYPES
